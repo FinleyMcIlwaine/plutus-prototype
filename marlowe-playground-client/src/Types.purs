@@ -27,6 +27,7 @@ import Gist (Gist)
 import Gists (GistAction)
 import Halogen as H
 import Halogen.Blockly (BlocklyQuery, BlocklyMessage)
+import Halogen.Monaco as Monaco
 import Language.Haskell.Interpreter (InterpreterError, InterpreterResult)
 import Marlowe.Holes (Holes, MarloweHole)
 import Marlowe.Semantics (AccountId, Action(..), Assets, Bound, ChoiceId, ChosenNum, Contract, Environment(..), Input, Party, Payment, PubKey, Slot, SlotInterval(..), State, Token, TransactionError, TransactionWarning, _minSlot, boundFrom, emptyState, evalValue)
@@ -48,6 +49,7 @@ data HQuery a
 data HAction
   -- Haskell Editor
   = MarloweHandleEditorMessage AceMessage
+  | MarloweHandleMonacoEditorMessage Monaco.Message
   | MarloweHandleDragEvent DragEvent
   | MarloweHandleDropEvent DragEvent
   | MarloweMoveToPosition Pos Pos
@@ -88,6 +90,7 @@ type ChildSlots
   = ( haskellEditorSlot :: H.Slot AceQuery AceMessage Unit
     , marloweEditorSlot :: H.Slot AceQuery AceMessage Unit
     , blocklySlot :: H.Slot BlocklyQuery BlocklyMessage Unit
+    , monacoSlot :: H.Slot Monaco.Query Monaco.Message Unit
     )
 
 _haskellEditorSlot :: SProxy "haskellEditorSlot"
@@ -98,6 +101,9 @@ _marloweEditorSlot = SProxy
 
 _blocklySlot :: SProxy "blocklySlot"
 _blocklySlot = SProxy
+
+_monacoSlot :: SProxy "monacoSlot"
+_monacoSlot = SProxy
 
 -----------------------------------------------------------
 data View

@@ -177,6 +177,8 @@ toEvent (HaskellEditorAction _) = Just $ (defaultEvent "ConfigureEditor")
 
 toEvent (MarloweHandleEditorMessage _) = Nothing
 
+toEvent (MarloweHandleMonacoEditorMessage _) = Nothing
+
 toEvent (MarloweHandleDragEvent _) = Nothing
 
 toEvent (MarloweHandleDropEvent _) = Just $ defaultEvent "MarloweDropScript"
@@ -255,6 +257,8 @@ handleAction (MarloweHandleEditorMessage (TextChanged text)) = do
   assign _selectedHole Nothing
   saveMarloweBuffer text
   updateContractInState text
+
+handleAction (MarloweHandleMonacoEditorMessage _) = pure unit
 
 handleAction (MarloweHandleDragEvent event) = preventDefault event
 

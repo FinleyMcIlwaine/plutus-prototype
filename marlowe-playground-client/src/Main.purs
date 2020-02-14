@@ -5,7 +5,6 @@ import Prelude
 import Control.Coroutine (Consumer, Process, connect, consumer, runProcess, ($$))
 import Control.Monad.Reader.Trans (runReaderT)
 import Data.Maybe (Maybe(..))
-import Debug.Trace (trace)
 import Effect (Effect)
 import Effect.Aff (forkAff, Aff)
 import Effect.Class (liftEffect)
@@ -14,7 +13,6 @@ import Effect.Unsafe (unsafePerformEffect)
 import Foreign.Generic (defaultOptions)
 import Halogen (hoist)
 import Halogen.Aff (awaitBody, runHalogenAff)
-import Monaco as Monaco
 import Halogen.VDom.Driver (runUI)
 import LocalStorage (RawStorageEvent)
 import LocalStorage as LocalStorage
@@ -41,8 +39,6 @@ ajaxSettings = SPSettings_ $ (settings { decodeJson = decodeJson, encodeJson = e
 main ::
   Effect Unit
 main = do
-  monaco <- Monaco.getMonaco
-  trace monaco \_ -> pure unit
   -- TODO: need to get the proper url, same as the client
   window <- W.window
   location <- WW.location window

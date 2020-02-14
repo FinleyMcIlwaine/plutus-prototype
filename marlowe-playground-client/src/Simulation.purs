@@ -34,6 +34,8 @@ import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
 import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
 import Help (toHTML)
+import Halogen.Monaco (monacoComponent)
+import Halogen.Monaco as Monaco
 import Marlowe.Holes (Holes(..), MarloweHole(..), MarloweType(..), getMarloweConstructors)
 import Marlowe.Parser (currencySymbol, transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), ChosenNum, CurrencySymbol, Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TokenName, TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
@@ -43,6 +45,10 @@ import Prelude (class Show, Unit, bind, compare, const, flip, identity, mempty, 
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), MarloweError(..), MarloweState, SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _monacoSlot, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
+
+paneHeader :: forall p. String -> HTML p HAction
+paneHeader s = h2 [ class_ $ ClassName "pane-header" ] [ text s ]
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -561,14 +567,16 @@ simulationPaneOld state =
           , br_
           , errorList
           , analysisPane state
-          , div [id_ "monacoPane"] []
+          , div [] [ slot _monacoSlot unit monacoEditor unit (Just <<< MarloweHandleMonacoEditorMessage) ]
           ]
         ]
     )
   where
-  -- marloweEditor =
-  --   aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
-  --     (Just Live)
+  marloweEditor =
+    aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
+      (Just Live)
+  monacoEditor = monacoComponent
+
   editorPreferences = view _editorPreferences state
 
   initialContents = Map.lookup "Deposit Incentive" StaticData.marloweContracts
