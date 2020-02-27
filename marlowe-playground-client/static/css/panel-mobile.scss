@@ -1,0 +1,32 @@
+@media (max-width:1024px) {
+
+  .drawer-icon {
+    display:block;
+    margin-left: auto;
+  }
+  .input-composer ul {
+    width:100%;
+    max-width: inherit;
+  }
+  .panel-header, .panel-sub-header,  .code-panel {
+    position: relative;
+  }
+
+  .panel-header .panel-header-side {
+    border-top: 1px solid var(--bg-dark);
+  }
+
+  .panel-header .panel-header-side, .panel-sub-header .panel-sub-header-side,  .code-panel .sidebar-composer {
+    position:absolute;
+    top:0;
+    right:0;
+    width:500px;
+    background: var(--bg-light);
+    box-shadow: var(--box-shadow-left);
+    z-index: 1;
+  }
+
+  .panel-header-side.accent-border-bottom {
+    border-bottom: none;
+  }
+}

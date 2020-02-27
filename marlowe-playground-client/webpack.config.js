@@ -1,9 +1,9 @@
 'use strict';
 
-const ExtractTextPlugin = require("extract-text-webpack-plugin");
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const path = require('path');
 const webpack = require('webpack');
+const GoogleFontsPlugin = require('google-fonts-plugin')
 
 const isWebpackDevServer = process.argv.some(a => path.basename(a) === 'webpack-dev-server');
 
@@ -119,6 +119,27 @@ module.exports = {
             productName: 'marlowe-playground',
             googleAnalyticsId: isWebpackDevServer ? 'UA-XXXXXXXXX-X' : 'UA-119953429-7'
         }),
-        new webpack.NormalModuleReplacementPlugin(/^echarts$/, 'echarts/dist/echarts.min.js')
+        new webpack.NormalModuleReplacementPlugin(/^echarts$/, 'echarts/dist/echarts.min.js'),
+        new GoogleFontsPlugin({
+            "google-fonts-plugin": {
+                "fonts": [
+                    {
+                        "family": "Open+Sans",
+                        "variants": [
+                            "300",
+                            "300i",
+                            "400",
+                            "400i",
+                            "700",
+                            "700i"
+                        ],
+                    }
+                ],
+                "formats": [
+                    "woff",
+                    "woff2"
+                ]
+            }
+        })
     ].concat(plugins)
 };

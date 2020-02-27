@@ -1,0 +1,16 @@
+html, body, .site-wrap, main {
+  min-height:100vh;
+  height:inherit;
+}
+  
+main {
+  display:flex;
+}
+
+main nav {
+  flex: 1;
+}
+
+main section {
+  flex:15;
+}

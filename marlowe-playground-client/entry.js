@@ -1,5 +1,4 @@
-import '@fortawesome/fontawesome-free/css/all.css';
-import './static/main.scss';
+import './static/css/main.scss';
 
 import 'ace-builds/src-min-noconflict/ace.js';
 import 'ace-builds/src-min-noconflict/mode-haskell.js';

@@ -40,11 +40,13 @@ import Gists (GistAction(..), gistControls, parseGistUrl)
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
-import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, pre, slot, strong_, text)
+import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, pre, slot, strong_, text)
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Extra (mapComponent)
 import Halogen.HTML.Properties (class_, classes, disabled, href)
 import Halogen.Query (HalogenM)
+import Halogen.SVG (defs, svg)
+import Halogen.SVG as SVG
 import Language.Haskell.Interpreter (SourceCode(SourceCode), InterpreterError(CompilationErrors, TimeoutError), CompilationError(CompilationError, RawError), InterpreterResult(InterpreterResult), _InterpreterResult)
 import Marlowe (SPParams_)
 import Marlowe.Blockly as MB
@@ -492,12 +494,56 @@ toAnnotation (CompilationError { row, column, text }) =
     , text: String.joinWith "\\n" text
     }
 
+noMargins :: ClassName
+noMargins = ClassName "no-margins"
+
+aHorizontal :: ClassName
+aHorizontal = ClassName "a-horizontal"
+
+marloweLogo :: ClassName
+marloweLogo = ClassName "marlowe-logo"
+
+spaceLeft :: ClassName
+spaceLeft = ClassName "space-left"
+
+uppercase :: ClassName
+uppercase = ClassName "uppercase"
+
+tabLink :: ClassName
+tabLink = ClassName "tab-link"
+
+aCenter :: ClassName
+aCenter = ClassName "a-center"
+
+flexCol :: ClassName
+flexCol = ClassName "flex-col"
+
 render ::
   forall m.
   MonadAff m =>
   FrontendState ->
   ComponentHTML HAction ChildSlots m
 render state =
+  div [ class_ (ClassName "site-wrap") ]
+    [ header [ classes [ noMargins, aHorizontal ] ]
+        [ div [ class_ aHorizontal ]
+            [ div [ class_ (ClassName "marlowe-logo") ]
+                [ svg [ SVG.width 60, SVG.height 42, SVG.viewBox (SVG.Box { x: 0, y: 0, width: 60, height: 42 }) ]
+                    [ defs []
+                        []
+                    ]
+                ]
+            ]
+        ]
+    ]
+
+------------------------------------------------------------ Old Design -------------------------------------------------------
+renderOld ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+renderOld state =
   let
     stateView = view _view state
 
