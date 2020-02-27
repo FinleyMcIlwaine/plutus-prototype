@@ -4,7 +4,7 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActive, isActiveDemo, jFlexStart, mAlignCenter, minusBtn, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, readMoreIconWhite, smallBtn, spaceLeft, tAlignCenter, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, mAlignCenter, minusBtn, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, readMoreIconWhite, smallBtn, spaceLeft, tAlignCenter, textSecondaryColor, uppercase)
 import Control.Alternative (map)
 import Data.Array (catMaybes, concatMap, fromFoldable, head, sortBy)
 import Data.Array as Array
@@ -39,7 +39,7 @@ import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, bind, compare, const, flip, identity, mempty, not, pure, show, unit, zero, ($), (+), (<$>), (<<<), (<>), (>))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
 
 paneHeader :: forall p. String -> HTML p HAction
 paneHeader s = h2 [ class_ $ ClassName "pane-header" ] [ text s ]
@@ -56,7 +56,7 @@ simulationPane ::
   FrontendState ->
   ComponentHTML HAction ChildSlots m
 simulationPane state =
-  div [ classes ([ panelContent ] <> isActive state) ]
+  div [ classes ([ panelContent ] <> isActiveTab state Simulation ) ]
     [ section [ classes [ panelHeader, aHorizontal ] ]
         [ div [ classes [ panelHeaderMain, aHorizontal, noMargins, accentBorderBottom ] ]
             [ h4 [] [ text "Marlowe Contract" ] ]

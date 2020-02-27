@@ -1,7 +1,10 @@
 module Classes where
 
+import Prelude
+
+import Data.Lens (to, (^.))
 import Halogen (ClassName(..))
-import Types (FrontendState)
+import Types (FrontendState, View, _view)
 
 foreign import closeDrawerIcon :: String
 
@@ -95,8 +98,8 @@ mAlignCenter = ClassName "m-align-center"
 tAlignCenter :: ClassName
 tAlignCenter = ClassName "t-align-center"
 
-isActive :: FrontendState -> Array ClassName
-isActive state = if true then [ active ] else []
+isActiveTab :: FrontendState -> View -> Array ClassName
+isActiveTab state activeView = if state ^. _view <<< (to (eq activeView)) then [ active ] else []
 
 isActiveDemo :: FrontendState -> Array ClassName
 isActiveDemo state = if true then [ ClassName "active-text" ] else []

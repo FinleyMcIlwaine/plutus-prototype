@@ -7,7 +7,7 @@ import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
 import Bootstrap (active, btn, btnGroup, btnInfo, btnPrimary, btnSmall, colXs12, colSm6, colSm5, container, container_, empty, hidden, listGroupItem_, listGroup_, navItem_, navLink, navTabs_, noGutters, pullRight, row, justifyContentBetween)
-import Classes (aCenter, aHorizontal, flexCol, isActive, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
+import Classes (aCenter, aHorizontal, flexCol, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
@@ -531,15 +531,24 @@ render state =
         ]
     , main []
         [ nav [ id_ "panel-nav" ]
-            [ div [ classes ([ tabLink, aCenter, flexCol, ClassName "simulation-tab" ] <> isActive state) ]
+            [ div
+                [ classes ([ tabLink, aCenter, flexCol, ClassName "simulation-tab" ] <> isActiveTab state Simulation)
+                , onClick $ const $ Just $ ChangeView Simulation
+                ]
                 [ div [ class_ tabIcon ] []
                 , div [] [ text "Simulation" ]
                 ]
-            , div [ classes ([ tabLink, aCenter, flexCol, ClassName "haskell-tab" ] <> isActive state) ]
+            , div
+                [ classes ([ tabLink, aCenter, flexCol, ClassName "haskell-tab" ] <> isActiveTab state HaskellEditor)
+                , onClick $ const $ Just $ ChangeView HaskellEditor
+                ]
                 [ div [ class_ tabIcon ] []
                 , div [] [ text "Haskell Editor" ]
                 ]
-            , div [ classes ([ tabLink, aCenter, flexCol, ClassName "blockly-tab" ] <> isActive state) ]
+            , div
+                [ classes ([ tabLink, aCenter, flexCol, ClassName "blockly-tab" ] <> isActiveTab state BlocklyEditor)
+                , onClick $ const $ Just $ ChangeView BlocklyEditor
+                ]
                 [ div [ class_ tabIcon ] []
                 , div [] [ text "Blockly" ]
                 ]
