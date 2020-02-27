@@ -7,7 +7,7 @@ import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
 import Bootstrap (active, btn, btnGroup, btnInfo, btnPrimary, btnSmall, colXs12, colSm6, colSm5, container, container_, empty, hidden, listGroupItem_, listGroup_, navItem_, navLink, navTabs_, noGutters, pullRight, row, justifyContentBetween)
-import Classes (aCenter, aHorizontal, flexCol, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
+import Classes (aCenter, aHorizontal, accentBorderBottom, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, jFlexStart, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
@@ -42,10 +42,10 @@ import Gists (GistAction(..), gistControls, parseGistUrl)
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
-import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, main, nav, p, pre, section, slot, strong_, text)
+import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, img, li, main, nav, p, p_, pre, section, slot, small_, strong_, text, ul)
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Extra (mapComponent)
-import Halogen.HTML.Properties (class_, classes, disabled, href, id_)
+import Halogen.HTML.Properties (alt, class_, classes, disabled, href, id_, src)
 import Halogen.Query (HalogenM)
 import Halogen.SVG (GradientUnits(..), Translate(..), d, defs, gradientUnits, linearGradient, offset, path, stop, stopColour, svg, transform, x1, x2, y2)
 import Halogen.SVG as SVG
@@ -552,6 +552,14 @@ render state =
                 [ div [ class_ tabIcon ] []
                 , div [] [ text "Blockly" ]
                 ]
+            , div [ class_ (ClassName "nav-bottom-links") ]
+                [ button [ classes [ btnSecondary, aHorizontal, ClassName "open-link-icon" ] ] [ text "Tutorial" ]
+                , p_ [ text "Privacy Policy" ]
+                , p_
+                    [ text "by "
+                    , img [ src iohkIcon, alt "input output hong kong logo" ]
+                    ]
+                ]
             ]
         , section [ id_ "main-panel" ]
             [ simulationPane state
@@ -561,8 +569,29 @@ render state =
             -- blockly
             , div [ class_ panelContent ]
                 []
+            -- bottom panel
             , div [ class_ (ClassName "analysis-panel") ]
-                []
+                [ div [ class_ flex ]
+                    [ div [ class_ flexTen ]
+                        [ div [ class_ (ClassName "footer-panel-bg") ]
+                            [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
+                                [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+                                    [ div [ classes [ ClassName "demo-title", aHorizontal, jFlexStart ] ]
+                                        [ div [ classes [ ClassName "demos", spaceLeft ] ]
+                                            [ small_ [ text "Status:" ] ]
+                                        ]
+                                    , ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+                                        [ li [ class_ (ClassName "active-text") ]
+                                            [ a [ href "/" ] [ text "Static Analysis" ] ]
+                                        ]
+                                    ]
+                                ]
+                            , section [ classes [ ClassName "panel-sub-header", aHorizontal ] ] []
+                            ]
+                        ]
+                    , div [ class_ flexFour ] []
+                    ]
+                ]
             ]
         ]
     ]

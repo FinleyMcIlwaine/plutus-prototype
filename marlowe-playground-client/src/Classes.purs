@@ -57,10 +57,10 @@ panelSubHeader :: ClassName
 panelSubHeader = ClassName "panel-sub-header"
 
 panelSubHeaderMain :: ClassName
-panelSubHeaderMain = ClassName "panel-sub-header-side"
+panelSubHeaderMain = ClassName "panel-sub-header-main"
 
 panelSubHeaderSide :: ClassName
-panelSubHeaderSide = ClassName "panel-sub-header-main"
+panelSubHeaderSide = ClassName "panel-sub-header-side"
 
 panelHeaderMain :: ClassName
 panelHeaderMain = ClassName "panel-header-main"
@@ -83,6 +83,9 @@ plusBtn = ClassName "plus-btn"
 minusBtn :: ClassName
 minusBtn = ClassName "minus-btn"
 
+btnSecondary :: ClassName
+btnSecondary = ClassName "btn-secondary"
+
 textSecondaryColor :: ClassName
 textSecondaryColor = ClassName "text-secondary-color"
 
@@ -97,6 +100,15 @@ mAlignCenter = ClassName "m-align-center"
 
 tAlignCenter :: ClassName
 tAlignCenter = ClassName "t-align-center"
+
+flex :: ClassName
+flex = ClassName "flex"
+
+flexFour :: ClassName
+flexFour = ClassName "flex-four"
+
+flexTen :: ClassName
+flexTen = ClassName "flex-ten"
 
 isActiveTab :: FrontendState -> View -> Array ClassName
 isActiveTab state activeView = if state ^. _view <<< (to (eq activeView)) then [ active ] else []
