@@ -4,7 +4,7 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, closeDrawerIcon, githubIcon, isActive, jFlexStart, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, spaceLeft)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActive, isActiveDemo, jFlexStart, mAlignCenter, minusBtn, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, readMoreIconWhite, smallBtn, spaceLeft, tAlignCenter, textSecondaryColor, uppercase)
 import Control.Alternative (map)
 import Data.Array (catMaybes, concatMap, fromFoldable, head, sortBy)
 import Data.Array as Array
@@ -26,9 +26,10 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, b_, br_, button, code_, col, colgroup, div, div_, h2, h3_, h4, img, input, li_, ol, ol_, pre_, section, slot, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
+import Examples.Marlowe.Contracts as Contracts
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h4_, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
-import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, id_, placeholder, prop, src, type_, value)
+import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, href, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
 import Marlowe.Holes (Holes(..), MarloweHole(..), MarloweType(..), getMarloweConstructors)
 import Marlowe.Parser (transactionInputList, transactionWarningList)
@@ -72,16 +73,217 @@ simulationPane state =
     , section [ classes [ panelSubHeader, aHorizontal ] ]
         [ div [ classes [ panelSubHeaderMain, aHorizontal ] ]
             [ div [ classes [ ClassName "demo-title", aHorizontal, jFlexStart ] ]
-                []
+                [ img [ class_ (ClassName "demo-arrow"), src downloadIcon, alt "down arrow" ]
+                , div [ classes [ ClassName "demos", spaceLeft ] ]
+                    [ small_ [ text "Demos:" ]
+                    ]
+                ]
             , ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                []
+                [ li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Coupon Bond Guranteed" ] ]
+                , li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Escrow" ] ]
+                , li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Swap" ] ]
+                , li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Zero Coupon Bond" ] ]
+                ]
             , div [ class_ (ClassName "code-to-blockly-wrap") ]
-                []
+                [ button [ class_ smallBtn ]
+                    [ img [ class_ (ClassName "blockly-btn-icon"), src blocklyIcon, alt "blockly logo" ] ]
+                ]
             ]
         , div [ classes [ panelSubHeaderSide ] ] []
         ]
     , section [ class_ (ClassName "code-panel") ]
+        [ div [ class_ (ClassName "code-editor") ]
+            [ pre_ [ text Contracts.swap ] ]
+        , sidebar state
+        ]
+    ]
+
+sidebar ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+sidebar state =
+  aside [ class_ (ClassName "sidebar-composer") ]
+    [ div [ class_ aHorizontal ]
+        [ h6 [ classes [ ClassName "input-composer-heading", noMargins ] ]
+            [ small [ classes [ textSecondaryColor, bold, uppercase ] ] [ text "Input Composer" ] ]
+        , a [ href "/" ] [ img [ src infoIcon, alt "info book icon" ] ]
+        ]
+    , inputComposer state
+    , div [ class_ aHorizontal ]
+        [ h6 [ classes [ ClassName "input-composer-heading", noMargins ] ]
+            [ small [ classes [ textSecondaryColor, bold, uppercase ] ] [ text "Transaction Composer" ] ]
+        , a [ href "/" ] [ img [ src infoIcon, alt "info book icon" ] ]
+        ]
+    , transactionComposer state
+    , article [ class_ (ClassName "documentation-panel") ]
+        [ img [class_ mAlignCenter, src readMoreIconWhite, alt "read more icon"]
+        , h4 [class_ tAlignCenter] [text "Modelling contracts in Marlowe"]
+        , hr []
+        , p_ [text "Marlowe is designed to support the execution of financial contracts on blockchain, and specifically to work on Cardano. Contracts are built by putting together a small number of constructs that in combination can be used to describe many different kinds of financial contract"]
+        ]
+    ]
+
+inputComposer ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+inputComposer state =
+  div [ class_ (ClassName "input-composer") ]
+    [ ul [ class_ (ClassName "participants") ]
+        [ participant state
+        , participant state
+        ]
+    ]
+
+participant ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+participant state =
+  li [ classes [ ClassName "participant-a", noMargins ] ]
+    [ h6_ [ em_ [ text "Participant ", strong_ [ text "'Alice'" ] ] ]
+    , ul
         []
+        [ inputDeposit state
+        , inputChoice state
+        , inputNotify state
+        ]
+    ]
+
+inputDeposit ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+inputDeposit state =
+  li [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ button [ classes [ plusBtn, smallBtn ] ] [ text "+" ]
+    , p_
+        [ text "Deposit 450 units of (Token \"Ada\") into account"
+        , strong_ [ text "'Alice'" ]
+        , text " as "
+        , strong_ [ text "Alice" ]
+        ]
+    ]
+
+inputChoice ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+inputChoice state =
+  li
+    [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ button [ classes [ plusBtn, smallBtn ] ] [ text "+" ]
+    , p_
+        [ text "Choice \"choice\" : Choose value"
+        ]
+    , input []
+    ]
+
+inputNotify ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+inputNotify state =
+  li
+    [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ button [ classes [ plusBtn, smallBtn ] ] [ text "+" ]
+    , p_
+        [ text "Deposit 450 units of (Token \"Ada\") into account"
+        , strong_ [ text "'Alice'" ]
+        , text " as "
+        , strong_ [ text "Alice" ]
+        ]
+    ]
+
+transactionComposer ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+transactionComposer state =
+  div [ class_ (ClassName "input-composer") ]
+    [ ul [ class_ (ClassName "participants") ]
+        [ transaction state
+        , transaction state
+        ]
+    , div [ class_ (ClassName "transaction-btns") ]
+        [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+            [ li_ [ a [ href "/" ] [ text "Undo" ] ]
+            , li_ [ a [ href "/" ] [ text "Reset" ] ]
+            , li [ classes [ activeTextPrimary, bold ] ] [ a [ href "/" ] [ text "Next Block (0)" ] ]
+            , li_ [ button [] [ text "Apply" ] ]
+            ]
+        ]
+    ]
+
+transaction ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+transaction state =
+  li [ classes [ ClassName "participant-a", noMargins ] ]
+    [ ul
+        []
+        [ transactionDeposit state
+        , transactionChoice state
+        , transactionNotify state
+        ]
+    ]
+
+transactionDeposit ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+transactionDeposit state =
+  li [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ p_
+        [ text "Deposit 450 units of (Token \"Ada\") into account"
+        , strong_ [ text "'Alice'" ]
+        , text " as "
+        , strong_ [ text "Alice" ]
+        ]
+    , button [ classes [ minusBtn, smallBtn, bold ] ] [ text "-" ]
+    ]
+
+transactionChoice ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+transactionChoice state =
+  li [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ p_
+        [ text "Deposit 450 units of (Token \"Ada\") into account"
+        , strong_ [ text "'Alice'" ]
+        , text " as "
+        , strong_ [ text "Alice" ]
+        ]
+    , button [ classes [ minusBtn, smallBtn, bold ] ] [ text "-" ]
+    ]
+
+transactionNotify ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+transactionNotify state =
+  li [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ p_
+        [ text "Deposit 450 units of (Token \"Ada\") into account"
+        , strong_ [ text "'Alice'" ]
+        , text " as "
+        , strong_ [ text "Alice" ]
+        ]
+    , button [ classes [ minusBtn, smallBtn, bold ] ] [ text "-" ]
     ]
 
 ------------------------------------------------------------ Old Design -------------------------------------------------------
@@ -278,7 +480,7 @@ inputComposerPane state =
         [ class_ $ ClassName "wallet"
         ]
         [ card_
-            [ cardBody_ (inputComposer isEnabled (view (_marloweState <<< _Head <<< _possibleActions) state))
+            [ cardBody_ (inputComposerOld isEnabled (view (_marloweState <<< _Head <<< _possibleActions) state))
             ]
         ]
     ]
@@ -290,8 +492,8 @@ onEmpty alt [] = alt
 
 onEmpty _ arr = arr
 
-inputComposer :: forall p. Boolean -> Map (Maybe PubKey) (Map ActionInputId ActionInput) -> Array (HTML p HAction)
-inputComposer isEnabled actionInputs =
+inputComposerOld :: forall p. Boolean -> Map (Maybe PubKey) (Map ActionInputId ActionInput) -> Array (HTML p HAction)
+inputComposerOld isEnabled actionInputs =
   if (Map.isEmpty actionInputs) then
     [ text "No valid inputs can be added to the transaction" ]
   else
@@ -330,13 +532,13 @@ inputComposerPerson isEnabled maybePerson actionInputs isLast =
       ]
   where
   inputForAction :: Int -> ActionInput -> Maybe (HTML p HAction)
-  inputForAction index (DepositInput accountId party token value) = Just $ inputDeposit isEnabled maybePerson index accountId party token value
+  inputForAction index (DepositInput accountId party token value) = Just $ inputDepositOld isEnabled maybePerson index accountId party token value
 
-  inputForAction index (ChoiceInput choiceId bounds chosenNum) = Just $ inputChoice isEnabled maybePerson index choiceId chosenNum bounds
+  inputForAction index (ChoiceInput choiceId bounds chosenNum) = Just $ inputChoiceOld isEnabled maybePerson index choiceId chosenNum bounds
 
-  inputForAction index NotifyInput = Just $ inputNotify isEnabled maybePerson index
+  inputForAction index NotifyInput = Just $ inputNotifyOld isEnabled maybePerson index
 
-inputDeposit ::
+inputDepositOld ::
   forall p.
   Boolean ->
   Maybe PubKey ->
@@ -346,7 +548,7 @@ inputDeposit ::
   Token ->
   BigInteger ->
   HTML p HAction
-inputDeposit isEnabled person index accountId party token value =
+inputDepositOld isEnabled person index accountId party token value =
   div_
     $ [ button
           [ class_ $ ClassName "composer-add-button"
@@ -371,8 +573,8 @@ renderDeposit (AccountId accountNumber accountOwner) party tok money =
   , b_ [ spanText (show party) ]
   ]
 
-inputChoice :: forall p. Boolean -> Maybe PubKey -> Int -> ChoiceId -> ChosenNum -> Array Bound -> HTML p HAction
-inputChoice isEnabled person index choiceId@(ChoiceId choiceName choiceOwner) chosenNum bounds =
+inputChoiceOld :: forall p. Boolean -> Maybe PubKey -> Int -> ChoiceId -> ChosenNum -> Array Bound -> HTML p HAction
+inputChoiceOld isEnabled person index choiceId@(ChoiceId choiceName choiceOwner) chosenNum bounds =
   let
     validBounds = inBounds chosenNum bounds
 
@@ -399,13 +601,13 @@ inputChoice isEnabled person index choiceId@(ChoiceId choiceName choiceOwner) ch
 
   boundError (Bound from to) = show from <> " and " <> show to
 
-inputNotify ::
+inputNotifyOld ::
   forall p.
   Boolean ->
   Maybe PubKey ->
   Int ->
   HTML p HAction
-inputNotify isEnabled person index =
+inputNotifyOld isEnabled person index =
   div_
     [ button
         [ class_ $ ClassName "composer-add-button"

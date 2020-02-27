@@ -71,5 +71,32 @@ accentBorderBottom = ClassName "accent-border-bottom"
 jFlexStart :: ClassName
 jFlexStart = ClassName "j-flex-start"
 
+smallBtn :: ClassName
+smallBtn = ClassName "small-btn"
+
+plusBtn :: ClassName
+plusBtn = ClassName "plus-btn"
+
+minusBtn :: ClassName
+minusBtn = ClassName "minus-btn"
+
+textSecondaryColor :: ClassName
+textSecondaryColor = ClassName "text-secondary-color"
+
+bold :: ClassName
+bold = ClassName "bold"
+
+activeTextPrimary :: ClassName
+activeTextPrimary = ClassName "active-text-primary"
+
+mAlignCenter :: ClassName
+mAlignCenter = ClassName "m-align-center"
+
+tAlignCenter :: ClassName
+tAlignCenter = ClassName "t-align-center"
+
 isActive :: FrontendState -> Array ClassName
 isActive state = if true then [ active ] else []
+
+isActiveDemo :: FrontendState -> Array ClassName
+isActiveDemo state = if true then [ ClassName "active-text" ] else []
