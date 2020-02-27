@@ -7,6 +7,7 @@ import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
 import Bootstrap (active, btn, btnGroup, btnInfo, btnPrimary, btnSmall, colXs12, colSm6, colSm5, container, container_, empty, hidden, listGroupItem_, listGroup_, navItem_, navLink, navTabs_, noGutters, pullRight, row, justifyContentBetween)
+import Classes (aCenter, aHorizontal, flexCol, isActive, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
@@ -24,6 +25,7 @@ import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Newtype (unwrap)
+import Data.Num (negate)
 import Data.String (Pattern(..), stripPrefix, stripSuffix, trim)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple))
@@ -40,12 +42,12 @@ import Gists (GistAction(..), gistControls, parseGistUrl)
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
-import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, pre, slot, strong_, text)
+import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, main, nav, p, pre, section, slot, strong_, text)
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Extra (mapComponent)
-import Halogen.HTML.Properties (class_, classes, disabled, href)
+import Halogen.HTML.Properties (class_, classes, disabled, href, id_)
 import Halogen.Query (HalogenM)
-import Halogen.SVG (defs, svg)
+import Halogen.SVG (GradientUnits(..), Translate(..), d, defs, gradientUnits, linearGradient, offset, path, stop, stopColour, svg, transform, x1, x2, y2)
 import Halogen.SVG as SVG
 import Language.Haskell.Interpreter (SourceCode(SourceCode), InterpreterError(CompilationErrors, TimeoutError), CompilationError(CompilationError, RawError), InterpreterResult(InterpreterResult), _InterpreterResult)
 import Marlowe (SPParams_)
@@ -494,30 +496,6 @@ toAnnotation (CompilationError { row, column, text }) =
     , text: String.joinWith "\\n" text
     }
 
-noMargins :: ClassName
-noMargins = ClassName "no-margins"
-
-aHorizontal :: ClassName
-aHorizontal = ClassName "a-horizontal"
-
-marloweLogo :: ClassName
-marloweLogo = ClassName "marlowe-logo"
-
-spaceLeft :: ClassName
-spaceLeft = ClassName "space-left"
-
-uppercase :: ClassName
-uppercase = ClassName "uppercase"
-
-tabLink :: ClassName
-tabLink = ClassName "tab-link"
-
-aCenter :: ClassName
-aCenter = ClassName "a-center"
-
-flexCol :: ClassName
-flexCol = ClassName "flex-col"
-
 render ::
   forall m.
   MonadAff m =>
@@ -528,11 +506,54 @@ render state =
     [ header [ classes [ noMargins, aHorizontal ] ]
         [ div [ class_ aHorizontal ]
             [ div [ class_ (ClassName "marlowe-logo") ]
-                [ svg [ SVG.width 60, SVG.height 42, SVG.viewBox (SVG.Box { x: 0, y: 0, width: 60, height: 42 }) ]
+                [ svg [ SVG.width (SVG.Length 60.0), SVG.height (SVG.Length 41.628), SVG.viewBox (SVG.Box { x: 0, y: 0, width: 60, height: 42 }) ]
                     [ defs []
+                        [ linearGradient [ id_ "marlowe__linear-gradient", x1 (SVG.Length 0.5), x2 (SVG.Length 0.5), y2 (SVG.Length 1.0), gradientUnits ObjectBoundingBox ]
+                            [ stop [ offset (SVG.Length 0.221), stopColour "#832dc4" ] []
+                            , stop [ offset (SVG.Length 0.377), stopColour "#5e35b8" ] []
+                            , stop [ offset (SVG.Length 0.543), stopColour "#3f3dad" ] []
+                            , stop [ offset (SVG.Length 0.704), stopColour "#2942a6" ] []
+                            , stop [ offset (SVG.Length 0.857), stopColour "#1c45a2" ] []
+                            , stop [ offset (SVG.Length 0.994), stopColour "#1746a0" ] []
+                            ]
+                        ]
+                    , path
+                        [ id_ "prefix__marlowe-logo"
+                        , d "M90.464 35.544c1.02 0 2.232.024 2.736.072V30.4a42.042 42.042 0 00-30.06 10.124c-8.88-7.68-20.784-10.992-29.916-9.96v4.884c.516-.036 1.308-.06 2.208-.06h.048l.156-.012.2.012a19.663 19.663 0 012.264.112h.1c12.324 1.488 21.984 7.212 28.7 17.556a236 236 0 00-3.792 6.3c-.756-1.236-2.832-5.04-3.672-6.444a44.98 44.98 0 012.028-3.06c-1.284-1.26-2.484-2.4-3.732-3.588-.9 1.116-1.62 1.992-2.412 2.964-3.36-2.28-6.576-4.476-10.392-5.628A29.291 29.291 0 0033.2 42.228v29.688h4.98V47.424c5.028.876 10.332 2.736 14.472 6.672a46.733 46.733 0 00-3.9 17.832h5.172a34.82 34.82 0 012.628-13.644 43.568 43.568 0 013.24 7.884 44.62 44.62 0 01.864 5.736h2.3v-8.268h.072a.77.77 0 11.84-.768.759.759 0 01-.684.768h.072V71.9h-.3l.072.012h.228V71.9h2.4a24.792 24.792 0 014.128-13.728 42.589 42.589 0 012.7 13.74h5.296c0-5.088-1.992-14.6-4.092-18.552a22.176 22.176 0 0114.244-5.616c0 4-.012 8 0 12.012.012 4.032-.084 8.076.072 12.144h5.2V42.144a35.632 35.632 0 00-12.012 1.512 33.507 33.507 0 00-10.468 5.664c-1.092-1.9-2.316-3.432-3.564-5.244a37.471 37.471 0 0120.892-8.46c.504-.048 1.392-.072 2.412-.072z"
+                        , transform (Translate { x: (negate 33.2), y: (negate 30.301) })
+                        ]
                         []
                     ]
                 ]
+            , h1 [ classes [ spaceLeft, uppercase ] ] [ text "Marlowe Playground" ]
+            ]
+        , p [] [ text "Online tool for creating embedded Marlowe contracts" ]
+        ]
+    , main []
+        [ nav [ id_ "panel-nav" ]
+            [ div [ classes ([ tabLink, aCenter, flexCol, ClassName "simulation-tab" ] <> isActive state) ]
+                [ div [ class_ tabIcon ] []
+                , div [] [ text "Simulation" ]
+                ]
+            , div [ classes ([ tabLink, aCenter, flexCol, ClassName "haskell-tab" ] <> isActive state) ]
+                [ div [ class_ tabIcon ] []
+                , div [] [ text "Haskell Editor" ]
+                ]
+            , div [ classes ([ tabLink, aCenter, flexCol, ClassName "blockly-tab" ] <> isActive state) ]
+                [ div [ class_ tabIcon ] []
+                , div [] [ text "Blockly" ]
+                ]
+            ]
+        , section [ id_ "main-panel" ]
+            [ simulationPane state
+            -- haskell editor
+            , div [ class_ panelContent ]
+                []
+            -- blockly
+            , div [ class_ panelContent ]
+                []
+            , div [ class_ (ClassName "analysis-panel") ]
+                []
             ]
         ]
     ]

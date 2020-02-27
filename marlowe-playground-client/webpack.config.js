@@ -113,15 +113,15 @@ module.exports = {
             debug: true
         }),
         new HtmlWebpackPlugin({
-            template: '../web-common/static/index.html',
+            template: './static/index.html',
             favicon: 'static/favicon.ico',
             title: 'Marlowe Playground',
             productName: 'marlowe-playground',
             googleAnalyticsId: isWebpackDevServer ? 'UA-XXXXXXXXX-X' : 'UA-119953429-7'
         }),
         new webpack.NormalModuleReplacementPlugin(/^echarts$/, 'echarts/dist/echarts.min.js'),
-        new GoogleFontsPlugin({
-            "google-fonts-plugin": {
+        new GoogleFontsPlugin(
+            {
                 "fonts": [
                     {
                         "family": "Open+Sans",
@@ -139,7 +139,7 @@ module.exports = {
                     "woff",
                     "woff2"
                 ]
-            }
-        })
+
+            })
     ].concat(plugins)
 };

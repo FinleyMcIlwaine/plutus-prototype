@@ -4,6 +4,7 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
+import Classes (aHorizontal, accentBorderBottom, closeDrawerIcon, githubIcon, isActive, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, spaceLeft)
 import Control.Alternative (map)
 import Data.Array (catMaybes, concatMap, fromFoldable, head, sortBy)
 import Data.Array as Array
@@ -25,9 +26,9 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, b_, br_, button, code_, col, colgroup, div, div_, h2, h3_, input, li_, ol, ol_, pre_, slot, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, b_, br_, button, code_, col, colgroup, div, div_, h2, h3_, h4, img, input, li_, ol, ol_, pre_, section, slot, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
-import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), class_, classes, enabled, id_, placeholder, prop, type_, value)
+import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
 import Marlowe.Holes (Holes(..), MarloweHole(..), MarloweType(..), getMarloweConstructors)
 import Marlowe.Parser (transactionInputList, transactionWarningList)
@@ -54,6 +55,33 @@ simulationPane ::
   FrontendState ->
   ComponentHTML HAction ChildSlots m
 simulationPane state =
+  div [ classes ([ panelContent ] <> isActive state) ]
+    [ section [ classes [ panelHeader, aHorizontal ] ]
+        [ div [ classes [ panelHeaderMain, aHorizontal, noMargins, accentBorderBottom ] ]
+            [ h4 [] [ text "Marlowe Contract" ] ]
+        , div [ classes [ panelHeaderSide, aHorizontal, accentBorderBottom ] ]
+            [ a []
+                [ img [ class_ (ClassName "drawer-icon"), src closeDrawerIcon, alt "close drawer icon" ]
+                ]
+            , div [ class_ aHorizontal ]
+                [ a [] [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ] ]
+                , button [ class_ spaceLeft ] [ text "Save to github" ]
+                ]
+            ]
+        ]
+    , section [ classes [ panelSubHeader, aHorizontal ] ]
+        []
+    , section [ class_ (ClassName "code-panel") ]
+        []
+    ]
+
+------------------------------------------------------------ Old Design -------------------------------------------------------
+simulationPaneOld ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+simulationPaneOld state =
   div_
     ( Array.concat
         [ [ row_

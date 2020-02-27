@@ -16,8 +16,8 @@ type SVGNode
       ( SVGCore
           ( viewBox :: Box
           , xmlns :: Namespace
-          , width :: CSSPixel
-          , height :: CSSPixel
+          , width :: Length
+          , height :: Length
           )
       )
 
@@ -26,8 +26,8 @@ type SVGrect
       ( Interactive
           ( x :: CSSPixel
           , y :: CSSPixel
-          , width :: CSSPixel
-          , height :: CSSPixel
+          , width :: Length
+          , height :: Length
           , fill :: RGB
           , stroke :: RGB
           , strokeWidth :: CSSPixel
@@ -47,10 +47,10 @@ type SVGPresentation r
   = ( transform :: Translate | r )
 
 type SVGline
-  = ( x1 :: CSSPixel
-    , y1 :: CSSPixel
-    , x2 :: CSSPixel
-    , y2 :: CSSPixel
+  = ( x1 :: Length
+    , y1 :: Length
+    , x2 :: Length
+    , y2 :: Length
     , stroke :: RGB
     , strokeWidth :: CSSPixel
     )
@@ -64,6 +64,26 @@ type SVGtext
       , transform :: Translate
       )
 
+type SVGgradiant
+  = ( id :: String
+    , x1 :: Length
+    , x2 :: Length
+    , y1 :: Length
+    , y2 :: Length
+    , gradientUnits :: GradientUnits
+    )
+
+type SVGstop
+  = ( offset :: Length
+    , stopColour :: String
+    )
+
+type SVGpath
+  = ( id :: String
+    , d :: String
+    , transform :: Translate
+    )
+
 svgNS :: Namespace
 svgNS = Namespace "http://www.w3.org/2000/svg"
 
@@ -72,6 +92,15 @@ svg attributes = elementNS svgNS (ElemName "svg") (Array.snoc attributes (xmlns 
 
 defs :: forall r p i. Node r p i
 defs = elementNS svgNS (ElemName "defs")
+
+linearGradient :: forall p i. Node SVGgradiant p i
+linearGradient = elementNS svgNS (ElemName "linearGradient")
+
+stop :: forall p i. Node SVGstop p i
+stop = elementNS svgNS (ElemName "stop")
+
+path :: forall p i. Node SVGpath p i
+path = elementNS svgNS (ElemName "path")
 
 rect :: forall p i. Node SVGrect p i
 rect = elementNS svgNS (ElemName "rect")
@@ -109,26 +138,38 @@ x = attr (AttrName "x")
 y :: forall r i. CSSPixel -> IProp ( y :: CSSPixel | r ) i
 y = attr (AttrName "y")
 
-x1 :: forall r i. CSSPixel -> IProp ( x1 :: CSSPixel | r ) i
+x1 :: forall r i. Length -> IProp ( x1 :: Length | r ) i
 x1 = attr (AttrName "x1")
 
-y1 :: forall r i. CSSPixel -> IProp ( y1 :: CSSPixel | r ) i
+y1 :: forall r i. Length -> IProp ( y1 :: Length | r ) i
 y1 = attr (AttrName "y1")
 
-x2 :: forall r i. CSSPixel -> IProp ( x2 :: CSSPixel | r ) i
+x2 :: forall r i. Length -> IProp ( x2 :: Length | r ) i
 x2 = attr (AttrName "x2")
 
-y2 :: forall r i. CSSPixel -> IProp ( y2 :: CSSPixel | r ) i
+y2 :: forall r i. Length -> IProp ( y2 :: Length | r ) i
 y2 = attr (AttrName "y2")
 
-height :: forall r i. CSSPixel -> IProp ( height :: CSSPixel | r ) i
+height :: forall r i. Length -> IProp ( height :: Length | r ) i
 height = attr (AttrName "height")
 
-width :: forall r i. CSSPixel -> IProp ( width :: CSSPixel | r ) i
+width :: forall r i. Length -> IProp ( width :: Length | r ) i
 width = attr (AttrName "width")
+
+gradientUnits :: forall r i. GradientUnits -> IProp ( gradientUnits :: GradientUnits | r ) i
+gradientUnits = attr (AttrName "gradientUnits")
+
+offset :: forall r i. Length -> IProp ( offset :: Length | r ) i
+offset = attr (AttrName "offset")
+
+stopColour :: forall r i. String -> IProp ( stopColour :: String | r ) i
+stopColour = attr (AttrName "stop-color")
 
 xmlns :: forall r i. Namespace -> IProp ( xmlns :: Namespace | r ) i
 xmlns = attr (AttrName "xmlns")
+
+d :: forall r i. String -> IProp ( d :: String | r ) i
+d = attr (AttrName "d")
 
 transform :: forall r i. Translate -> IProp ( transform :: Translate | r ) i
 transform = attr (AttrName "transform")
@@ -170,8 +211,8 @@ instance isAttrBox :: IsAttr Box where
 
 data Translate
   = Translate
-    { x :: Int
-    , y :: Int
+    { x :: Number
+    , y :: Number
     }
 
 instance isAttrTranslate :: IsAttr Translate where
@@ -202,3 +243,17 @@ instance isAttrAnchor :: IsAttr Anchor where
 
 parens :: String -> String
 parens str = "(" <> str <> ")"
+
+data GradientUnits
+  = UserSpaceOnUse
+  | ObjectBoundingBox
+
+instance isAttrGradientUnits :: IsAttr GradientUnits where
+  toAttrValue UserSpaceOnUse = "userSpaceOnUse"
+  toAttrValue ObjectBoundingBox = "objectBoundingBox"
+
+newtype Length
+  = Length Number
+
+instance isAttrLength :: IsAttr Length where
+  toAttrValue (Length n) = show n
