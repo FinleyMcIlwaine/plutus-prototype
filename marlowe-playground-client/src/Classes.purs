@@ -53,6 +53,12 @@ panelHeader = ClassName "panel-header"
 panelSubHeader :: ClassName
 panelSubHeader = ClassName "panel-sub-header"
 
+panelSubHeaderMain :: ClassName
+panelSubHeaderMain = ClassName "panel-sub-header-side"
+
+panelSubHeaderSide :: ClassName
+panelSubHeaderSide = ClassName "panel-sub-header-main"
+
 panelHeaderMain :: ClassName
 panelHeaderMain = ClassName "panel-header-main"
 
@@ -61,6 +67,9 @@ panelHeaderSide = ClassName "panel-header-side"
 
 accentBorderBottom :: ClassName
 accentBorderBottom = ClassName "accent-border-bottom"
+
+jFlexStart :: ClassName
+jFlexStart = ClassName "j-flex-start"
 
 isActive :: FrontendState -> Array ClassName
 isActive state = if true then [ active ] else []
