@@ -26,8 +26,7 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Examples.Marlowe.Contracts as Contracts
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h4_, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
 import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, href, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
@@ -56,7 +55,7 @@ simulationPane ::
   FrontendState ->
   ComponentHTML HAction ChildSlots m
 simulationPane state =
-  div [ classes ([ panelContent ] <> isActiveTab state Simulation ) ]
+  div [ classes ([ panelContent ] <> isActiveTab state Simulation) ]
     [ section [ classes [ panelHeader, aHorizontal ] ]
         [ div [ classes [ panelHeaderMain, aHorizontal, noMargins, accentBorderBottom ] ]
             [ h4 [] [ text "Marlowe Contract" ] ]
@@ -93,10 +92,24 @@ simulationPane state =
         ]
     , section [ class_ (ClassName "code-panel") ]
         [ div [ class_ (ClassName "code-editor") ]
-            [ pre_ [ text Contracts.swap ] ]
+            [ marloweEditor state ]
+        -- [ pre_ [ text Contracts.swap ] ]
         , sidebar state
         ]
     ]
+
+marloweEditor ::
+  forall m.
+  MonadAff m =>
+  FrontendState ->
+  ComponentHTML HAction ChildSlots m
+marloweEditor state = slot _marloweEditorSlot unit component unit (Just <<< MarloweHandleEditorMessage)
+  where
+  component = aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences) (Just Live)
+
+  initialContents = Map.lookup "Deposit Incentive" StaticData.marloweContracts
+
+  editorPreferences = view _editorPreferences state
 
 sidebar ::
   forall m.
@@ -118,10 +131,10 @@ sidebar state =
         ]
     , transactionComposer state
     , article [ class_ (ClassName "documentation-panel") ]
-        [ img [class_ mAlignCenter, src readMoreIconWhite, alt "read more icon"]
-        , h4 [class_ tAlignCenter] [text "Modelling contracts in Marlowe"]
+        [ img [ class_ mAlignCenter, src readMoreIconWhite, alt "read more icon" ]
+        , h4 [ class_ tAlignCenter ] [ text "Modelling contracts in Marlowe" ]
         , hr []
-        , p_ [text "Marlowe is designed to support the execution of financial contracts on blockchain, and specifically to work on Cardano. Contracts are built by putting together a small number of constructs that in combination can be used to describe many different kinds of financial contract"]
+        , p_ [ text "Marlowe is designed to support the execution of financial contracts on blockchain, and specifically to work on Cardano. Contracts are built by putting together a small number of constructs that in combination can be used to describe many different kinds of financial contract" ]
         ]
     ]
 
@@ -321,7 +334,8 @@ simulationPaneOld state =
               , onDrop $ Just <<< MarloweHandleDropEvent
               ]
               [ row_
-                  [ div [ class_ col9 ] [ slot _marloweEditorSlot unit marloweEditor unit (Just <<< MarloweHandleEditorMessage) ]
+                  [ div [ class_ col9 ] [  ]
+                  -- [ div [ class_ col9 ] [ slot _marloweEditorSlot unit marloweEditor unit (Just <<< MarloweHandleEditorMessage) ]
                   , holesPane (view _selectedHole state) (view (_marloweState <<< _Head <<< _holes) $ state)
                   ]
               ]
@@ -332,9 +346,9 @@ simulationPaneOld state =
         ]
     )
   where
-  marloweEditor =
-    aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
-      (Just Live)
+  -- marloweEditor =
+  --   aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
+  --     (Just Live)
 
   editorPreferences = view _editorPreferences state
 

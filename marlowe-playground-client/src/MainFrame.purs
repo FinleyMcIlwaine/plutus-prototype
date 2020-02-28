@@ -562,6 +562,7 @@ render state =
                 ]
             ]
         , section [ id_ "main-panel" ]
+            -- marlowe editor and simulation
             [ simulationPane state
             -- haskell editor
             , div [ class_ panelContent ]
