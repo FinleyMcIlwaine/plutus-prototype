@@ -1,7 +1,6 @@
 module Classes where
 
 import Prelude
-
 import Data.Lens (to, (^.))
 import Halogen (ClassName(..))
 import Types (FrontendState, View, _view)

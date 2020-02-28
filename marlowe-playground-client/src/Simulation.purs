@@ -40,9 +40,6 @@ import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
 
-paneHeader :: forall p. String -> HTML p HAction
-paneHeader s = h2 [ class_ $ ClassName "pane-header" ] [ text s ]
-
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
   view (_marloweState <<< _Head <<< _contract) state /= Nothing
@@ -93,7 +90,6 @@ simulationPane state =
     , section [ class_ (ClassName "code-panel") ]
         [ div [ class_ (ClassName "code-editor") ]
             [ marloweEditor state ]
-        -- [ pre_ [ text Contracts.swap ] ]
         , sidebar state
         ]
     ]
@@ -112,10 +108,9 @@ marloweEditor state = slot _marloweEditorSlot unit component unit (Just <<< Marl
   editorPreferences = view _editorPreferences state
 
 sidebar ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 sidebar state =
   aside [ class_ (ClassName "sidebar-composer") ]
     [ div [ class_ aHorizontal ]
@@ -139,87 +134,114 @@ sidebar state =
     ]
 
 inputComposer ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 inputComposer state =
   div [ class_ (ClassName "input-composer") ]
     [ ul [ class_ (ClassName "participants") ]
-        [ participant state
-        , participant state
-        ]
+        if (Map.isEmpty possibleActions) then
+          [ text "No valid inputs can be added to the transaction" ]
+        else
+          (actionsForPeople possibleActions)
     ]
+  where
+  isEnabled = isContractValid state
+
+  possibleActions = view (_marloweState <<< _Head <<< _possibleActions) state
+
+  kvs :: forall k v. Map k v -> Array (Tuple k v)
+  kvs = Map.toUnfoldable
+
+  vs :: forall k v. Map k v -> Array v
+  vs m = map snd (kvs m)
+
+  lastKey :: Maybe (Maybe PubKey)
+  lastKey = map (\x -> x.key) (Map.findMax possibleActions)
+
+  actionsForPeople :: Map (Maybe PubKey) (Map ActionInputId ActionInput) -> Array (HTML p HAction)
+  actionsForPeople m = map (\(Tuple k v) -> participant isEnabled k (vs v)) (kvs m)
 
 participant ::
-  forall m.
-  MonadAff m =>
-  FrontendState ->
-  ComponentHTML HAction ChildSlots m
-participant state =
+  forall p.
+  Boolean ->
+  Maybe PubKey ->
+  Array ActionInput ->
+  HTML p HAction
+participant isEnabled person actionInputs =
   li [ classes [ ClassName "participant-a", noMargins ] ]
     [ h6_ [ em_ [ text "Participant ", strong_ [ text "'Alice'" ] ] ]
     , ul
         []
-        [ inputDeposit state
-        , inputChoice state
-        , inputNotify state
-        ]
+        (map (inputItem isEnabled person) actionInputs)
     ]
 
-inputDeposit ::
-  forall m.
-  MonadAff m =>
-  FrontendState ->
-  ComponentHTML HAction ChildSlots m
-inputDeposit state =
+inputItem ::
+  forall p.
+  Boolean ->
+  Maybe PubKey ->
+  ActionInput ->
+  HTML p HAction
+inputItem isEnabled person (DepositInput accountId party token value) =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
-    [ button [ classes [ plusBtn, smallBtn ] ] [ text "+" ]
-    , p_
-        [ text "Deposit 450 units of (Token \"Ada\") into account"
-        , strong_ [ text "'Alice'" ]
-        , text " as "
-        , strong_ [ text "Alice" ]
+    [ button
+        [ classes [ plusBtn, smallBtn ]
+        , enabled isEnabled
+        , onClick $ const $ Just
+            $ AddInput person (IDeposit accountId party token value) []
         ]
+        [ text "+" ]
+    , p_ (renderDeposit accountId party token value)
     ]
 
-inputChoice ::
-  forall m.
-  MonadAff m =>
-  FrontendState ->
-  ComponentHTML HAction ChildSlots m
-inputChoice state =
+inputItem isEnabled person (ChoiceInput choiceId@(ChoiceId choiceName choiceOwner) bounds chosenNum) =
   li
     [ classes [ ClassName "choice-a", aHorizontal ] ]
-    [ button [ classes [ plusBtn, smallBtn ] ] [ text "+" ]
+    [ button
+        [ classes [ plusBtn, smallBtn ]
+        , enabled isEnabled
+        , onClick $ const $ Just
+            $ AddInput person (IChoice (ChoiceId choiceName choiceOwner) chosenNum) bounds
+        ]
+        [ text "+" ]
     , p_
-        [ text "Choice \"choice\" : Choose value"
+        [ spanText "Choice "
+        , b_ [ spanText (show choiceName) ]
+        , spanText ": Choose value "
+        , marloweActionInput isEnabled (SetChoice choiceId) chosenNum
         ]
     , input []
     ]
 
-inputNotify ::
-  forall m.
-  MonadAff m =>
-  FrontendState ->
-  ComponentHTML HAction ChildSlots m
-inputNotify state =
+inputItem isEnabled person NotifyInput =
   li
     [ classes [ ClassName "choice-a", aHorizontal ] ]
-    [ button [ classes [ plusBtn, smallBtn ] ] [ text "+" ]
-    , p_
-        [ text "Deposit 450 units of (Token \"Ada\") into account"
-        , strong_ [ text "'Alice'" ]
-        , text " as "
-        , strong_ [ text "Alice" ]
+    [ button
+        [ classes [ plusBtn, smallBtn ]
+        , enabled isEnabled
+        , onClick $ const $ Just
+            $ AddInput person INotify []
         ]
+        [ text "+" ]
+    , p_ [ text "Notify Contract" ]
     ]
 
+renderDeposit :: forall p. AccountId -> Party -> Token -> BigInteger -> Array (HTML p HAction)
+renderDeposit (AccountId accountNumber accountOwner) party tok money =
+  [ spanText "Deposit "
+  , b_ [ spanText (show money) ]
+  , spanText " units of "
+  , b_ [ spanText (show tok) ]
+  , spanText " into Account "
+  , b_ [ spanText (show accountOwner <> " (" <> show accountNumber <> ")") ]
+  , spanText " as "
+  , b_ [ spanText (show party) ]
+  ]
+
 transactionComposer ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 transactionComposer state =
   div [ class_ (ClassName "input-composer") ]
     [ ul [ class_ (ClassName "participants") ]
@@ -237,10 +259,9 @@ transactionComposer state =
     ]
 
 transaction ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 transaction state =
   li [ classes [ ClassName "participant-a", noMargins ] ]
     [ ul
@@ -252,10 +273,9 @@ transaction state =
     ]
 
 transactionDeposit ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 transactionDeposit state =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ p_
@@ -268,10 +288,9 @@ transactionDeposit state =
     ]
 
 transactionChoice ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 transactionChoice state =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ p_
@@ -284,10 +303,9 @@ transactionChoice state =
     ]
 
 transactionNotify ::
-  forall m.
-  MonadAff m =>
+  forall p.
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
+  HTML p HAction
 transactionNotify state =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ p_
@@ -300,6 +318,9 @@ transactionNotify state =
     ]
 
 ------------------------------------------------------------ Old Design -------------------------------------------------------
+paneHeader :: forall p. String -> HTML p HAction
+paneHeader s = h2 [ class_ $ ClassName "pane-header" ] [ text s ]
+
 simulationPaneOld ::
   forall m.
   MonadAff m =>
@@ -334,7 +355,7 @@ simulationPaneOld state =
               , onDrop $ Just <<< MarloweHandleDropEvent
               ]
               [ row_
-                  [ div [ class_ col9 ] [  ]
+                  [ div [ class_ col9 ] []
                   -- [ div [ class_ col9 ] [ slot _marloweEditorSlot unit marloweEditor unit (Just <<< MarloweHandleEditorMessage) ]
                   , holesPane (view _selectedHole state) (view (_marloweState <<< _Head <<< _holes) $ state)
                   ]
@@ -349,7 +370,6 @@ simulationPaneOld state =
   -- marloweEditor =
   --   aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
   --     (Just Live)
-
   editorPreferences = view _editorPreferences state
 
   initialContents = Map.lookup "Deposit Incentive" StaticData.marloweContracts
@@ -574,18 +594,6 @@ inputDepositOld isEnabled person index accountId party token value =
           ]
       ]
     <> (renderDeposit accountId party token value)
-
-renderDeposit :: forall p. AccountId -> Party -> Token -> BigInteger -> Array (HTML p HAction)
-renderDeposit (AccountId accountNumber accountOwner) party tok money =
-  [ spanText "Deposit "
-  , b_ [ spanText (show money) ]
-  , spanText " units of "
-  , b_ [ spanText (show tok) ]
-  , spanText " into Account "
-  , b_ [ spanText (show accountOwner <> " (" <> show accountNumber <> ")") ]
-  , spanText " as "
-  , b_ [ spanText (show party) ]
-  ]
 
 inputChoiceOld :: forall p. Boolean -> Maybe PubKey -> Int -> ChoiceId -> ChosenNum -> Array Bound -> HTML p HAction
 inputChoiceOld isEnabled person index choiceId@(ChoiceId choiceName choiceOwner) chosenNum bounds =
