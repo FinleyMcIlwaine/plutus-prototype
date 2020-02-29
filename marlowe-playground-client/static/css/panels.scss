@@ -171,7 +171,6 @@ button.minus-btn:hover {
 }
 
 .analysis-panel {
-  // position: absolute;
   width: calc(100% - 4rem);
   bottom: 0;
 }
@@ -181,4 +180,9 @@ button.minus-btn:hover {
   padding:2rem;
   background: var(--bg-dark);
   box-shadow: var(--box-shadow);
+  display: none;
+}
+
+.haskell-editor {
+  min-height: 400px;
 }

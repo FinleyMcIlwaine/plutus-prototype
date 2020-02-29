@@ -47,53 +47,52 @@ isContractValid state =
     && view (_marloweState <<< _Head <<< _editorErrors) state
     == []
 
-simulationPane ::
+render ::
   forall m.
   MonadAff m =>
   FrontendState ->
-  ComponentHTML HAction ChildSlots m
-simulationPane state =
-  div [ classes ([ panelContent ] <> isActiveTab state Simulation) ]
-    [ section [ classes [ panelHeader, aHorizontal ] ]
-        [ div [ classes [ panelHeaderMain, aHorizontal, noMargins, accentBorderBottom ] ]
-            [ h4 [] [ text "Marlowe Contract" ] ]
-        , div [ classes [ panelHeaderSide, aHorizontal, accentBorderBottom ] ]
-            [ a []
-                [ img [ class_ (ClassName "drawer-icon"), src closeDrawerIcon, alt "close drawer icon" ]
-                ]
-            , div [ class_ aHorizontal ]
-                [ a [] [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ] ]
-                , button [ class_ spaceLeft ] [ text "Save to github" ]
-                ]
-            ]
-        ]
-    , section [ classes [ panelSubHeader, aHorizontal ] ]
-        [ div [ classes [ panelSubHeaderMain, aHorizontal ] ]
-            [ div [ classes [ ClassName "demo-title", aHorizontal, jFlexStart ] ]
-                [ img [ class_ (ClassName "demo-arrow"), src downloadIcon, alt "down arrow" ]
-                , div [ classes [ ClassName "demos", spaceLeft ] ]
-                    [ small_ [ text "Demos:" ]
-                    ]
-                ]
-            , ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                (demoScriptLink <$> Array.fromFoldable (Map.keys StaticData.marloweContracts))
-            , div [ class_ (ClassName "code-to-blockly-wrap") ]
-                [ button
-                    [ class_ smallBtn
-                    , onClick $ const $ Just $ SetBlocklyCode
-                    , enabled (isContractValid state)
-                    ]
-                    [ img [ class_ (ClassName "blockly-btn-icon"), src blocklyIcon, alt "blockly logo" ] ]
-                ]
-            ]
-        , div [ classes [ panelSubHeaderSide ] ] []
-        ]
-    , section [ class_ (ClassName "code-panel") ]
-        [ div [ class_ (ClassName "code-editor") ]
-            [ marloweEditor state ]
-        , sidebar state
-        ]
-    ]
+  Array (ComponentHTML HAction ChildSlots m)
+render state =
+  [ section [ classes [ panelHeader, aHorizontal ] ]
+      [ div [ classes [ panelHeaderMain, aHorizontal, noMargins, accentBorderBottom ] ]
+          [ h4 [] [ text "Marlowe Contract" ] ]
+      , div [ classes [ panelHeaderSide, aHorizontal, accentBorderBottom ] ]
+          [ a []
+              [ img [ class_ (ClassName "drawer-icon"), src closeDrawerIcon, alt "close drawer icon" ]
+              ]
+          , div [ class_ aHorizontal ]
+              [ a [] [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ] ]
+              , button [ class_ spaceLeft ] [ text "Save to github" ]
+              ]
+          ]
+      ]
+  , section [ classes [ panelSubHeader, aHorizontal ] ]
+      [ div [ classes [ panelSubHeaderMain, aHorizontal ] ]
+          [ div [ classes [ ClassName "demo-title", aHorizontal, jFlexStart ] ]
+              [ img [ class_ (ClassName "demo-arrow"), src downloadIcon, alt "down arrow" ]
+              , div [ classes [ ClassName "demos", spaceLeft ] ]
+                  [ small_ [ text "Demos:" ]
+                  ]
+              ]
+          , ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+              (demoScriptLink <$> Array.fromFoldable (Map.keys StaticData.marloweContracts))
+          , div [ class_ (ClassName "code-to-blockly-wrap") ]
+              [ button
+                  [ class_ smallBtn
+                  , onClick $ const $ Just $ SetBlocklyCode
+                  , enabled (isContractValid state)
+                  ]
+                  [ img [ class_ (ClassName "blockly-btn-icon"), src blocklyIcon, alt "blockly logo" ] ]
+              ]
+          ]
+      , div [ classes [ panelSubHeaderSide ] ] []
+      ]
+  , section [ class_ (ClassName "code-panel") ]
+      [ div [ class_ (ClassName "code-editor") ]
+          [ marloweEditor state ]
+      , sidebar state
+      ]
+  ]
   where
   demoScriptLink key = li [ classes (isActiveDemo state) ] [ a [ onClick $ const $ Just $ LoadMarloweScript key ] [ text key ] ]
 

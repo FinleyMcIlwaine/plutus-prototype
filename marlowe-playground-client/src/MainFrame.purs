@@ -49,6 +49,7 @@ import Halogen.HTML.Properties (alt, class_, classes, disabled, href, id_, src)
 import Halogen.Query (HalogenM)
 import Halogen.SVG (GradientUnits(..), Translate(..), d, defs, gradientUnits, linearGradient, offset, path, stop, stopColour, svg, transform, x1, x2, y2)
 import Halogen.SVG as SVG
+import HaskellEditor as HaskellEditor
 import Language.Haskell.Interpreter (SourceCode(SourceCode), InterpreterError(CompilationErrors, TimeoutError), CompilationError(CompilationError, RawError), InterpreterResult(InterpreterResult), _InterpreterResult)
 import Marlowe (SPParams_)
 import Marlowe.Blockly as MB
@@ -61,7 +62,6 @@ import MonadApp (haskellEditorHandleAction, class MonadApp, applyTransactions, c
 import Network.RemoteData (RemoteData(..), _Success, isLoading, isSuccess)
 import Prelude (class Show, Unit, add, bind, const, discard, not, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==), (||))
 import Servant.PureScript.Settings (SPSettings_)
-import Simulation (simulationPane)
 import Simulation as Simulation
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
@@ -570,10 +570,11 @@ render state =
             ]
         , section [ id_ "main-panel" ]
             -- marlowe editor and simulation
-            [ simulationPane state
+            [ div [ classes ([ panelContent ] <> isActiveTab state Simulation) ]
+                (Simulation.render state)
             -- haskell editor
-            , div [ class_ panelContent ]
-                []
+            , div [ classes ([ panelContent ] <> isActiveTab state HaskellEditor) ]
+                [ HaskellEditor.render state ]
             -- blockly
             , div [ classes ([ panelContent ] <> isActiveTab state BlocklyEditor) ]
                 [ slot _blocklySlot unit (blockly MB.blockDefinitions) unit (Just <<< HandleBlocklyMessage)
@@ -584,7 +585,7 @@ render state =
             , div [ class_ (ClassName "analysis-panel") ]
                 [ div [ class_ flex ]
                     [ div [ class_ flexTen ]
-                        (Simulation.bottomPanel state) --panel
+                        (Simulation.bottomPanel state <> HaskellEditor.bottomPanel state) --panel
                     , div [ class_ flexFour ] []
                     ]
                 ]
@@ -623,7 +624,7 @@ renderOld state =
           , resultPane state
           ]
       , viewContainer stateView Simulation
-          [ simulationPane state
+          [ -- simulationPane state
           ]
       , viewContainer stateView BlocklyEditor
           [ slot _blocklySlot unit (blockly blockDefinitions) unit (Just <<< HandleBlocklyMessage)
