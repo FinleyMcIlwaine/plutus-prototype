@@ -245,18 +245,51 @@ transactionComposer ::
 transactionComposer state =
   div [ class_ (ClassName "input-composer") ]
     [ ul [ class_ (ClassName "participants") ]
-        [ transaction state
-        , transaction state
-        ]
+        [ transaction state ]
     , div [ class_ (ClassName "transaction-btns") ]
         [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-            [ li_ [ a [ href "/" ] [ text "Undo" ] ]
-            , li_ [ a [ href "/" ] [ text "Reset" ] ]
-            , li [ classes [ activeTextPrimary, bold ] ] [ a [ href "/" ] [ text "Next Block (0)" ] ]
-            , li_ [ button [] [ text "Apply" ] ]
+            [ li_
+                [ a
+                    [ onClick
+                        $ if hasHistory state then
+                            Just <<< const Undo
+                          else
+                            const Nothing
+                    ]
+                    [ text "Undo" ]
+                ]
+            , li_
+                [ a
+                    [ onClick
+                        $ if hasHistory state then
+                            Just <<< const ResetSimulator
+                          else
+                            const Nothing
+                    ]
+                    [ text "Reset" ]
+                ]
+            , li [ classes [ activeTextPrimary, bold ] ]
+                [ a
+                    [ onClick
+                        $ if isContractValid state then
+                            Just <<< const NextSlot
+                          else
+                            const Nothing
+                    ]
+                    [ text $ "Next Block (" <> show currentBlock <> ")" ]
+                ]
+            , li_
+                [ button
+                    [ onClick $ Just <<< const ApplyTransaction
+                    , enabled $ isContractValid state
+                    ]
+                    [ text "Apply" ]
+                ]
             ]
         ]
     ]
+  where
+  currentBlock = state ^. (_marloweState <<< _Head <<< _slot)
 
 transaction ::
   forall p.
@@ -266,55 +299,66 @@ transaction state =
   li [ classes [ ClassName "participant-a", noMargins ] ]
     [ ul
         []
-        [ transactionDeposit state
-        , transactionChoice state
-        , transactionNotify state
-        ]
+        (map (transactionRow state isEnabled) (state ^. (_marloweState <<< _Head <<< _pendingInputs)))
     ]
+  where
+  isEnabled = state ^. (_marloweState <<< _Head <<< _contract) /= Nothing || state ^. (_marloweState <<< _Head <<< _editorErrors) /= []
 
-transactionDeposit ::
+transactionRow ::
   forall p.
   FrontendState ->
+  Boolean ->
+  Tuple Input (Maybe PubKey) ->
   HTML p HAction
-transactionDeposit state =
+transactionRow state isEnabled (Tuple input@(IDeposit (AccountId accountNumber accountOwner) party token money) person) =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ p_
-        [ text "Deposit 450 units of (Token \"Ada\") into account"
-        , strong_ [ text "'Alice'" ]
+        [ text "Deposit"
+        , strong_ [ text (show money) ]
+        , text " units of "
+        , strong_ [ text (show token) ]
+        , text " into account "
+        , strong_ [ text (show accountOwner <> " (" <> show accountNumber <> ")") ]
         , text " as "
-        , strong_ [ text "Alice" ]
+        , strong_ [ text (show party) ]
         ]
-    , button [ classes [ minusBtn, smallBtn, bold ] ] [ text "-" ]
+    , button
+        [ classes [ minusBtn, smallBtn, bold ]
+        , enabled isEnabled
+        , onClick $ const $ Just $ RemoveInput person input
+        ]
+        [ text "-" ]
     ]
 
-transactionChoice ::
-  forall p.
-  FrontendState ->
-  HTML p HAction
-transactionChoice state =
+transactionRow state isEnabled (Tuple input@(IChoice (ChoiceId choiceName choiceOwner) chosenNum) person) =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ p_
-        [ text "Deposit 450 units of (Token \"Ada\") into account"
-        , strong_ [ text "'Alice'" ]
-        , text " as "
-        , strong_ [ text "Alice" ]
+        [ text "Participant"
+        , strong_ [ text (show choiceOwner) ]
+        , text " chooses the value "
+        , strong_ [ text (show chosenNum) ]
+        , text " for choice with id "
+        , strong_ [ text (show choiceName) ]
         ]
-    , button [ classes [ minusBtn, smallBtn, bold ] ] [ text "-" ]
+    , button
+        [ classes [ minusBtn, smallBtn, bold ]
+        , enabled isEnabled
+        , onClick $ const $ Just $ RemoveInput person input
+        ]
+        [ text "-" ]
     ]
 
-transactionNotify ::
-  forall p.
-  FrontendState ->
-  HTML p HAction
-transactionNotify state =
+transactionRow state isEnabled (Tuple INotify person) =
   li [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ p_
-        [ text "Deposit 450 units of (Token \"Ada\") into account"
-        , strong_ [ text "'Alice'" ]
-        , text " as "
-        , strong_ [ text "Alice" ]
+        [ text "Notification"
         ]
-    , button [ classes [ minusBtn, smallBtn, bold ] ] [ text "-" ]
+    , button
+        [ classes [ minusBtn, smallBtn, bold ]
+        , enabled isEnabled
+        , onClick $ const $ Just $ RemoveInput person INotify
+        ]
+        [ text "-" ]
     ]
 
 ------------------------------------------------------------ Old Design -------------------------------------------------------
