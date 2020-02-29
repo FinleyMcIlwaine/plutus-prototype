@@ -568,8 +568,11 @@ render state =
             , div [ class_ panelContent ]
                 []
             -- blockly
-            , div [ class_ panelContent ]
-                []
+            , div [ classes ([ panelContent ] <> isActiveTab state BlocklyEditor) ]
+                [ slot _blocklySlot unit (blockly MB.blockDefinitions) unit (Just <<< HandleBlocklyMessage)
+                , MB.toolbox
+                , MB.workspaceBlocks
+                ]
             -- bottom panel
             , div [ class_ (ClassName "analysis-panel") ]
                 [ div [ class_ flex ]

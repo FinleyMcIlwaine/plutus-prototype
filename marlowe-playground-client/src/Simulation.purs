@@ -75,13 +75,13 @@ simulationPane state =
                     ]
                 ]
             , ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                [ li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Coupon Bond Guranteed" ] ]
-                , li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Escrow" ] ]
-                , li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Swap" ] ]
-                , li [ classes (isActiveDemo state) ] [ a [ href "/" ] [ text "Zero Coupon Bond" ] ]
-                ]
+                (demoScriptLink <$> Array.fromFoldable (Map.keys StaticData.marloweContracts))
             , div [ class_ (ClassName "code-to-blockly-wrap") ]
-                [ button [ class_ smallBtn ]
+                [ button
+                    [ class_ smallBtn
+                    , onClick $ const $ Just $ SetBlocklyCode
+                    , enabled (isContractValid state)
+                    ]
                     [ img [ class_ (ClassName "blockly-btn-icon"), src blocklyIcon, alt "blockly logo" ] ]
                 ]
             ]
@@ -93,6 +93,8 @@ simulationPane state =
         , sidebar state
         ]
     ]
+  where
+  demoScriptLink key = li [ classes (isActiveDemo state) ] [ a [ onClick $ const $ Just $ LoadMarloweScript key ] [ text key ] ]
 
 marloweEditor ::
   forall m.
