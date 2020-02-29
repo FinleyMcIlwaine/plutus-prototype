@@ -7,7 +7,7 @@ import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
 import Bootstrap (active, btn, btnGroup, btnInfo, btnPrimary, btnSmall, colXs12, colSm6, colSm5, container, container_, empty, hidden, listGroupItem_, listGroup_, navItem_, navLink, navTabs_, noGutters, pullRight, row, justifyContentBetween)
-import Classes (aCenter, aHorizontal, accentBorderBottom, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, jFlexStart, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
+import Classes (aCenter, aHorizontal, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
@@ -42,7 +42,7 @@ import Gists (GistAction(..), gistControls, parseGistUrl)
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
-import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, img, li, main, nav, p, p_, pre, section, slot, small_, strong_, text, ul)
+import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, img, main, nav, p, p_, pre, section, slot, strong_, text)
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Extra (mapComponent)
 import Halogen.HTML.Properties (alt, class_, classes, disabled, href, id_, src)
@@ -62,6 +62,7 @@ import Network.RemoteData (RemoteData(..), _Success, isLoading, isSuccess)
 import Prelude (class Show, Unit, add, bind, const, discard, not, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==), (||))
 import Servant.PureScript.Settings (SPSettings_)
 import Simulation (simulationPane)
+import Simulation as Simulation
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Text.Pretty (genericPretty, pretty)
@@ -72,6 +73,7 @@ mkInitialState :: Editor.Preferences -> FrontendState
 mkInitialState editorPreferences =
   FrontendState
     { view: Simulation
+    , simulationBottomPanelView: CurrentStateView
     , editorPreferences
     , compilationResult: NotAsked
     , marloweCompileResult: Right unit
@@ -215,6 +217,8 @@ toEvent Undo = Just $ defaultEvent "Undo"
 toEvent (SelectHole _) = Nothing
 
 toEvent (InsertHole _ _ _) = Nothing
+
+toEvent (ChangeSimulationView view) = Just $ (defaultEvent "ChangeSimulationView") { label = Just $ show view }
 
 toEvent (HandleBlocklyMessage _) = Nothing
 
@@ -408,6 +412,9 @@ handleAction (InsertHole constructor firstHole holes) = do
           withoutSuffix <- stripSuffix (Pattern ")") withoutPrefix
           pure withoutSuffix
 
+handleAction (ChangeSimulationView view) = do
+  assign _simulationBottomPanelView view
+
 handleAction (HandleBlocklyMessage Initialized) = pure unit
 
 handleAction (HandleBlocklyMessage (CurrentCode code)) = do
@@ -577,22 +584,7 @@ render state =
             , div [ class_ (ClassName "analysis-panel") ]
                 [ div [ class_ flex ]
                     [ div [ class_ flexTen ]
-                        [ div [ class_ (ClassName "footer-panel-bg") ]
-                            [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
-                                [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
-                                    [ div [ classes [ ClassName "demo-title", aHorizontal, jFlexStart ] ]
-                                        [ div [ classes [ ClassName "demos", spaceLeft ] ]
-                                            [ small_ [ text "Status:" ] ]
-                                        ]
-                                    , ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                                        [ li [ class_ (ClassName "active-text") ]
-                                            [ a [ href "/" ] [ text "Static Analysis" ] ]
-                                        ]
-                                    ]
-                                ]
-                            , section [ classes [ ClassName "panel-sub-header", aHorizontal ] ] []
-                            ]
-                        ]
+                        (Simulation.bottomPanel state) --panel
                     , div [ class_ flexFour ] []
                     ]
                 ]

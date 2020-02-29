@@ -1,6 +1,7 @@
 module MonadApp where
 
 import Prelude
+
 import API (RunResult)
 import Ace (Annotation, Editor)
 import Ace as Ace
@@ -240,7 +241,7 @@ updateContractInStateP text state = case parseContract text of
       warnings =
         map (warningToAnnotation text "The contract can make a negative payment here") (view L._negativePayments lintResult)
           <> map (warningToAnnotation text "The contract can make a negative deposit here") (view L._negativeDeposits lintResult)
-          <> map (warningToAnnotation text "Timeouts should always increase in value") (view L._timeoutNotIncreasing lintResult)
+          <> Set.toUnfoldable (Set.map (warningToAnnotation text "Timeouts should always increase in value") (view L._timeoutNotIncreasing lintResult))
           <> map (warningToAnnotation text "The contract tries to Use a ValueId that has not been defined in a Let") (view L._uninitializedUse lintResult)
           <> map (warningToAnnotation text "Let is redefining a ValueId that already exists") (view L._shadowedLet lintResult)
           <> map (warningToAnnotation text "This Observation will always evaluate to True") (view L._trueObservation lintResult)

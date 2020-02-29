@@ -71,6 +71,8 @@ data HAction
   | Undo
   | SelectHole (Maybe String)
   | InsertHole String MarloweHole (Array MarloweHole)
+  -- simulation view
+  | ChangeSimulationView SimulationBottomPanelView
   -- blockly
   | HandleBlocklyMessage BlocklyMessage
   | SetBlocklyCode
@@ -109,9 +111,23 @@ derive instance genericView :: Generic View _
 instance showView :: Show View where
   show = genericShow
 
+data SimulationBottomPanelView
+  = CurrentStateView
+  | StaticAnalysisView
+  | MarloweErrorsView
+  | MarloweWarningsView
+
+derive instance eqSimulationBottomPanelView :: Eq SimulationBottomPanelView
+
+derive instance genericSimulationBottomPanelView :: Generic SimulationBottomPanelView _
+
+instance showSimulationBottomPanelView :: Show SimulationBottomPanelView where
+  show = genericShow
+
 newtype FrontendState
   = FrontendState
   { view :: View
+  , simulationBottomPanelView :: SimulationBottomPanelView
   , editorPreferences :: Editor.Preferences
   , compilationResult :: WebData (JsonEither InterpreterError (InterpreterResult RunResult))
   , marloweCompileResult :: Either (Array MarloweError) Unit
@@ -132,6 +148,9 @@ data MarloweError
 
 _view :: Lens' FrontendState View
 _view = _Newtype <<< prop (SProxy :: SProxy "view")
+
+_simulationBottomPanelView :: Lens' FrontendState SimulationBottomPanelView
+_simulationBottomPanelView = _Newtype <<< prop (SProxy :: SProxy "simulationBottomPanelView")
 
 _editorPreferences :: Lens' FrontendState Editor.Preferences
 _editorPreferences = _Newtype <<< prop (SProxy :: SProxy "editorPreferences")

@@ -14,6 +14,7 @@ module Marlowe.Linter
   ) where
 
 import Prelude
+
 import Data.Array (catMaybes, cons, fold, foldMap, (:))
 import Data.BigInteger (BigInteger)
 import Data.Lens (Lens', over, view)
@@ -53,7 +54,7 @@ newtype State
   , negativePayments :: Array Position
   , negativeDeposits :: Array Position
   , maxTimeout :: MaxTimeout
-  , timeoutNotIncreasing :: Array Position
+  , timeoutNotIncreasing :: Set Position
   , letBindings :: Set ValueId
   , uninitializedUse :: Array Position
   , shadowedLet :: Array Position
@@ -79,7 +80,7 @@ _negativeDeposits = _Newtype <<< prop (SProxy :: SProxy "negativeDeposits")
 _maxTimeout :: Lens' State Timeout
 _maxTimeout = _Newtype <<< prop (SProxy :: SProxy "maxTimeout") <<< _Newtype
 
-_timeoutNotIncreasing :: Lens' State (Array Position)
+_timeoutNotIncreasing :: Lens' State (Set Position)
 _timeoutNotIncreasing = _Newtype <<< prop (SProxy :: SProxy "timeoutNotIncreasing")
 
 _letBindings :: Lens' State (Set ValueId)
@@ -127,7 +128,7 @@ lint = go mempty
       newState = case timeoutTerm of
         (Term timeout { row, column }) ->
           let
-            timeoutNotIncreasing = if timeout > (view _maxTimeout state) then [] else [ { row, column } ]
+            timeoutNotIncreasing = if timeout > (view _maxTimeout state) then mempty else Set.singleton { row, column }
           in
             (fold states)
               # over _holes (insertHole timeoutTerm)

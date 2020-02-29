@@ -4,13 +4,14 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, mAlignCenter, minusBtn, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, readMoreIconWhite, smallBtn, spaceLeft, tAlignCenter, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, active, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, mAlignCenter, minusBtn, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, readMoreIconWhite, smallBtn, spaceLeft, tAlignCenter, textSecondaryColor, uppercase)
 import Control.Alternative (map)
-import Data.Array (catMaybes, concatMap, fromFoldable, head, sortBy)
+import Control.Alternative as Alt
+import Data.Array (catMaybes, concatMap, fromFoldable, head, length, sortBy)
 import Data.Array as Array
 import Data.BigInteger (BigInteger, fromString, fromInt)
 import Data.Either (Either(..))
-import Data.Eq ((==), (/=))
+import Data.Eq (eq, (/=), (==))
 import Data.Foldable (foldMap, intercalate)
 import Data.Function (on)
 import Data.FunctorWithIndex (mapWithIndex)
@@ -26,7 +27,7 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
 import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, href, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
@@ -38,7 +39,7 @@ import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, bind, compare, const, flip, identity, mempty, not, pure, show, unit, zero, ($), (+), (<$>), (<<<), (<>), (>))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -362,6 +363,71 @@ transactionRow state isEnabled (Tuple INotify person) =
         ]
         [ text "-" ]
     ]
+
+bottomPanel :: forall p. FrontendState -> Array (HTML p HAction)
+bottomPanel state =
+  [ div [ classes ([ ClassName "footer-panel-bg" ] <> isActiveTab state Simulation) ]
+      [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
+          [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+              [ div
+                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive CurrentStateView)
+                  , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+                  ]
+                  [ text "Current State" ]
+              , div
+                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive StaticAnalysisView)
+                  , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
+                  ]
+                  [ text "Static Analysis" ]
+              , div
+                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive MarloweWarningsView)
+                  , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
+                  ]
+                  [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
+              , div
+                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive MarloweErrorsView)
+                  , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
+                  ]
+                  [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ]
+              ]
+          ]
+      , panelContents state (state ^. _simulationBottomPanelView)
+      ]
+  ]
+  where
+  isActive view = if state ^. _simulationBottomPanelView <<< (to (eq view)) then [ ClassName "active-tab" ] else []
+
+  warnings = state ^. (_marloweState <<< _Head <<< _editorWarnings)
+
+  errors = state ^. (_marloweState <<< _Head <<< _editorErrors)
+
+panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
+panelContents state CurrentStateView =
+  section
+    [ classes [ ClassName "panel-sub-header", aHorizontal ] ]
+    [ text "state" ]
+
+panelContents state StaticAnalysisView =
+  section
+    [ classes [ ClassName "panel-sub-header", aHorizontal ]
+    ]
+    [ text "sa" ]
+
+panelContents state MarloweWarningsView =
+  section
+    [ classes [ ClassName "panel-sub-header", aHorizontal ]
+    ]
+    (map renderWarning (state ^. (_marloweState <<< _Head <<< _editorWarnings)))
+  where
+  renderWarning warning = pre [ class_ (ClassName "warning-content") ] [ text warning.text ]
+
+panelContents state MarloweErrorsView =
+  section
+    [ classes [ ClassName "panel-sub-header", aHorizontal ]
+    ]
+    (map renderError (state ^. (_marloweState <<< _Head <<< _editorErrors)))
+  where
+  renderError error = pre [ class_ (ClassName "error-content") ] [ text error.text ]
 
 ------------------------------------------------------------ Old Design -------------------------------------------------------
 paneHeader :: forall p. String -> HTML p HAction

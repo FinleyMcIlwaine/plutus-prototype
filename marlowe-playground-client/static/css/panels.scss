@@ -24,6 +24,24 @@
   color: var(--text-color-inactive);
 }
 
+.panel-sub-header {
+  background-color: var(--bg-light);
+  min-height: inherit;
+  align-items: normal;
+  padding: 1%;
+}
+
+.panel-tab {
+  flex: 1;
+  text-align: center;
+  min-height: inherit;
+  justify-content: center;
+}
+
+.panel-tab.active-tab {
+  background-color: var(--bg-light);
+}
+
 .demo-title {
   flex: 1;
 }
@@ -161,6 +179,6 @@ button.minus-btn:hover {
 .footer-panel-bg {
   min-height: 16rem;
   padding:2rem;
-  background: var(--bg-light);
+  background: var(--bg-dark);
   box-shadow: var(--box-shadow);
 }
