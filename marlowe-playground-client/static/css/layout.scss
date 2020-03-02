@@ -1,10 +1,11 @@
-html, body, .site-wrap, main {
-  min-height:100vh;
-  height:inherit;
+html, body, .site-wrap {
+  background: var(--bg-dark);
+  height:100vh;
 }
   
 main {
   display:flex;
+  height: calc(100vh - 80px);
 }
 
 main nav {
@@ -13,4 +14,9 @@ main nav {
 
 main section {
   flex:15;
+}
+
+.sidebar-composer, .code-editor {
+  height: calc(100vh - 21vh);
+  overflow-x: scroll;
 }

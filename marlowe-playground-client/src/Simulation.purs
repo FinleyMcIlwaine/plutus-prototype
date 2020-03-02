@@ -27,7 +27,7 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, a_, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
 import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, href, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
@@ -368,33 +368,35 @@ bottomPanel state =
   [ div [ classes ([ ClassName "footer-panel-bg" ] <> isActiveTab state Simulation) ]
       [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
           [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
-              [ div
-                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive CurrentStateView)
-                  , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+              [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+                  [ li
+                      [ classes ([] <> isActive CurrentStateView)
+                      , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+                      ]
+                      [ text "Current State" ]
+                  , li
+                      [ classes ([] <> isActive StaticAnalysisView)
+                      , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
+                      ]
+                      [ text "Static Analysis" ]
+                  , li
+                      [ classes ([] <> isActive MarloweWarningsView)
+                      , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
+                      ]
+                      [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
+                  , li
+                      [ classes ([] <> isActive MarloweErrorsView)
+                      , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
+                      ]
+                      [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
                   ]
-                  [ text "Current State" ]
-              , div
-                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive StaticAnalysisView)
-                  , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
-                  ]
-                  [ text "Static Analysis" ]
-              , div
-                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive MarloweWarningsView)
-                  , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
-                  ]
-                  [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
-              , div
-                  [ classes ([ ClassName "panel-tab", aHorizontal ] <> isActive MarloweErrorsView)
-                  , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
-                  ]
-                  [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ]
               ]
           ]
       , panelContents state (state ^. _simulationBottomPanelView)
       ]
   ]
   where
-  isActive view = if state ^. _simulationBottomPanelView <<< (to (eq view)) then [ ClassName "active-tab" ] else []
+  isActive view = if state ^. _simulationBottomPanelView <<< (to (eq view)) then [ ClassName "active-text" ] else []
 
   warnings = state ^. (_marloweState <<< _Head <<< _editorWarnings)
 
