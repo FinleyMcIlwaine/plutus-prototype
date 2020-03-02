@@ -85,6 +85,7 @@ mkInitialState editorPreferences =
     , blocklyState: Nothing
     , analysisState: NotAsked
     , selectedHole: Nothing
+    , helpContext: MarloweHelp
     }
 
 ------------------------------------------------------------
@@ -219,6 +220,8 @@ toEvent (SelectHole _) = Nothing
 toEvent (InsertHole _ _ _) = Nothing
 
 toEvent (ChangeSimulationView view) = Just $ (defaultEvent "ChangeSimulationView") { label = Just $ show view }
+
+toEvent (ChangeHelpContext help) = Just $ (defaultEvent "ChangeHelpContext") { label = Just $ show help }
 
 toEvent (HandleBlocklyMessage _) = Nothing
 
@@ -414,6 +417,9 @@ handleAction (InsertHole constructor firstHole holes) = do
 
 handleAction (ChangeSimulationView view) = do
   assign _simulationBottomPanelView view
+
+handleAction (ChangeHelpContext help) = do
+  assign _helpContext help
 
 handleAction (HandleBlocklyMessage Initialized) = pure unit
 

@@ -4,9 +4,8 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, active, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, mAlignCenter, minusBtn, noMargins, panelContent, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, readMoreIconWhite, smallBtn, spaceLeft, tAlignCenter, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Control.Alternative (map)
-import Control.Alternative as Alt
 import Data.Array (catMaybes, concatMap, fromFoldable, head, length, sortBy)
 import Data.Array as Array
 import Data.BigInteger (BigInteger, fromString, fromInt)
@@ -27,10 +26,11 @@ import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, a_, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, hr, img, input, li, li_, ol, ol_, p_, pre, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, a_, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
 import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, href, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
+import Help (toHTML)
 import Marlowe.Holes (Holes(..), MarloweHole(..), MarloweType(..), getMarloweConstructors)
 import Marlowe.Parser (transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), ChosenNum, CurrencySymbol, Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TokenName, TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
@@ -39,7 +39,7 @@ import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, bind, compare, const, flip, identity, mempty, not, pure, show, unit, zero, ($), (+), (<$>), (<<<), (<>), (>))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), MarloweError(..), MarloweState, SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -118,21 +118,17 @@ sidebar state =
     [ div [ class_ aHorizontal ]
         [ h6 [ classes [ ClassName "input-composer-heading", noMargins ] ]
             [ small [ classes [ textSecondaryColor, bold, uppercase ] ] [ text "Input Composer" ] ]
-        , a [ href "/" ] [ img [ src infoIcon, alt "info book icon" ] ]
+        , a [ onClick $ const $ Just $ ChangeHelpContext InputComposerHelp ] [ img [ src infoIcon, alt "info book icon" ] ]
         ]
     , inputComposer state
     , div [ class_ aHorizontal ]
         [ h6 [ classes [ ClassName "input-composer-heading", noMargins ] ]
             [ small [ classes [ textSecondaryColor, bold, uppercase ] ] [ text "Transaction Composer" ] ]
-        , a [ href "/" ] [ img [ src infoIcon, alt "info book icon" ] ]
+        , a [ onClick $ const $ Just $ ChangeHelpContext TransactionComposerHelp ] [ img [ src infoIcon, alt "info book icon" ] ]
         ]
     , transactionComposer state
     , article [ class_ (ClassName "documentation-panel") ]
-        [ img [ class_ mAlignCenter, src readMoreIconWhite, alt "read more icon" ]
-        , h4 [ class_ tAlignCenter ] [ text "Modelling contracts in Marlowe" ]
-        , hr []
-        , p_ [ text "Marlowe is designed to support the execution of financial contracts on blockchain, and specifically to work on Cardano. Contracts are built by putting together a small number of constructs that in combination can be used to describe many different kinds of financial contract" ]
-        ]
+        (toHTML (state ^. _helpContext))
     ]
 
 inputComposer ::

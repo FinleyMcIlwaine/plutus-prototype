@@ -73,6 +73,7 @@ data HAction
   | InsertHole String MarloweHole (Array MarloweHole)
   -- simulation view
   | ChangeSimulationView SimulationBottomPanelView
+  | ChangeHelpContext HelpContext
   -- blockly
   | HandleBlocklyMessage BlocklyMessage
   | SetBlocklyCode
@@ -139,6 +140,7 @@ newtype FrontendState
   , blocklyState :: Maybe BlocklyState
   , analysisState :: RemoteData String Result
   , selectedHole :: Maybe String
+  , helpContext :: HelpContext
   }
 
 derive instance newtypeFrontendState :: Newtype FrontendState _
@@ -151,6 +153,9 @@ _view = _Newtype <<< prop (SProxy :: SProxy "view")
 
 _simulationBottomPanelView :: Lens' FrontendState SimulationBottomPanelView
 _simulationBottomPanelView = _Newtype <<< prop (SProxy :: SProxy "simulationBottomPanelView")
+
+_helpContext :: Lens' FrontendState HelpContext
+_helpContext = _Newtype <<< prop (SProxy :: SProxy "helpContext")
 
 _editorPreferences :: Lens' FrontendState Editor.Preferences
 _editorPreferences = _Newtype <<< prop (SProxy :: SProxy "editorPreferences")
@@ -309,3 +314,14 @@ actionToActionInput state (Deposit accountId party token value) =
 actionToActionInput _ (Choice choiceId bounds) = Tuple (ChoiceInputId choiceId bounds) (ChoiceInput choiceId bounds (minimumBound bounds))
 
 actionToActionInput _ (Notify _) = Tuple NotifyInputId NotifyInput
+
+
+data HelpContext
+  = MarloweHelp
+  | InputComposerHelp
+  | TransactionComposerHelp
+
+derive instance genericHelpContext :: Generic HelpContext _
+
+instance showHelpContext :: Show HelpContext where
+  show = genericShow
