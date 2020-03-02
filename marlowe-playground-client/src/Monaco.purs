@@ -1,14 +1,13 @@
 module Monaco where
 
 import Prelude
-
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.String.Regex (Regex)
 import Data.Tuple (Tuple)
 import Effect (Effect)
-import Effect.Uncurried (EffectFn2, EffectFn3, runEffectFn2, runEffectFn3)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, runEffectFn2, runEffectFn3)
 import Foreign (unsafeToForeign)
 import Foreign.Generic (class Encode, Foreign, SumEncoding(..), defaultOptions, encode, genericEncode)
 import Foreign.Object (Object)
@@ -112,6 +111,10 @@ instance defaultMonarchLanguage :: Default MonarchLanguage where
 
 foreign import data Monaco :: Type
 
+foreign import data ITextModel :: Type
+
+foreign import data TokensProvider :: Type
+
 foreign import getMonaco :: Effect Monaco
 
 foreign import create_ :: EffectFn3 Monaco HTMLElement String Unit
@@ -119,6 +122,12 @@ foreign import create_ :: EffectFn3 Monaco HTMLElement String Unit
 foreign import registerLanguage_ :: EffectFn2 Monaco Foreign Unit
 
 foreign import setMonarchTokensProvider_ :: EffectFn3 Monaco String Foreign Unit
+
+foreign import getModel_ :: EffectFn1 Monaco ITextModel
+
+foreign import marloweTokensProvider :: TokensProvider
+
+foreign import setTokensProvider_ :: EffectFn3 Monaco String TokensProvider Unit
 
 create :: Monaco -> HTMLElement -> String -> Effect Unit
 create = runEffectFn3 create_
@@ -136,3 +145,6 @@ setMonarchTokensProvider monaco languageId languageDef =
     languageDefF = encode languageDef
   in
     runEffectFn3 setMonarchTokensProvider_ monaco languageId languageDefF
+
+setMarloweTokensProvider :: Monaco -> String -> Effect Unit
+setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ monaco languageId marloweTokensProvider

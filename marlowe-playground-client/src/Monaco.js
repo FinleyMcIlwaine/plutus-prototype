@@ -5,20 +5,32 @@ exports.getMonaco = function () {
   return global.monaco;
 }
 
-exports.registerLanguage_ = function(monaco, language) {
+exports.registerLanguage_ = function (monaco, language) {
   monaco.languages.register(language);
 }
 
-exports.setMonarchTokensProvider_ = function(monaco, languageId, languageDef) {
+exports.setMonarchTokensProvider_ = function (monaco, languageId, languageDef) {
   console.log(languageDef);
   monaco.languages.setMonarchTokensProvider(languageId, languageDef);
 }
 
 exports.create_ = function (monaco, nodeId, languageId) {
+  monaco.editor.defineTheme('playground', require('../monacoMarlowe.js').marloweTheme);
   monaco.editor.create(nodeId, {
     value: [
       'Close'
     ].join('\n'),
-    language: languageId
+    language: languageId,
+    theme: 'playground',
   });
+}
+
+exports.getModel_ = function (monaco) {
+  return monaco.editor.getModel("inmemory://model/1");
+}
+
+exports.marloweTokensProvider = require('../monacoMarlowe.js').marloweTokensProvider;
+
+exports.setTokensProvider_ = function (monaco, languageId, provider) {
+  monaco.languages.setTokensProvider(languageId, provider);
 }

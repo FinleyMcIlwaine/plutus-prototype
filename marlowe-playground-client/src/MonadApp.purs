@@ -51,7 +51,7 @@ import StaticData (bufferLocalStorageKey, marloweBufferLocalStorageKey)
 import Text.Parsing.StringParser.Basic (lines)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction, MarloweState, Message(..), WebData, _Head, _blocklySlot, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _haskellEditorSlot, _holes, _marloweEditorSlot, _marloweState, _moneyInContract, _oldContract, _payments, _pendingInputs, _possibleActions, _slot, _state, _transactionError, _transactionWarnings, actionToActionInput, emptyMarloweState)
 import Web.HTML.Event.DragEvent (DragEvent)
-import WebSocket (WebSocketRequestMessage(CheckForWarnings))
+import WebSocket (WebSocketRequestMessage(..))
 
 class
   Monad m <= MonadApp m where
@@ -163,7 +163,7 @@ instance monadAppHalogenApp ::
   setBlocklyCode source = wrap $ void $ query _blocklySlot unit (SetCode source unit)
   checkContractForWarnings contract state = do
     let
-      msgString = unsafeStringify <<< encode $ CheckForWarnings contract state
+      msgString = unsafeStringify <<< encode $ CheckForWarnings contract
     wrap $ raise (WebsocketMessage msgString)
 
 -- I don't quite understand why but if you try to use MonadApp methods in HalogenApp methods you

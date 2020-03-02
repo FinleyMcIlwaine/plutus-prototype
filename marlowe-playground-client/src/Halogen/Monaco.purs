@@ -58,7 +58,8 @@ handleAction Init = do
       trace element \_ -> pure unit
       liftEffect $ Monaco.registerLanguage m MM.languageExtensionPoint
       _ <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint)
-      liftEffect $ Monaco.setMonarchTokensProvider m (view MM._id MM.languageExtensionPoint) MM.monarchLanguage
+      liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
+      -- liftEffect $ Monaco.setMonarchTokensProvider m (view MM._id MM.languageExtensionPoint) MM.monarchLanguage
       _ <- H.modify (const { editor: Just m })
       pure unit
     Nothing -> pure unit
