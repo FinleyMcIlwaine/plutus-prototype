@@ -13,6 +13,16 @@ toHTML MarloweHelp =
   , p_ [ text "Marlowe is designed to support the execution of financial contracts on blockchain, and specifically to work on Cardano. Contracts are built by putting together a small number of constructs that in combination can be used to describe many different kinds of financial contract" ]
   ]
 
-toHTML InputComposerHelp = [ text "InputComposerHelp" ]
+toHTML InputComposerHelp =
+  [ img [ class_ mAlignCenter, src readMoreIconWhite, alt "read more icon" ]
+  , h4 [ class_ tAlignCenter ] [ text "Input Composer" ]
+  , hr []
+  , p_ [ text "Something about the Input Composer" ]
+  ]
 
-toHTML TransactionComposerHelp = [ text "TransactionComposerHelp" ]
+toHTML TransactionComposerHelp =
+  [ img [ class_ mAlignCenter, src readMoreIconWhite, alt "read more icon" ]
+  , h4 [ class_ tAlignCenter ] [ text "Transaction Composer" ]
+  , hr []
+  , p_ [ text "Something about the transaction composer" ]
+  ]
