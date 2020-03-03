@@ -34,7 +34,10 @@ module.exports = {
         }
     },
 
-    entry: './entry.js',
+    entry: {
+        "app": './entry.js',
+        "editor.worker": 'monaco-editor/esm/vs/editor/editor.worker.js',
+    },
 
     output: {
         path: path.join(__dirname, 'dist'),
@@ -75,6 +78,9 @@ module.exports = {
                         }
                     }
                 ]
+            }, {
+                test: /\.tsx?$/,
+                loader: "ts-loader"
             },
             {
                 test: /\.css$/,
@@ -102,7 +108,7 @@ module.exports = {
         alias: {
             grammar: path.resolve(__dirname, './grammar.ne')
         },
-        extensions: ['.purs', '.js']
+        extensions: ['.purs', '.js', 'ts', 'tsx']
     },
 
     resolveLoader: {
@@ -124,6 +130,8 @@ module.exports = {
             googleAnalyticsId: isWebpackDevServer ? 'UA-XXXXXXXXX-X' : 'UA-119953429-7'
         }),
         new webpack.NormalModuleReplacementPlugin(/^echarts$/, 'echarts/dist/echarts.min.js'),
-        new MonacoWebpackPlugin()
+        // new MonacoWebpackPlugin({
+        //     languages: [],
+        // })
     ].concat(plugins)
 };

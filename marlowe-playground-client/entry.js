@@ -11,6 +11,11 @@ import 'node-blockly/browser';
 
 import './grammar.ne';
 import * as monaco from 'monaco-editor';
+global.MonacoEnvironment = {
+    getWorkerUrl: function (moduleId, label) {
+      return './editor.worker.bundle.js';
+    }
+  }
 global.monaco = monaco;
 
 import './src/Main.purs';

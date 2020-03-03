@@ -1,6 +1,3 @@
-/*eslint-env node*/
-'use strict';
-
 const moo = require('moo');
 
 const marloweLexer = moo.compile({
@@ -55,37 +52,37 @@ const marloweLexer = moo.compile({
   myError: { match: /[\$?`]/, error: true },
 });
 
-export class State {
-    constructor(lexer) {
-      this.lexer = lexer;
-    }
+// export class State {
+//     constructor(lexer) {
+//       this.lexer = lexer;
+//     }
   
-    equals(other) {
-      return (other === this || other.lexer === this.lexer);
-    }
+//     equals(other) {
+//       return (other === this || other.lexer === this.lexer);
+//     }
   
-    clone() {
-      return new State(this.lexer);
-    }
-  }
+//     clone() {
+//       return new State(this.lexer);
+//     }
+//   }
 
-export const marloweTokensProvider = {
-    getInitialState: function() {
-      return new State(marloweLexer);
-    },
-    tokenize: function(line, startState) {
-      let lexer = startState.lexer;
-      lexer.reset(line);
-      let monacoTokens = Array.from(lexer).map(t => ({
-        startIndex: t.offset,
-        scopes: t.type,
-      }));
-      return {
-        endState: new State(lexer),
-        tokens: monacoTokens,
-      }
-    }
-  }
+// export const marloweTokensProvider = {
+//     getInitialState: function() {
+//       return new State(marloweLexer);
+//     },
+//     tokenize: function(line, startState) {
+//       let lexer = startState.lexer;
+//       lexer.reset(line);
+//       let monacoTokens = Array.from(lexer).map(t => ({
+//         startIndex: t.offset,
+//         scopes: t.type,
+//       }));
+//       return {
+//         endState: new State(lexer),
+//         tokens: monacoTokens,
+//       }
+//     }
+//   }
 
 export const marloweTheme = {
   base: 'vs',

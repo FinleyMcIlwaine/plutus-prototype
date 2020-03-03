@@ -469,8 +469,6 @@ let
                                 pkgs.z3
                                 pkgs.sqlite-analyzer
                                 pkgs.sqlite-interactive
-
-                                pkgs.yarn2nix-moretea.yarn2nix
                                 easyPS.purs
                                 easyPS.spago
                                 easyPS.purty
