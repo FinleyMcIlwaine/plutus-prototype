@@ -1,4 +1,5 @@
-const moo = require('moo');
+import * as moo from 'moo';
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 
 const marloweLexer = moo.compile({
   WS: /[ \t]+/,
@@ -52,43 +53,44 @@ const marloweLexer = moo.compile({
   myError: { match: /[\$?`]/, error: true },
 });
 
-// export class State {
-//     constructor(lexer) {
-//       this.lexer = lexer;
-//     }
-  
-//     equals(other) {
-//       return (other === this || other.lexer === this.lexer);
-//     }
-  
-//     clone() {
-//       return new State(this.lexer);
-//     }
-//   }
+export class State implements monaco.languages.IState {
+  lexer: any
+  constructor(lexer) {
+    this.lexer = lexer;
+  }
 
-// export const marloweTokensProvider = {
-//     getInitialState: function() {
-//       return new State(marloweLexer);
-//     },
-//     tokenize: function(line, startState) {
-//       let lexer = startState.lexer;
-//       lexer.reset(line);
-//       let monacoTokens = Array.from(lexer).map(t => ({
-//         startIndex: t.offset,
-//         scopes: t.type,
-//       }));
-//       return {
-//         endState: new State(lexer),
-//         tokens: monacoTokens,
-//       }
-//     }
-//   }
+  equals(other) {
+    return (other === this || other.lexer === this.lexer);
+  }
+
+  clone() {
+    return new State(this.lexer);
+  }
+}
+
+export const marloweTokensProvider: monaco.languages.TokensProvider = {
+  getInitialState: function () {
+    return new State(marloweLexer);
+  },
+  tokenize: function (line, startState: State) {
+    let lexer = startState.lexer;
+    lexer.reset(line);
+    let monacoTokens = lexer.map(({offset, type}) => ({
+      startIndex: offset,
+      scopes: type,
+    }));
+    return {
+      endState: new State(lexer),
+      tokens: monacoTokens,
+    }
+  }
+}
 
 export const marloweTheme = {
   base: 'vs',
   inherit: true,
   rules: [
-    { token: "hole", foreground: '0000ff', fontStyle: 'italic'},
-    { token: "CONTRACT", foreground: '0000ee', fontStyle: 'italic'},
+    { token: "hole", foreground: '0000ff', fontStyle: 'italic' },
+    { token: "CONTRACT", foreground: '0000ee', fontStyle: 'italic' },
   ],
 }

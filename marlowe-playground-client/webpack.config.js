@@ -34,10 +34,7 @@ module.exports = {
         }
     },
 
-    entry: {
-        "app": './entry.js',
-        "editor.worker": 'monaco-editor/esm/vs/editor/editor.worker.js',
-    },
+    entry: './entry.js',
 
     output: {
         path: path.join(__dirname, 'dist'),
@@ -130,8 +127,8 @@ module.exports = {
             googleAnalyticsId: isWebpackDevServer ? 'UA-XXXXXXXXX-X' : 'UA-119953429-7'
         }),
         new webpack.NormalModuleReplacementPlugin(/^echarts$/, 'echarts/dist/echarts.min.js'),
-        // new MonacoWebpackPlugin({
-        //     languages: [],
-        // })
+        new MonacoWebpackPlugin({
+            languages: [],
+        })
     ].concat(plugins)
 };

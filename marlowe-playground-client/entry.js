@@ -10,12 +10,7 @@ import 'ace-builds/src-min-noconflict/theme-chrome.js';
 import 'node-blockly/browser';
 
 import './grammar.ne';
-import * as monaco from 'monaco-editor';
-global.MonacoEnvironment = {
-    getWorkerUrl: function (moduleId, label) {
-      return './editor.worker.bundle.js';
-    }
-  }
+import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 global.monaco = monaco;
 
 import './src/Main.purs';

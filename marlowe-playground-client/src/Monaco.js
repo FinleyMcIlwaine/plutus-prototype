@@ -1,6 +1,8 @@
 /*eslint-env node*/
 'use strict';
 
+const x = require('./Marlowe/Monaco.ts');
+
 exports.getMonaco = function () {
   return global.monaco;
 }

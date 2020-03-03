@@ -163,7 +163,7 @@ instance monadAppHalogenApp ::
   setBlocklyCode source = wrap $ void $ query _blocklySlot unit (SetCode source unit)
   checkContractForWarnings contract state = do
     let
-      msgString = unsafeStringify <<< encode $ CheckForWarnings contract
+      msgString = unsafeStringify <<< encode $ CheckForWarnings contract state
     wrap $ raise (WebsocketMessage msgString)
 
 -- I don't quite understand why but if you try to use MonadApp methods in HalogenApp methods you
