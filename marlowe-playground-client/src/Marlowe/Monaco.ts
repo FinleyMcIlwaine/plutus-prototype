@@ -75,7 +75,7 @@ export const marloweTokensProvider: monaco.languages.TokensProvider = {
   tokenize: function (line, startState: State) {
     let lexer = startState.lexer;
     lexer.reset(line);
-    let monacoTokens = lexer.map(({offset, type}) => ({
+    let monacoTokens = lexer.map(({ offset, type }) => ({
       startIndex: offset,
       scopes: type,
     }));
@@ -93,4 +93,19 @@ export const marloweTheme = {
     { token: "hole", foreground: '0000ff', fontStyle: 'italic' },
     { token: "CONTRACT", foreground: '0000ee', fontStyle: 'italic' },
   ],
+}
+
+export class MarloweCompletionItemProvider implements monaco.languages.CompletionItemProvider {
+  
+  provideCompletionItems(model: monaco.editor.ITextModel, position: monaco.Position, context: monaco.languages.CompletionContext, token: monaco.CancellationToken): monaco.languages.ProviderResult<monaco.languages.CompletionList> {
+    const word = model.getWordAtPosition(position);
+    switch (word) {
+      case ""
+    }
+  }
+  
+  resolveCompletionItem?(model: monaco.editor.ITextModel, position: monaco.Position, item: monaco.languages.CompletionItem, token: monaco.CancellationToken): monaco.languages.ProviderResult<monaco.languages.CompletionItem> {
+    throw new Error("Method not implemented.");
+  }
+
 }
