@@ -1,6 +1,7 @@
 module Marlowe.ContractTests where
 
 import Prelude
+
 import Control.Monad.State (class MonadState, StateT, runState)
 import Data.Array (snoc)
 import Data.Either (Either(..))
@@ -18,7 +19,7 @@ import MonadApp (class MonadApp, applyTransactions, extendWith, marloweEditorSet
 import Network.RemoteData (RemoteData(..))
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert (equal)
-import Types (FrontendState(..), View(..), _Head, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _marloweState, _pendingInputs, _transactionError, emptyMarloweState)
+import Types (FrontendState(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _marloweState, _pendingInputs, _transactionError, emptyMarloweState)
 
 -- | For these tests we only need to worry about the MarloweState that is being carried around
 --   However we can use similar techniques to mock other parts of the App
@@ -79,6 +80,7 @@ initialState :: FrontendState
 initialState =
   FrontendState
     { view: HaskellEditor
+    , simulationBottomPanelView: CurrentStateView
     , editorPreferences: Editor.Preferences { keyBindings: Editor.Ace }
     , compilationResult: NotAsked
     , marloweCompileResult: Right unit
@@ -90,6 +92,7 @@ initialState =
     , blocklyState: Nothing
     , analysisState: NotAsked
     , selectedHole: Nothing
+    , helpContext: MarloweHelp
     }
 
 runTests :: forall a. MockApp a -> Tuple a FrontendState
