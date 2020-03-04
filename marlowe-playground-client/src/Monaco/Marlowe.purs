@@ -1,7 +1,6 @@
 module Monaco.Marlowe where
 
 import Prelude
-
 import Data.Lens (Lens')
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)

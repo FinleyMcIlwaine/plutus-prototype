@@ -1,9 +1,13 @@
 module Monaco where
 
 import Prelude
+import Data.Either (Either(..))
+import Data.Function.Uncurried (Fn1, Fn3, runFn1)
 import Data.Generic.Rep (class Generic)
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
+import Data.Set as Set
 import Data.String.Regex (Regex)
 import Data.Tuple (Tuple)
 import Effect (Effect)
@@ -113,7 +117,18 @@ foreign import data Monaco :: Type
 
 foreign import data ITextModel :: Type
 
+foreign import data IRange :: Type
+
+foreign import data CompletionItemKind :: Type
+
 foreign import data TokensProvider :: Type
+
+type CompletionItem
+  = { label :: String
+    , kind :: CompletionItemKind
+    , insertText :: String
+    , range :: IRange
+    }
 
 foreign import getMonaco :: Effect Monaco
 
@@ -128,6 +143,13 @@ foreign import getModel_ :: EffectFn1 Monaco ITextModel
 foreign import marloweTokensProvider :: TokensProvider
 
 foreign import setTokensProvider_ :: EffectFn3 Monaco String TokensProvider Unit
+
+foreign import completionItemKind_ :: Fn1 String CompletionItemKind
+
+foreign import registerCompletionItemProvider_ :: EffectFn3 Monaco String (Boolean -> String -> IRange -> Array CompletionItem) Unit
+
+completionItemKind :: String -> CompletionItemKind
+completionItemKind = runFn1 completionItemKind_
 
 create :: Monaco -> HTMLElement -> String -> Effect Unit
 create = runEffectFn3 create_
@@ -148,3 +170,6 @@ setMonarchTokensProvider monaco languageId languageDef =
 
 setMarloweTokensProvider :: Monaco -> String -> Effect Unit
 setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ monaco languageId marloweTokensProvider
+
+registerCompletionItemProvider :: Monaco -> String -> (Boolean -> String -> IRange -> Array CompletionItem) -> Effect Unit
+registerCompletionItemProvider = runEffectFn3 registerCompletionItemProvider_

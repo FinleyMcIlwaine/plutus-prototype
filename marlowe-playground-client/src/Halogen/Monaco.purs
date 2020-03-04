@@ -1,7 +1,6 @@
 module Halogen.Monaco where
 
 import Prelude
-
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
 import Debug.Trace (trace)
@@ -10,6 +9,7 @@ import Halogen (HalogenM, RefLabel(..))
 import Halogen as H
 import Halogen.HTML (HTML, div)
 import Halogen.HTML.Properties (class_, ref)
+import Marlowe.Linter as Linter
 import Monaco (Monaco)
 import Monaco as Monaco
 import Monaco.Marlowe as MM
@@ -59,6 +59,7 @@ handleAction Init = do
       liftEffect $ Monaco.registerLanguage m MM.languageExtensionPoint
       _ <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint)
       liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
+      liftEffect $ Monaco.registerCompletionItemProvider m (view MM._id MM.languageExtensionPoint) Linter.suggestions
       -- liftEffect $ Monaco.setMonarchTokensProvider m (view MM._id MM.languageExtensionPoint) MM.monarchLanguage
       _ <- H.modify (const { editor: Just m })
       pure unit

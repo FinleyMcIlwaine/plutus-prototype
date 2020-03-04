@@ -35,6 +35,15 @@ exports.marloweTokensProvider = require('../monacoMarlowe.js').marloweTokensProv
 
 exports.setTokensProvider_ = function (monaco, languageId, provider) {
   monaco.languages.setTokensProvider(languageId, provider);
-  let p = require('./Marlowe/Monaco.ts');
-  monaco.languages.registerCompletionItemProvider(languageId, new p.MarloweCompletionItemProvider())
+}
+
+exports.completionItemKind_ = function(name) {
+  return monaco.languages.CompletionItemKind.Constructor;
+}
+
+exports.registerCompletionItemProvider_ = function(monaco, languageId, suggestionsProvider) {
+  let m = require('./Marlowe/Monaco.ts')
+  let uncurried = (stripParens, contract, range) => suggestionsProvider(stripParens)(contract)(range);
+  let provider = new m.MarloweCompletionItemProvider(uncurried);
+  monaco.languages.registerCompletionItemProvider(languageId, provider);
 }

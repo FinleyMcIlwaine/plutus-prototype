@@ -575,6 +575,7 @@ simulationPaneOld state =
   marloweEditor =
     aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
       (Just Live)
+
   monacoEditor = monacoComponent
 
   editorPreferences = view _editorPreferences state

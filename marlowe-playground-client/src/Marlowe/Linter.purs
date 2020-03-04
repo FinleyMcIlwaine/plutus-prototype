@@ -11,23 +11,29 @@ module Marlowe.Linter
   , _shadowedLet
   , _trueObservation
   , _falseObservation
+  , suggestions
   ) where
 
 import Prelude
 
 import Data.Array (catMaybes, cons, fold, foldMap, (:))
+import Data.Array as Array
 import Data.BigInteger (BigInteger)
+import Data.Either (Either(..))
 import Data.Lens (Lens', over, view)
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
+import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Symbol (SProxy(..))
 import Data.Tuple.Nested (type (/\), (/\))
-import Marlowe.Holes (Action(..), Case(..), Contract(..), Holes, Observation(..), Term(..), Value(..), ValueId, getHoles, insertHole)
+import Marlowe.Holes (Action(..), Case(..), Contract(..), Holes(..), Observation(..), Term(..), Value(..), ValueId, getHoles, holeSuggestions, insertHole)
+import Marlowe.Parser (parseContract)
 import Marlowe.Semantics (Timeout)
+import Monaco (IRange, CompletionItem)
 import Text.Parsing.StringParser (Pos)
 
 type Position
@@ -287,3 +293,16 @@ constantValue (Term (SubValue a b) _) = do
   pure (va - vb)
 
 constantValue _ = Nothing
+
+suggestions :: Boolean -> String -> IRange -> Array CompletionItem
+suggestions stripParens contract range = case parseContract contract of
+  Left _ -> []
+  Right parsedContract ->
+    let
+      (Holes holes) = view _holes (lint parsedContract)
+    in
+      case Map.lookup "monaco_suggestions" holes of
+        Nothing -> []
+        Just s -> case Array.uncons $ Set.toUnfoldable s of
+          Nothing -> []
+          Just { head } -> holeSuggestions stripParens range head
