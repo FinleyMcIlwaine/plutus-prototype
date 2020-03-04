@@ -245,7 +245,7 @@ instance bigIntegerIsMarloweType :: IsMarloweType BigInteger where
 marloweHoleToSuggestion :: Boolean -> IRange -> MarloweHole -> String -> CompletionItem
 marloweHoleToSuggestion stripParens range firstHole@(MarloweHole { marloweType }) constructorName =
   let
-    kind = completionItemKind constructorName
+    kind = completionItemKind "Constructor"
 
     m = getMarloweConstructors marloweType
 

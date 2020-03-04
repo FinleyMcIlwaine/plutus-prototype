@@ -32,3 +32,17 @@ export class MarloweCompletionItemProvider implements monaco.languages.Completio
   }
 
 }
+
+export class MarloweCodeActionProvider implements monaco.languages.CodeActionProvider {
+  provideCodeActions(model: monaco.editor.ITextModel, range: monaco.Range, context: monaco.languages.CodeActionContext, token: monaco.CancellationToken): monaco.languages.ProviderResult<monaco.languages.CodeActionList> {
+    // create actions for all the markers
+    const actions = context.markers.map(marker => {
+      console.log(marker);
+      return { title: "" }
+    });
+    return {
+      actions: actions,
+      dispose: () => { }
+    };
+  }
+}

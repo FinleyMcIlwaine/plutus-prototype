@@ -12,6 +12,7 @@ module Marlowe.Linter
   , _trueObservation
   , _falseObservation
   , suggestions
+  , markers
   ) where
 
 import Prelude
@@ -20,7 +21,7 @@ import Data.Array (catMaybes, cons, fold, foldMap, (:))
 import Data.Array as Array
 import Data.BigInteger (BigInteger)
 import Data.Either (Either(..))
-import Data.Lens (Lens', over, view)
+import Data.Lens (Lens', over, to, view, (^.))
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
 import Data.Map as Map
@@ -28,12 +29,14 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Set (Set)
 import Data.Set as Set
+import Data.String (codePointFromChar, length, takeWhile)
 import Data.Symbol (SProxy(..))
 import Data.Tuple.Nested (type (/\), (/\))
-import Marlowe.Holes (Action(..), Case(..), Contract(..), Holes(..), Observation(..), Term(..), Value(..), ValueId, getHoles, holeSuggestions, insertHole)
-import Marlowe.Parser (parseContract)
+import Debug.Trace (trace)
+import Marlowe.Holes (Action(..), Case(..), Contract(..), Holes(..), MarloweHole(..), Observation(..), Term(..), Value(..), ValueId, getHoles, holeSuggestions, insertHole)
+import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (Timeout)
-import Monaco (IRange, CompletionItem)
+import Monaco (CompletionItem, IMarkerData, IRange, markerSeverity)
 import Text.Parsing.StringParser (Pos)
 
 type Position
@@ -306,3 +309,46 @@ suggestions stripParens contract range = case parseContract contract of
         Just s -> case Array.uncons $ Set.toUnfoldable s of
           Nothing -> []
           Just { head } -> holeSuggestions stripParens range head
+
+markers :: String -> Array IMarkerData
+markers contract = case lint <$> parseContract contract of
+  Left EmptyInput -> []
+  Left e@(ContractParseError { message, row, column, token }) ->
+    let
+      word =
+        takeWhile
+          ( \c ->
+              not
+                ( c == (codePointFromChar '\n')
+                    || c
+                    == (codePointFromChar '\r')
+                    || c
+                    == (codePointFromChar ' ')
+                    || c
+                    == (codePointFromChar '\t')
+                )
+          )
+          token
+    in
+      [ { startColumn: column
+        , startLineNumber: row
+        , endColumn: column + (length word)
+        , endLineNumber: row
+        , message: message
+        , severity: markerSeverity "Error"
+        }
+      ]
+  Right state -> state ^. (_holes <<< to holesToMarkers)
+
+holesToMarkers :: Holes -> Array IMarkerData
+holesToMarkers (Holes holes) = map holeToMarker $ Set.toUnfoldable $ fold $ Map.values holes
+
+holeToMarker :: MarloweHole -> IMarkerData
+holeToMarker (MarloweHole { name, marloweType, row, column }) =
+  { startColumn: column
+  , startLineNumber: row
+  , endColumn: column + (length name) + 1
+  , endLineNumber: row
+  , message: "Found hole of type " <> show marloweType
+  , severity: markerSeverity "Warning"
+  }

@@ -1,6 +1,7 @@
 module Halogen.Monaco where
 
 import Prelude
+
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
 import Debug.Trace (trace)
@@ -57,7 +58,7 @@ handleAction Init = do
     Just element -> do
       trace element \_ -> pure unit
       liftEffect $ Monaco.registerLanguage m MM.languageExtensionPoint
-      _ <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint)
+      _ <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint) Linter.markers
       liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
       liftEffect $ Monaco.registerCompletionItemProvider m (view MM._id MM.languageExtensionPoint) Linter.suggestions
       -- liftEffect $ Monaco.setMonarchTokensProvider m (view MM._id MM.languageExtensionPoint) MM.monarchLanguage
