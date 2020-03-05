@@ -46,6 +46,9 @@ exports.getValue_ = function (model) {
   return model.getValue();
 }
 
+exports.setValue_ = function (model, value) {
+  return model.setValue(value);
+}
 exports.marloweTokensProvider = require('../monacoMarlowe.js').marloweTokensProvider;
 
 exports.setTokensProvider_ = function (monaco, languageId, provider) {

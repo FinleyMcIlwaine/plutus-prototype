@@ -35,6 +35,7 @@ import Gist (Gist, GistId, NewGist)
 import Global.Unsafe (unsafeStringify)
 import Halogen (HalogenM, liftAff, liftEffect, query, raise)
 import Halogen.Blockly (BlocklyQuery(..))
+import Halogen.Monaco (Query(..))
 import Language.Haskell.Interpreter (InterpreterError, InterpreterResult, SourceCode)
 import Marlowe (SPParams_)
 import Marlowe as Server
@@ -48,7 +49,7 @@ import Servant.PureScript.Ajax (AjaxError)
 import Servant.PureScript.Settings (SPSettings_)
 import StaticData (bufferLocalStorageKey, marloweBufferLocalStorageKey)
 import Text.Parsing.StringParser.Basic (lines)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction, MarloweState, Message(..), WebData, _Head, _blocklySlot, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _haskellEditorSlot, _holes, _marloweEditorSlot, _marloweState, _moneyInContract, _oldContract, _payments, _pendingInputs, _possibleActions, _slot, _state, _transactionError, _transactionWarnings, actionToActionInput, emptyMarloweState)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction, MarloweState, Message(..), WebData, _Head, _blocklySlot, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _haskellEditorSlot, _holes, _marloweEditorSlot, _marloweState, _monacoSlot, _moneyInContract, _oldContract, _payments, _pendingInputs, _possibleActions, _slot, _state, _transactionError, _transactionWarnings, actionToActionInput, emptyMarloweState)
 import Web.HTML.Event.DragEvent (DragEvent)
 import WebSocket (WebSocketRequestMessage(..))
 
@@ -118,7 +119,9 @@ instance monadAppHalogenApp ::
           liftEffect do
             session <- AceEditor.getSession editor
             Session.setAnnotations annotations session
-  marloweEditorSetValue contents i = void $ withMarloweEditor $ liftEffect <<< AceEditor.setValue contents i
+  marloweEditorSetValue contents i = do
+    void $ wrap $ query _monacoSlot unit (SetText contents unit)
+    void $ withMarloweEditor $ liftEffect <<< AceEditor.setValue contents i
   marloweEditorGetValue = withMarloweEditor $ liftEffect <<< AceEditor.getValue
   marloweEditorHandleAction action = void $ withMarloweEditor (Editor.handleAction marloweBufferLocalStorageKey action)
   marloweEditorSetAnnotations annotations =

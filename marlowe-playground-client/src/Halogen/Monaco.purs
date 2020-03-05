@@ -20,10 +20,10 @@ import Monaco as Monaco
 import Monaco.Marlowe as MM
 
 type State
-  = { editor :: Maybe Monaco }
+  = { editor :: Maybe Editor }
 
 data Query a
-  = Q a
+  = SetText String a
 
 data Action
   = Init
@@ -67,7 +67,7 @@ handleAction Init = do
       editor <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint) Linter.markers
       liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
       liftEffect $ Monaco.registerCompletionItemProvider m (view MM._id MM.languageExtensionPoint) Linter.suggestions Linter.format
-      _ <- H.modify (const { editor: Just m })
+      _ <- H.modify (const { editor: Just editor })
       _ <-
         H.subscribe
           $ effectEventSource (f1 editor)
@@ -89,5 +89,12 @@ handleAction (HandleChange contents) = do
   H.raise $ TextChanged contents
   pure unit
 
-handleQuery :: forall a input m. Query a -> HalogenM State Action input Message m (Maybe a)
-handleQuery (Q next) = pure $ Just next
+handleQuery :: forall a input m. MonadEffect m => Query a -> HalogenM State Action input Message m (Maybe a)
+handleQuery (SetText text next) = do
+  mEditor <- H.gets _.editor
+  case mEditor of
+    Just editor -> do
+      model <- liftEffect $ Monaco.getModel editor
+      liftEffect $ Monaco.setValue model text
+    _ -> pure unit
+  pure $ Just next

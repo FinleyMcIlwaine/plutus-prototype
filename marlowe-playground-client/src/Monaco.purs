@@ -1,7 +1,7 @@
 module Monaco where
 
 import Prelude
-import Data.Function.Uncurried (Fn1, runFn1)
+import Data.Function.Uncurried (Fn1, Fn2, runFn1)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
@@ -156,6 +156,8 @@ foreign import getModel_ :: EffectFn1 Editor ITextModel
 
 foreign import getValue_ :: Fn1 ITextModel String
 
+foreign import setValue_ :: EffectFn2 ITextModel String Unit
+
 foreign import marloweTokensProvider :: TokensProvider
 
 foreign import setTokensProvider_ :: EffectFn3 Monaco String TokensProvider Unit
@@ -197,6 +199,9 @@ getModel = runEffectFn1 getModel_
 
 getValue :: ITextModel -> String
 getValue = runFn1 getValue_
+
+setValue :: ITextModel -> String -> Effect Unit
+setValue = runEffectFn2 setValue_
 
 setMarloweTokensProvider :: Monaco -> String -> Effect Unit
 setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ monaco languageId marloweTokensProvider
