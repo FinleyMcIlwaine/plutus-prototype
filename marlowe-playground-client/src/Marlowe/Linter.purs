@@ -16,7 +16,6 @@ module Marlowe.Linter
   ) where
 
 import Prelude
-
 import Data.Array (catMaybes, cons, fold, foldMap, (:))
 import Data.Array as Array
 import Data.BigInteger (BigInteger)
@@ -24,6 +23,7 @@ import Data.Either (Either(..))
 import Data.Lens (Lens', over, to, view, (^.))
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
+import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
@@ -32,8 +32,7 @@ import Data.Set as Set
 import Data.String (codePointFromChar, length, takeWhile)
 import Data.Symbol (SProxy(..))
 import Data.Tuple.Nested (type (/\), (/\))
-import Debug.Trace (trace)
-import Marlowe.Holes (Action(..), Case(..), Contract(..), Holes(..), MarloweHole(..), Observation(..), Term(..), Value(..), ValueId, getHoles, holeSuggestions, insertHole)
+import Marlowe.Holes (Argument, Action(..), Case(..), Contract(..), Holes(..), MarloweHole(..), Observation(..), Term(..), Value(..), ValueId, constructMarloweType, getHoles, getMarloweConstructors, holeSuggestions, insertHole)
 import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (Timeout)
 import Monaco (CompletionItem, IMarkerData, IRange, markerSeverity)
@@ -336,19 +335,40 @@ markers contract = case lint <$> parseContract contract of
         , endLineNumber: row
         , message: message
         , severity: markerSeverity "Error"
+        , code: ""
+        , source: ""
         }
       ]
   Right state -> state ^. (_holes <<< to holesToMarkers)
 
+-- other types of warning could do with being refactored to a Warning ADT first so we don't need to repeat ourselves
 holesToMarkers :: Holes -> Array IMarkerData
-holesToMarkers (Holes holes) = map holeToMarker $ Set.toUnfoldable $ fold $ Map.values holes
+holesToMarkers (Holes holes) =
+  let
+    (allHoles :: Array MarloweHole) = Set.toUnfoldable $ fold $ Map.values holes
+  in
+    foldMap holeToMarkers allHoles
 
-holeToMarker :: MarloweHole -> IMarkerData
-holeToMarker (MarloweHole { name, marloweType, row, column }) =
-  { startColumn: column
-  , startLineNumber: row
-  , endColumn: column + (length name) + 1
-  , endLineNumber: row
-  , message: "Found hole of type " <> show marloweType
-  , severity: markerSeverity "Warning"
-  }
+holeToMarker :: MarloweHole -> Map String (Array Argument) -> String -> IMarkerData
+holeToMarker hole@(MarloweHole { name, marloweType, row, column }) m constructorName =
+  let
+    code = constructMarloweType constructorName hole m
+  in
+    { startColumn: column
+    , startLineNumber: row
+    , endColumn: column + (length name) + 1
+    , endLineNumber: row
+    , message: "Found hole of type " <> show marloweType
+    , severity: markerSeverity "Warning"
+    , code
+    , source: constructorName
+    }
+
+holeToMarkers :: MarloweHole -> Array IMarkerData
+holeToMarkers hole@(MarloweHole { name, marloweType, row, column }) =
+  let
+    m = getMarloweConstructors marloweType
+
+    constructors = Set.toUnfoldable $ Map.keys m
+  in
+    map (holeToMarker hole m) constructors

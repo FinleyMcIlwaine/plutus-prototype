@@ -1,7 +1,6 @@
 module Halogen.Monaco where
 
 import Prelude
-
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
 import Debug.Trace (trace)

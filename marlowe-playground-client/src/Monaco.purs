@@ -136,6 +136,8 @@ type IMarkerData
     , startColumn :: Int
     , endLineNumber :: Int
     , endColumn :: Int
+    , code :: String
+    , source :: String
     }
 
 foreign import getMonaco :: Effect Monaco

@@ -10,7 +10,6 @@ exports.registerLanguage_ = function (monaco, language) {
 }
 
 exports.setMonarchTokensProvider_ = function (monaco, languageId, languageDef) {
-  console.log(languageDef);
   monaco.languages.setMonarchTokensProvider(languageId, languageDef);
 }
 
@@ -54,5 +53,7 @@ exports.registerCompletionItemProvider_ = function(monaco, languageId, suggestio
   let m = require('./Marlowe/Monaco.ts')
   let uncurried = (stripParens, contract, range) => suggestionsProvider(stripParens)(contract)(range);
   let provider = new m.MarloweCompletionItemProvider(uncurried);
+  let actionProvider = new m.MarloweCodeActionProvider();
   monaco.languages.registerCompletionItemProvider(languageId, provider);
+  monaco.languages.registerCodeActionProvider(languageId, actionProvider);
 }

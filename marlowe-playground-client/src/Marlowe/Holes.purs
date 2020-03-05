@@ -264,7 +264,7 @@ marloweHoleToSuggestion stripParens range firstHole@(MarloweHole { marloweType }
     { label: constructorName, kind, range, insertText }
 
 holeSuggestions :: Boolean -> IRange -> MarloweHole -> Array CompletionItem
-holeSuggestions stripParens range marloweHole@(MarloweHole { name, row, column, marloweType }) =
+holeSuggestions stripParens range marloweHole@(MarloweHole { name, marloweType }) =
   let
     marloweHoles = getMarloweConstructors marloweType
   in
