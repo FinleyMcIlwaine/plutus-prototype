@@ -13,6 +13,7 @@ module Marlowe.Linter
   , _falseObservation
   , suggestions
   , markers
+  , format
   ) where
 
 import Prelude
@@ -37,6 +38,7 @@ import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (Timeout)
 import Monaco (CompletionItem, IMarkerData, IRange, markerSeverity)
 import Text.Parsing.StringParser (Pos)
+import Text.Pretty (pretty)
 
 type Position
   = { row :: Pos, column :: Pos }
@@ -372,3 +374,8 @@ holeToMarkers hole@(MarloweHole { name, marloweType, row, column }) =
     constructors = Set.toUnfoldable $ Map.keys m
   in
     map (holeToMarker hole m) constructors
+
+format :: String -> String
+format contractString = case parseContract contractString of
+  Left _ -> contractString
+  Right contract -> show $ pretty contract

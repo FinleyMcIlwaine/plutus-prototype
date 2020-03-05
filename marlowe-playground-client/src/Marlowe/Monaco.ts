@@ -36,7 +36,6 @@ export class MarloweCompletionItemProvider implements monaco.languages.Completio
 export class MarloweCodeActionProvider implements monaco.languages.CodeActionProvider {
   provideCodeActions(model: monaco.editor.ITextModel, range: monaco.Range, context: monaco.languages.CodeActionContext, token: monaco.CancellationToken): monaco.languages.ProviderResult<monaco.languages.CodeActionList> {
     // create actions for all the markers
-    // FIXME: we need to get suggestions
     const actions = context.markers.map(({ source, code, message, startLineNumber, startColumn, endLineNumber, endColumn }) => {
       return {
         title: source,
@@ -62,4 +61,24 @@ export class MarloweCodeActionProvider implements monaco.languages.CodeActionPro
       dispose: () => { }
     };
   }
+}
+
+export class MarloweDocumentFormattingEditProvider implements monaco.languages.DocumentFormattingEditProvider {
+  format: (contractString: string) => string
+
+  constructor(format: (contractString: string) => string) {
+    this.format = format;
+  }
+
+  displayName: "Marlowe";
+
+  provideDocumentFormattingEdits(model: monaco.editor.ITextModel, options: monaco.languages.FormattingOptions, token: monaco.CancellationToken): monaco.languages.ProviderResult<monaco.languages.TextEdit[]> {
+    const range = model.getFullModelRange();
+    const text = this.format(model.getValue());
+    return [{
+      range,
+      text
+    }]
+  }
+
 }

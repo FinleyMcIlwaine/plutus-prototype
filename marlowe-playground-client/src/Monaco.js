@@ -49,11 +49,13 @@ exports.markerSeverity_ = function(name) {
   return monaco.MarkerSeverity[name];
 }
 
-exports.registerCompletionItemProvider_ = function(monaco, languageId, suggestionsProvider) {
+exports.registerCompletionItemProvider_ = function(monaco, languageId, suggestionsProvider, format) {
   let m = require('./Marlowe/Monaco.ts')
   let uncurried = (stripParens, contract, range) => suggestionsProvider(stripParens)(contract)(range);
   let provider = new m.MarloweCompletionItemProvider(uncurried);
   let actionProvider = new m.MarloweCodeActionProvider();
+  let formatter = new m.MarloweDocumentFormattingEditProvider(format);
   monaco.languages.registerCompletionItemProvider(languageId, provider);
   monaco.languages.registerCodeActionProvider(languageId, actionProvider);
+  monaco.languages.registerDocumentFormattingEditProvider(languageId, formatter);
 }

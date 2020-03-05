@@ -158,7 +158,7 @@ foreign import completionItemKind_ :: Fn1 String CompletionItemKind
 
 foreign import markerSeverity_ :: Fn1 String MarkerSeverity
 
-foreign import registerCompletionItemProvider_ :: EffectFn3 Monaco String (Boolean -> String -> IRange -> Array CompletionItem) Unit
+foreign import registerCompletionItemProvider_ :: EffectFn4 Monaco String (Boolean -> String -> IRange -> Array CompletionItem) (String -> String) Unit
 
 markerSeverity :: String -> MarkerSeverity
 markerSeverity = runFn1 markerSeverity_
@@ -186,5 +186,5 @@ setMonarchTokensProvider monaco languageId languageDef =
 setMarloweTokensProvider :: Monaco -> String -> Effect Unit
 setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ monaco languageId marloweTokensProvider
 
-registerCompletionItemProvider :: Monaco -> String -> (Boolean -> String -> IRange -> Array CompletionItem) -> Effect Unit
-registerCompletionItemProvider = runEffectFn3 registerCompletionItemProvider_
+registerCompletionItemProvider :: Monaco -> String -> (Boolean -> String -> IRange -> Array CompletionItem) -> (String -> String) -> Effect Unit
+registerCompletionItemProvider = runEffectFn4 registerCompletionItemProvider_
