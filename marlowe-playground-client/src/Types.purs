@@ -87,9 +87,8 @@ data Message
 ------------------------------------------------------------
 type ChildSlots
   = ( haskellEditorSlot :: H.Slot AceQuery AceMessage Unit
-    , marloweEditorSlot :: H.Slot AceQuery AceMessage Unit
+    , marloweEditorSlot :: H.Slot Monaco.Query Monaco.Message Unit
     , blocklySlot :: H.Slot BlocklyQuery BlocklyMessage Unit
-    , monacoSlot :: H.Slot Monaco.Query Monaco.Message Unit
     )
 
 _haskellEditorSlot :: SProxy "haskellEditorSlot"
@@ -100,9 +99,6 @@ _marloweEditorSlot = SProxy
 
 _blocklySlot :: SProxy "blocklySlot"
 _blocklySlot = SProxy
-
-_monacoSlot :: SProxy "monacoSlot"
-_monacoSlot = SProxy
 
 -----------------------------------------------------------
 data View

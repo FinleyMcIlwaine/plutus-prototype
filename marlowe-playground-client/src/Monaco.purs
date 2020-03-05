@@ -1,7 +1,7 @@
 module Monaco where
 
 import Prelude
-import Data.Function.Uncurried (Fn1, Fn2, runFn1)
+import Data.Function.Uncurried (Fn1, runFn1)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
@@ -142,6 +142,11 @@ type IMarkerData
     , source :: String
     }
 
+type IPosition
+  = { column :: Int
+    , lineNumber :: Int
+    }
+
 foreign import getMonaco :: Effect Monaco
 
 foreign import create_ :: EffectFn4 Monaco HTMLElement String (String -> Array IMarkerData) Editor
@@ -167,6 +172,8 @@ foreign import completionItemKind_ :: Fn1 String CompletionItemKind
 foreign import markerSeverity_ :: Fn1 String MarkerSeverity
 
 foreign import registerCompletionItemProvider_ :: EffectFn4 Monaco String (Boolean -> String -> IRange -> Array CompletionItem) (String -> String) Unit
+
+foreign import setPosition_ :: EffectFn2 Editor IPosition Unit
 
 markerSeverity :: String -> MarkerSeverity
 markerSeverity = runFn1 markerSeverity_
@@ -208,3 +215,6 @@ setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ mon
 
 registerCompletionItemProvider :: Monaco -> String -> (Boolean -> String -> IRange -> Array CompletionItem) -> (String -> String) -> Effect Unit
 registerCompletionItemProvider = runEffectFn4 registerCompletionItemProvider_
+
+setPosition :: Editor -> IPosition -> Effect Unit
+setPosition = runEffectFn2 setPosition_

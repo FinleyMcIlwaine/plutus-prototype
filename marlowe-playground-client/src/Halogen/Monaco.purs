@@ -13,7 +13,7 @@ import Halogen.HTML (HTML, div)
 import Halogen.HTML.Properties (class_, ref)
 import Halogen.Query.EventSource (Emitter(..), Finalizer(..), effectEventSource)
 import Marlowe.Linter as Linter
-import Monaco (Editor)
+import Monaco (Editor, IPosition)
 import Monaco as Monaco
 import Monaco.Marlowe as MM
 import Prelude (Unit, const, (>>=), discard, ($), bind, pure, unit)
@@ -24,6 +24,7 @@ type State
 data Query a
   = SetText String a
   | GetText (String -> a)
+  | SetPosition IPosition a
 
 data Action
   = Init
@@ -100,3 +101,8 @@ handleQuery (GetText f) = do
               s = Monaco.getValue model
             pure $ f s
         )
+
+handleQuery (SetPosition position next) = do
+  H.gets _.editor
+    >>= traverse_ \editor -> liftEffect $ Monaco.setPosition editor position
+  pure $ Just next

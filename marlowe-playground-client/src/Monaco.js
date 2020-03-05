@@ -73,3 +73,7 @@ exports.registerCompletionItemProvider_ = function(monaco, languageId, suggestio
   monaco.languages.registerCodeActionProvider(languageId, actionProvider);
   monaco.languages.registerDocumentFormattingEditProvider(languageId, formatter);
 }
+
+exports.setPosition_ = function(editor, position) {
+  editor.setPosition(position);
+}
