@@ -1,37 +1,36 @@
 module Halogen.Monaco where
 
-import Prelude
 import Data.Either (Either(..))
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
-import Debug.Trace (trace)
+import Data.Traversable (traverse, traverse_)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Class.Console as Console
 import Halogen (HalogenM, RefLabel(..))
 import Halogen as H
 import Halogen.HTML (HTML, div)
 import Halogen.HTML.Properties (class_, ref)
 import Halogen.Query.EventSource (Emitter(..), Finalizer(..), effectEventSource)
 import Marlowe.Linter as Linter
-import Monaco (Editor, Monaco)
+import Monaco (Editor)
 import Monaco as Monaco
 import Monaco.Marlowe as MM
+import Prelude (Unit, const, (>>=), discard, ($), bind, pure, unit)
 
 type State
   = { editor :: Maybe Editor }
 
 data Query a
   = SetText String a
+  | GetText (String -> a)
 
 data Action
   = Init
   | HandleChange String
 
 data Message
-  = Initialized
-  | TextChanged String
+  = TextChanged String
 
 monacoComponent :: forall m. MonadAff m => MonadEffect m => H.Component HTML Query Unit Message m
 monacoComponent =
@@ -62,7 +61,6 @@ handleAction Init = do
   maybeElement <- H.getHTMLElementRef (RefLabel "monacoEditor")
   case maybeElement of
     Just element -> do
-      trace element \_ -> pure unit
       liftEffect $ Monaco.registerLanguage m MM.languageExtensionPoint
       editor <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint) Linter.markers
       liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
@@ -73,7 +71,6 @@ handleAction Init = do
           $ effectEventSource (f1 editor)
       pure unit
     Nothing -> pure unit
-  H.raise Initialized
   where
   f1 :: Editor -> Emitter Effect Action -> Effect (Finalizer Effect)
   f1 editor (Emitter emitter) = do
@@ -84,17 +81,22 @@ handleAction Init = do
       )
     pure $ Finalizer $ pure unit
 
-handleAction (HandleChange contents) = do
-  liftEffect $ Console.log contents
-  H.raise $ TextChanged contents
-  pure unit
+handleAction (HandleChange contents) = H.raise $ TextChanged contents
 
 handleQuery :: forall a input m. MonadEffect m => Query a -> HalogenM State Action input Message m (Maybe a)
 handleQuery (SetText text next) = do
-  mEditor <- H.gets _.editor
-  case mEditor of
-    Just editor -> do
-      model <- liftEffect $ Monaco.getModel editor
-      liftEffect $ Monaco.setValue model text
-    _ -> pure unit
+  H.gets _.editor
+    >>= traverse_ \editor -> do
+        model <- liftEffect $ Monaco.getModel editor
+        liftEffect $ Monaco.setValue model text
   pure $ Just next
+
+handleQuery (GetText f) = do
+  H.gets _.editor
+    >>= traverse
+        ( \editor -> do
+            model <- liftEffect $ Monaco.getModel editor
+            let
+              s = Monaco.getValue model
+            pure $ f s
+        )

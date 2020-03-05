@@ -15,7 +15,7 @@ import Data.Either (Either(..))
 import Data.Foldable (foldl)
 import Data.FoldableWithIndex (foldlWithIndex)
 import Data.Json.JsonEither (JsonEither)
-import Data.Lens (assign, modifying, over, set, to, use, view, (^.))
+import Data.Lens (assign, modifying, over, set, to, view, (^.))
 import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.List.Types (NonEmptyList)
@@ -49,7 +49,7 @@ import Servant.PureScript.Ajax (AjaxError)
 import Servant.PureScript.Settings (SPSettings_)
 import StaticData (bufferLocalStorageKey, marloweBufferLocalStorageKey)
 import Text.Parsing.StringParser.Basic (lines)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction, MarloweState, Message(..), WebData, _Head, _blocklySlot, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _haskellEditorSlot, _holes, _marloweEditorSlot, _marloweState, _monacoSlot, _moneyInContract, _oldContract, _payments, _pendingInputs, _possibleActions, _slot, _state, _transactionError, _transactionWarnings, actionToActionInput, emptyMarloweState)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction, MarloweState, Message(..), WebData, _blocklySlot, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _haskellEditorSlot, _holes, _marloweEditorSlot, _marloweState, _monacoSlot, _moneyInContract, _oldContract, _payments, _pendingInputs, _possibleActions, _slot, _state, _transactionError, _transactionWarnings, actionToActionInput, emptyMarloweState)
 import Web.HTML.Event.DragEvent (DragEvent)
 import WebSocket (WebSocketRequestMessage(..))
 
@@ -61,13 +61,10 @@ class
   haskellEditorSetAnnotations :: Array Annotation -> m Unit
   marloweEditorSetValue :: String -> Maybe Int -> m Unit
   marloweEditorGetValue :: m (Maybe String)
-  marloweEditorHandleAction :: Editor.Action -> m Unit
-  marloweEditorSetAnnotations :: Array Annotation -> m Unit
   marloweEditorMoveCursorToPosition :: Ace.Position -> m Unit
   preventDefault :: DragEvent -> m Unit
   readFileFromDragEvent :: DragEvent -> m String
   updateContractInState :: String -> m Unit
-  updateState :: m Unit
   saveInitialState :: m Unit
   updateMarloweState :: (MarloweState -> MarloweState) -> m Unit
   applyTransactions :: m Unit
@@ -119,33 +116,15 @@ instance monadAppHalogenApp ::
           liftEffect do
             session <- AceEditor.getSession editor
             Session.setAnnotations annotations session
-  marloweEditorSetValue contents i = do
-    void $ wrap $ query _monacoSlot unit (SetText contents unit)
-    void $ withMarloweEditor $ liftEffect <<< AceEditor.setValue contents i
-  marloweEditorGetValue = withMarloweEditor $ liftEffect <<< AceEditor.getValue
-  marloweEditorHandleAction action = void $ withMarloweEditor (Editor.handleAction marloweBufferLocalStorageKey action)
-  marloweEditorSetAnnotations annotations =
-    let
-      changeIndex { column, row, text, "type": t } = { column, row: row - 1, text, "type": t }
-    in
-      void
-        $ withMarloweEditor \editor ->
-            liftEffect do
-              session <- AceEditor.getSession editor
-              Session.setAnnotations (map changeIndex annotations) session
+  marloweEditorSetValue contents i = void $ wrap $ query _monacoSlot unit (SetText contents unit)
+  marloweEditorGetValue = wrap $ query _monacoSlot unit (GetText identity)
+  -- FIXME: monaco
   marloweEditorMoveCursorToPosition (Ace.Position { column, row }) = do
     void $ withMarloweEditor $ liftEffect <<< AceEditor.focus
     void $ withMarloweEditor $ liftEffect <<< AceEditor.navigateTo (row - 1) (column - 1)
   preventDefault event = wrap $ liftEffect $ FileEvents.preventDefault event
   readFileFromDragEvent event = wrap $ liftAff $ FileEvents.readFileFromDragEvent event
-  updateContractInState contract = do
-    updateContractInStateImpl contract
-    errors <- use (_marloweState <<< _Head <<< _editorErrors)
-    warnings <- use (_marloweState <<< _Head <<< _editorWarnings)
-    marloweEditorSetAnnotations (errors <> warnings)
-  updateState = do
-    saveInitialStateImpl
-    wrap $ modifying _currentMarloweState updateStateImpl
+  updateContractInState contract = modifying _currentMarloweState (updatePossibleActions <<< updateContractInStateP contract)
   saveInitialState = saveInitialStateImpl
   updateMarloweState f = wrap $ modifying _marloweState (extendWith (updatePossibleActions <<< f))
   applyTransactions = wrap $ modifying _marloweState (extendWith updateStateImpl)
@@ -153,7 +132,7 @@ instance monadAppHalogenApp ::
     newContract <- marloweEditorGetValueImpl
     wrap $ assign _marloweState $ NEL.singleton (emptyMarloweState zero)
     wrap $ assign _oldContract Nothing
-    updateContractInStateImpl $ fromMaybe "" newContract
+    updateContractInState $ fromMaybe "" newContract
   saveBuffer text = wrap $ Editor.saveBuffer bufferLocalStorageKey text
   saveMarloweBuffer text = wrap $ Editor.saveBuffer marloweBufferLocalStorageKey text
   getOauthStatus = runAjax Server.getOauthStatus
@@ -169,31 +148,7 @@ instance monadAppHalogenApp ::
     wrap $ raise (WebsocketMessage msgString)
 
 -- I don't quite understand why but if you try to use MonadApp methods in HalogenApp methods you
--- blow the stack so we have 3 methods pulled out here. I think this just ensures they are run
--- in the HalogenApp monad and that's all that's required although a type annotation inside the
--- monad doesn't seem to help, neither does `wrap . runHalogenApp`
-saveInitialState' :: forall m. MonadEffect m => HalogenApp m Unit
-saveInitialState' = do
-  oldContract <- marloweEditorGetValue'
-  modifying _oldContract
-    ( \x -> case x of
-        Nothing ->
-          Just
-            ( case oldContract of
-                Nothing -> ""
-                Just y -> y
-            )
-        _ -> x
-    )
-
-marloweEditorGetValue' :: forall m. MonadEffect m => HalogenApp m (Maybe String)
-marloweEditorGetValue' = withMarloweEditor $ liftEffect <<< AceEditor.getValue
-
-updateContractInState' :: forall m. String -> HalogenApp m Unit
-updateContractInState' contract = modifying _currentMarloweState (updateStateP <<< updateContractInStateP contract)
-
--- I don't quite understand why but if you try to use MonadApp methods in HalogenApp methods you
--- blow the stack so we have 3 methods pulled out here. I think this just ensures they are run
+-- blow the stack so we have 2 methods pulled out here. I think this just ensures they are run
 -- in the HalogenApp monad and that's all that's required although a type annotation inside the
 -- monad doesn't seem to help, neither does `wrap . runHalogenApp`
 saveInitialStateImpl :: forall m. MonadEffect m => HalogenApp m Unit
@@ -206,10 +161,7 @@ saveInitialStateImpl = do
     )
 
 marloweEditorGetValueImpl :: forall m. MonadEffect m => HalogenApp m (Maybe String)
-marloweEditorGetValueImpl = withMarloweEditor $ liftEffect <<< AceEditor.getValue
-
-updateContractInStateImpl :: forall m. String -> HalogenApp m Unit
-updateContractInStateImpl contract = modifying _currentMarloweState (updatePossibleActions <<< updateContractInStateP contract)
+marloweEditorGetValueImpl = wrap $ query _monacoSlot unit (GetText identity)
 
 runHalogenApp :: forall m a. HalogenApp m a -> HalogenM FrontendState HAction ChildSlots Message m a
 runHalogenApp = unwrap

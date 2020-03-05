@@ -3,8 +3,7 @@ module MainFrame (mkMainFrame) where
 import API (_RunResult)
 import Ace.EditSession as Session
 import Ace.Editor (getSession) as Editor
-import Ace.Halogen.Component (AceMessage(TextChanged))
-import Ace.Types (Annotation, Editor, Position(..))
+import Ace.Types (Annotation, Editor)
 import Analytics (Event, defaultEvent, trackEvent)
 import Bootstrap (active, btn, btnGroup, btnInfo, btnPrimary, btnSmall, colXs12, colSm6, colSm5, container, container_, empty, hidden, listGroupItem_, listGroup_, navItem_, navLink, navTabs_, noGutters, pullRight, row, justifyContentBetween)
 import Classes (aCenter, aHorizontal, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
@@ -35,7 +34,6 @@ import Editor (compileButton, editorView, editorFeedback)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
-import Effect.Class.Console as Console
 import Foreign.Class (decode)
 import Foreign.JSON (parseJSON)
 import Gist (_GistId, gistFileContent, gistId)
@@ -61,7 +59,7 @@ import Marlowe.Holes (replaceInPositions)
 import Marlowe.Parser (contract, hole, parseTerm)
 import Marlowe.Parser as P
 import Marlowe.Semantics (ChoiceId, Input(..), State(..), inBounds)
-import MonadApp (haskellEditorHandleAction, class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorMoveCursorToPosition, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
+import MonadApp (class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorHandleAction, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
 import Network.RemoteData (RemoteData(..), _Success, isLoading, isSuccess)
 import Prelude (class Show, Unit, add, bind, const, discard, not, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==), (||))
 import Servant.PureScript.Settings (SPSettings_)
@@ -180,8 +178,6 @@ toEvent (HaskellEditorAction _) = Just $ (defaultEvent "ConfigureEditor")
 
 toEvent (MarloweHandleEditorMessage _) = Nothing
 
-toEvent (MarloweHandleMonacoEditorMessage _) = Nothing
-
 toEvent (MarloweHandleDragEvent _) = Nothing
 
 toEvent (MarloweHandleDropEvent _) = Just $ defaultEvent "MarloweDropScript"
@@ -256,17 +252,10 @@ handleAction ::
   HAction -> m Unit
 handleAction (HaskellEditorAction subEvent) = haskellEditorHandleAction subEvent
 
-handleAction (MarloweHandleEditorMessage (TextChanged text)) = do
+handleAction (MarloweHandleEditorMessage (Monaco.TextChanged text)) = do
   assign _selectedHole Nothing
   saveMarloweBuffer text
   updateContractInState text
-
-handleAction (MarloweHandleMonacoEditorMessage (Monaco.TextChanged contents)) = do
-  assign _selectedHole Nothing
-  saveMarloweBuffer contents
-  updateContractInState contents
-
-handleAction (MarloweHandleMonacoEditorMessage _) = pure unit
 
 handleAction (MarloweHandleDragEvent event) = preventDefault event
 
@@ -278,7 +267,8 @@ handleAction (MarloweHandleDropEvent event) = do
 
 handleAction (MarloweMoveToPosition row column) = do
   contents <- fromMaybe "" <$> marloweEditorGetValue
-  marloweEditorMoveCursorToPosition (Position { column, row })
+  -- FIXME: change to monaco
+  -- marloweEditorMoveCursorToPosition (Position { column, row })
   assign _selectedHole Nothing
 
 handleAction CheckAuthStatus = do
@@ -321,6 +311,7 @@ handleAction (LoadMarloweScript key) = do
           Right pcon -> show $ pretty pcon
           Left _ -> contents
       marloweEditorSetValue prettyContents (Just 1)
+      saveMarloweBuffer prettyContents
       updateContractInState prettyContents
       resetContract
 

@@ -48,8 +48,7 @@ data HQuery a
 
 data HAction
   -- Haskell Editor
-  = MarloweHandleEditorMessage AceMessage
-  | MarloweHandleMonacoEditorMessage Monaco.Message
+  = MarloweHandleEditorMessage Monaco.Message
   | MarloweHandleDragEvent DragEvent
   | MarloweHandleDropEvent DragEvent
   | MarloweMoveToPosition Pos Pos

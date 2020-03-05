@@ -1,7 +1,6 @@
 module Simulation where
 
 import API (RunResult(RunResult))
-import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
 import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
@@ -35,7 +34,6 @@ import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, cla
 import Halogen.HTML.Properties.ARIA (role)
 import Help (toHTML)
 import Halogen.Monaco (monacoComponent)
-import Halogen.Monaco as Monaco
 import Marlowe.Holes (Holes(..), MarloweHole(..), MarloweType(..), getMarloweConstructors)
 import Marlowe.Parser (currencySymbol, transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), ChosenNum, CurrencySymbol, Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TokenName, TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
@@ -46,6 +44,7 @@ import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), MarloweError(..), MarloweState, SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _monacoSlot, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), MarloweError(..), MarloweState, _Head, _analysisState, _contract, _editorErrors, _holes, _marloweCompileResult, _marloweState, _monacoSlot, _payments, _pendingInputs, _possibleActions, _selectedHole, _slot, _state, _transactionError, _transactionWarnings)
 
 paneHeader :: forall p. String -> HTML p HAction
 paneHeader s = h2 [ class_ $ ClassName "pane-header" ] [ text s ]
@@ -559,29 +558,17 @@ simulationPaneOld state =
               , onDrop $ Just <<< MarloweHandleDropEvent
               ]
               [ row_
-                  [ div [ class_ col9 ] []
-                  -- [ div [ class_ col9 ] [ slot _marloweEditorSlot unit marloweEditor unit (Just <<< MarloweHandleEditorMessage) ]
+                  [ div [ class_ col9 ] [ slot _monacoSlot unit monacoComponent unit (Just <<< MarloweHandleEditorMessage) ]
                   , holesPane (view _selectedHole state) (view (_marloweState <<< _Head <<< _holes) $ state)
                   ]
               ]
           , br_
           , errorList
           , analysisPane state
-          , div [] [ slot _monacoSlot unit monacoEditor unit (Just <<< MarloweHandleMonacoEditorMessage) ]
           ]
         ]
     )
   where
-  marloweEditor =
-    aceComponent (Editor.initEditor initialContents StaticData.marloweBufferLocalStorageKey editorPreferences)
-      (Just Live)
-
-  monacoEditor = monacoComponent
-
-  editorPreferences = view _editorPreferences state
-
-  initialContents = Map.lookup "Deposit Incentive" StaticData.marloweContracts
-
   errorList = case view _marloweCompileResult state of
     Left errors -> listGroup_ (listGroupItem_ <<< pure <<< compilationErrorPane <$> errors)
     _ -> empty
