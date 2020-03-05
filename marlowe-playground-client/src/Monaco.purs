@@ -8,7 +8,7 @@ import Data.Newtype (class Newtype)
 import Data.String.Regex (Regex)
 import Data.Tuple (Tuple)
 import Effect (Effect)
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4, runEffectFn2, runEffectFn3, runEffectFn4)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4, runEffectFn1, runEffectFn2, runEffectFn3, runEffectFn4)
 import Foreign (unsafeToForeign)
 import Foreign.Generic (class Encode, Foreign, SumEncoding(..), defaultOptions, encode, genericEncode)
 import Foreign.Object (Object)
@@ -112,6 +112,8 @@ instance defaultMonarchLanguage :: Default MonarchLanguage where
 
 foreign import data Monaco :: Type
 
+foreign import data Editor :: Type
+
 foreign import data ITextModel :: Type
 
 foreign import data IRange :: Type
@@ -142,13 +144,17 @@ type IMarkerData
 
 foreign import getMonaco :: Effect Monaco
 
-foreign import create_ :: EffectFn4 Monaco HTMLElement String (String -> Array IMarkerData) Unit
+foreign import create_ :: EffectFn4 Monaco HTMLElement String (String -> Array IMarkerData) Editor
+
+foreign import onDidChangeContent_ :: forall a. EffectFn2 Editor ({} -> Effect a) Unit
 
 foreign import registerLanguage_ :: EffectFn2 Monaco Foreign Unit
 
 foreign import setMonarchTokensProvider_ :: EffectFn3 Monaco String Foreign Unit
 
-foreign import getModel_ :: EffectFn1 Monaco ITextModel
+foreign import getModel_ :: EffectFn1 Editor ITextModel
+
+foreign import getValue_ :: Fn1 ITextModel String
 
 foreign import marloweTokensProvider :: TokensProvider
 
@@ -166,8 +172,11 @@ markerSeverity = runFn1 markerSeverity_
 completionItemKind :: String -> CompletionItemKind
 completionItemKind = runFn1 completionItemKind_
 
-create :: Monaco -> HTMLElement -> String -> (String -> Array IMarkerData) -> Effect Unit
+create :: Monaco -> HTMLElement -> String -> (String -> Array IMarkerData) -> Effect Editor
 create = runEffectFn4 create_
+
+onDidChangeContent :: forall a. Editor -> ({} -> Effect a) -> Effect Unit
+onDidChangeContent = runEffectFn2 onDidChangeContent_
 
 registerLanguage :: Monaco -> LanguageExtensionPoint -> Effect Unit
 registerLanguage monaco language =
@@ -182,6 +191,12 @@ setMonarchTokensProvider monaco languageId languageDef =
     languageDefF = encode languageDef
   in
     runEffectFn3 setMonarchTokensProvider_ monaco languageId languageDefF
+
+getModel :: Editor -> Effect ITextModel
+getModel = runEffectFn1 getModel_
+
+getValue :: ITextModel -> String
+getValue = runFn1 getValue_
 
 setMarloweTokensProvider :: Monaco -> String -> Effect Unit
 setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ monaco languageId marloweTokensProvider

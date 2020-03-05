@@ -35,6 +35,7 @@ import Editor (compileButton, editorView, editorFeedback)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Class.Console as Console
 import Foreign.Class (decode)
 import Foreign.JSON (parseJSON)
 import Gist (_GistId, gistFileContent, gistId)
@@ -46,6 +47,8 @@ import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Extra (mapComponent)
 import Halogen.HTML.Properties (alt, class_, classes, disabled, href, id_, src)
+import Halogen.HTML.Properties (class_, classes, disabled, href)
+import Halogen.Monaco as Monaco
 import Halogen.Query (HalogenM)
 import Halogen.SVG (GradientUnits(..), Translate(..), d, defs, gradientUnits, linearGradient, offset, path, stop, stopColour, svg, transform, x1, x2, y2)
 import Halogen.SVG as SVG
@@ -257,6 +260,11 @@ handleAction (MarloweHandleEditorMessage (TextChanged text)) = do
   assign _selectedHole Nothing
   saveMarloweBuffer text
   updateContractInState text
+
+handleAction (MarloweHandleMonacoEditorMessage (Monaco.TextChanged contents)) = do
+  assign _selectedHole Nothing
+  saveMarloweBuffer contents
+  updateContractInState contents
 
 handleAction (MarloweHandleMonacoEditorMessage _) = pure unit
 

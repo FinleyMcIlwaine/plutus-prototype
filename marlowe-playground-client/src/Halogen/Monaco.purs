@@ -1,16 +1,21 @@
 module Halogen.Monaco where
 
 import Prelude
+import Data.Either (Either(..))
 import Data.Lens (view)
 import Data.Maybe (Maybe(..))
 import Debug.Trace (trace)
+import Effect (Effect)
+import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Class.Console as Console
 import Halogen (HalogenM, RefLabel(..))
 import Halogen as H
 import Halogen.HTML (HTML, div)
 import Halogen.HTML.Properties (class_, ref)
+import Halogen.Query.EventSource (Emitter(..), Finalizer(..), effectEventSource)
 import Marlowe.Linter as Linter
-import Monaco (Monaco)
+import Monaco (Editor, Monaco)
 import Monaco as Monaco
 import Monaco.Marlowe as MM
 
@@ -22,11 +27,13 @@ data Query a
 
 data Action
   = Init
+  | HandleChange String
 
 data Message
   = Initialized
+  | TextChanged String
 
-monacoComponent :: forall m. MonadEffect m => H.Component HTML Query Unit Message m
+monacoComponent :: forall m. MonadAff m => MonadEffect m => H.Component HTML Query Unit Message m
 monacoComponent =
   H.mkComponent
     { initialState: const { editor: Nothing }
@@ -49,7 +56,7 @@ render state =
     ]
     []
 
-handleAction :: forall slots m. MonadEffect m => Action -> HalogenM State Action slots Message m Unit
+handleAction :: forall slots m. MonadAff m => MonadEffect m => Action -> HalogenM State Action slots Message m Unit
 handleAction Init = do
   m <- liftEffect Monaco.getMonaco
   maybeElement <- H.getHTMLElementRef (RefLabel "monacoEditor")
@@ -57,14 +64,30 @@ handleAction Init = do
     Just element -> do
       trace element \_ -> pure unit
       liftEffect $ Monaco.registerLanguage m MM.languageExtensionPoint
-      _ <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint) Linter.markers
+      editor <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint) Linter.markers
       liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
       liftEffect $ Monaco.registerCompletionItemProvider m (view MM._id MM.languageExtensionPoint) Linter.suggestions Linter.format
-      -- liftEffect $ Monaco.setMonarchTokensProvider m (view MM._id MM.languageExtensionPoint) MM.monarchLanguage
       _ <- H.modify (const { editor: Just m })
+      _ <-
+        H.subscribe
+          $ effectEventSource (f1 editor)
       pure unit
     Nothing -> pure unit
   H.raise Initialized
+  where
+  f1 :: Editor -> Emitter Effect Action -> Effect (Finalizer Effect)
+  f1 editor (Emitter emitter) = do
+    Monaco.onDidChangeContent editor
+      ( \_ -> do
+          model <- Monaco.getModel editor
+          emitter $ Left $ HandleChange $ Monaco.getValue model
+      )
+    pure $ Finalizer $ pure unit
+
+handleAction (HandleChange contents) = do
+  liftEffect $ Console.log contents
+  H.raise $ TextChanged contents
+  pure unit
 
 handleQuery :: forall a input m. Query a -> HalogenM State Action input Message m (Maybe a)
 handleQuery (Q next) = pure $ Just next

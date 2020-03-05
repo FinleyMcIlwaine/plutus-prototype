@@ -29,10 +29,21 @@ exports.create_ = function (monaco, nodeId, languageId, getMarkers) {
     const markers = getMarkers(contract);
     monaco.editor.setModelMarkers(model, "Owner - not sure what this is for", markers);
   });
+  return editor;
 }
 
-exports.getModel_ = function (monaco) {
-  return monaco.editor.getModel("inmemory://model/1");
+exports.onDidChangeContent_ = function(editor, handler) {
+  editor.getModel().onDidChangeContent(function(event) {
+    handler(event)();
+  });
+}
+
+exports.getModel_ = function (editor) {
+  return editor.getModel();
+}
+
+exports.getValue_ = function (model) {
+  return model.getValue();
 }
 
 exports.marloweTokensProvider = require('../monacoMarlowe.js').marloweTokensProvider;
