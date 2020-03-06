@@ -14,13 +14,16 @@ module Marlowe.Linter
   , suggestions
   , markers
   , format
+  , provideCodeActions
   ) where
 
 import Prelude
-import Data.Array (catMaybes, cons, fold, foldMap, (:))
+import Data.Array (catMaybes, cons, fold, foldMap, take, (:))
 import Data.Array as Array
+import Data.Array.NonEmpty (index)
 import Data.BigInteger (BigInteger)
 import Data.Either (Either(..))
+import Data.Enum (fromEnum)
 import Data.Lens (Lens', over, to, view, (^.))
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
@@ -30,13 +33,15 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.String (codePointFromChar, length, takeWhile)
+import Data.String (codePointFromChar, fromCodePointArray, length, takeWhile, toCodePointArray)
+import Data.String.Regex (match, regex)
+import Data.String.Regex.Flags (noFlags)
 import Data.Symbol (SProxy(..))
 import Data.Tuple.Nested (type (/\), (/\))
-import Marlowe.Holes (Argument, Action(..), Case(..), Contract(..), Holes(..), MarloweHole(..), Observation(..), Term(..), Value(..), ValueId, constructMarloweType, getHoles, getMarloweConstructors, holeSuggestions, insertHole)
+import Marlowe.Holes (Action(..), Argument, Case(..), Contract(..), Holes(..), MarloweHole(..), MarloweType(..), Observation(..), Term(..), Value(..), ValueId, constructMarloweType, getHoles, getMarloweConstructors, holeSuggestions, insertHole, readMarloweType)
 import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (Timeout)
-import Monaco (CompletionItem, IMarkerData, IRange, markerSeverity)
+import Monaco (CodeAction, CompletionItem, IMarkerData, IRange, Uri, markerSeverity)
 import Text.Parsing.StringParser (Pos)
 import Text.Pretty (pretty)
 
@@ -311,6 +316,8 @@ suggestions stripParens contract range = case parseContract contract of
           Nothing -> []
           Just { head } -> holeSuggestions stripParens range head
 
+-- FIXME: We have multiple model markers, 1 per quick fix. This is wrong though, we need only 1 but in MarloweCodeActionProvider we want to run the code
+-- to generate the quick fixes from this single model marker
 markers :: String -> Array IMarkerData
 markers contract = case lint <$> parseContract contract of
   Left EmptyInput -> []
@@ -347,35 +354,72 @@ markers contract = case lint <$> parseContract contract of
 holesToMarkers :: Holes -> Array IMarkerData
 holesToMarkers (Holes holes) =
   let
-    (allHoles :: Array MarloweHole) = Set.toUnfoldable $ fold $ Map.values holes
+    (allHoles :: Array _) = Set.toUnfoldable $ fold $ Map.values holes
   in
     foldMap holeToMarkers allHoles
 
 holeToMarker :: MarloweHole -> Map String (Array Argument) -> String -> IMarkerData
 holeToMarker hole@(MarloweHole { name, marloweType, row, column }) m constructorName =
-  let
-    code = constructMarloweType constructorName hole m
-  in
-    { startColumn: column
-    , startLineNumber: row
-    , endColumn: column + (length name) + 1
-    , endLineNumber: row
-    , message: "Found hole of type " <> show marloweType
-    , severity: markerSeverity "Warning"
-    , code
-    , source: constructorName
-    }
+  { startColumn: column
+  , startLineNumber: row
+  , endColumn: column + (length name) + 1
+  , endLineNumber: row
+  , message: "Found hole of type " <> (dropEnd 4 $ show marloweType)
+  , severity: markerSeverity "Hint"
+  , code: ""
+  , source: ""
+  }
+  where
+  dropEnd :: Int -> String -> String
+  dropEnd n = fromCodePointArray <<< Array.dropEnd n <<< toCodePointArray
 
 holeToMarkers :: MarloweHole -> Array IMarkerData
 holeToMarkers hole@(MarloweHole { name, marloweType, row, column }) =
   let
     m = getMarloweConstructors marloweType
 
-    constructors = Set.toUnfoldable $ Map.keys m
+    constructors = take 1 $ Set.toUnfoldable $ Map.keys m
   in
     map (holeToMarker hole m) constructors
+
+markerToHole :: IMarkerData -> MarloweType -> MarloweHole
+markerToHole { startColumn, startLineNumber } marloweType = MarloweHole { name: "unknown", marloweType, row: startLineNumber, column: startColumn }
 
 format :: String -> String
 format contractString = case parseContract contractString of
   Left _ -> contractString
   Right contract -> show $ pretty contract
+
+provideCodeActions :: Uri -> Array IMarkerData -> Array CodeAction
+provideCodeActions uri markers' =
+  (flip foldMap) markers' \(marker@{ message, startLineNumber, startColumn, endLineNumber, endColumn }) -> case regex "Found hole of type (\\w+)" noFlags of
+    Left _ -> []
+    Right r -> case readMarloweType =<< (join <<< (flip index 1)) =<< match r (message <> "Type") of
+      Nothing -> []
+      Just BigIntegerType -> []
+      Just StringType -> []
+      Just marloweType ->
+        let
+          m = getMarloweConstructors marloweType
+
+          hole = markerToHole marker marloweType
+
+          (constructors :: Array _) = Set.toUnfoldable $ Map.keys m
+
+          range =
+            { startLineNumber
+            , startColumn
+            , endLineNumber
+            , endColumn
+            }
+
+          actions =
+            (flip map) constructors \constructorName ->
+              let
+                text = constructMarloweType constructorName hole m
+
+                edit = { resource: uri, edit: { range, text } }
+              in
+                { title: constructorName, edit: { edits: [ edit ] }, kind: "quickfix" }
+        in
+          actions

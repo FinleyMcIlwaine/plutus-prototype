@@ -65,7 +65,7 @@ handleAction Init = do
       liftEffect $ Monaco.registerLanguage m MM.languageExtensionPoint
       editor <- liftEffect $ Monaco.create m element (view MM._id MM.languageExtensionPoint) Linter.markers
       liftEffect $ Monaco.setMarloweTokensProvider m (view MM._id MM.languageExtensionPoint)
-      liftEffect $ Monaco.registerCompletionItemProvider m (view MM._id MM.languageExtensionPoint) Linter.suggestions Linter.format
+      liftEffect $ Monaco.registerCompletionItemProvider m (view MM._id MM.languageExtensionPoint) Linter.suggestions Linter.format Linter.provideCodeActions
       _ <- H.modify (const { editor: Just editor })
       _ <-
         H.subscribe

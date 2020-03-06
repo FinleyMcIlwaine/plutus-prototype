@@ -22,6 +22,7 @@ import Data.String.Extra (unlines)
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested ((/\))
+import Foreign.Generic (class Decode, class Encode, decode, defaultOptions, genericDecode, genericEncode)
 import Marlowe.Semantics (ChosenNum, Money, PubKey, Slot, Timeout, TokenName)
 import Marlowe.Semantics as S
 import Monaco (CompletionItem, CompletionItemKind, IRange, completionItemKind)
@@ -73,6 +74,41 @@ instance boundedEnumMarloweType :: BoundedEnum MarloweType where
 
 allMarloweTypes :: Array MarloweType
 allMarloweTypes = upFromIncluding bottom
+
+readMarloweType :: String -> Maybe MarloweType
+readMarloweType "StringType" = Just StringType
+
+readMarloweType "BigIntegerType" = Just BigIntegerType
+
+readMarloweType "SlotType" = Just SlotType
+
+readMarloweType "AccountIdType" = Just AccountIdType
+
+readMarloweType "ChoiceIdType" = Just ChoiceIdType
+
+readMarloweType "ValueIdType" = Just ValueIdType
+
+readMarloweType "ActionType" = Just ActionType
+
+readMarloweType "PayeeType" = Just PayeeType
+
+readMarloweType "CaseType" = Just CaseType
+
+readMarloweType "ValueType" = Just ValueType
+
+readMarloweType "InputType" = Just InputType
+
+readMarloweType "ObservationType" = Just ObservationType
+
+readMarloweType "ContractType" = Just ContractType
+
+readMarloweType "BoundType" = Just BoundType
+
+readMarloweType "TokenType" = Just TokenType
+
+readMarloweType "PartyType" = Just PartyType
+
+readMarloweType _ = Nothing
 
 data Argument
   = ArrayArg String

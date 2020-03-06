@@ -8,7 +8,7 @@ import Data.Newtype (class Newtype)
 import Data.String.Regex (Regex)
 import Data.Tuple (Tuple)
 import Effect (Effect)
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4, runEffectFn1, runEffectFn2, runEffectFn3, runEffectFn4)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, EffectFn4, EffectFn5, runEffectFn1, runEffectFn2, runEffectFn3, runEffectFn4, runEffectFn5)
 import Foreign (unsafeToForeign)
 import Foreign.Generic (class Encode, Foreign, SumEncoding(..), defaultOptions, encode, genericEncode)
 import Foreign.Object (Object)
@@ -116,13 +116,20 @@ foreign import data Editor :: Type
 
 foreign import data ITextModel :: Type
 
-foreign import data IRange :: Type
-
 foreign import data CompletionItemKind :: Type
 
 foreign import data MarkerSeverity :: Type
 
 foreign import data TokensProvider :: Type
+
+foreign import data Uri :: Type
+
+type IRange
+  = { startLineNumber :: Int
+    , startColumn :: Int
+    , endLineNumber :: Int
+    , endColumn :: Int
+    }
 
 type CompletionItem
   = { label :: String
@@ -145,6 +152,26 @@ type IMarkerData
 type IPosition
   = { column :: Int
     , lineNumber :: Int
+    }
+
+type TextEdit
+  = { range :: IRange
+    , text :: String
+    }
+
+type WorkspaceTextEdit
+  = { resource :: Uri
+    , edit :: TextEdit
+    }
+
+type WorkspaceEdit
+  = { edits :: Array WorkspaceTextEdit
+    }
+
+type CodeAction
+  = { title :: String
+    , edit :: WorkspaceEdit
+    , kind :: String
     }
 
 foreign import getMonaco :: Effect Monaco
@@ -171,7 +198,7 @@ foreign import completionItemKind_ :: Fn1 String CompletionItemKind
 
 foreign import markerSeverity_ :: Fn1 String MarkerSeverity
 
-foreign import registerCompletionItemProvider_ :: EffectFn4 Monaco String (Boolean -> String -> IRange -> Array CompletionItem) (String -> String) Unit
+foreign import registerCompletionItemProvider_ :: EffectFn5 Monaco String (Boolean -> String -> IRange -> Array CompletionItem) (String -> String) (Uri -> Array IMarkerData -> Array CodeAction) Unit
 
 foreign import setPosition_ :: EffectFn2 Editor IPosition Unit
 
@@ -213,8 +240,8 @@ setValue = runEffectFn2 setValue_
 setMarloweTokensProvider :: Monaco -> String -> Effect Unit
 setMarloweTokensProvider monaco languageId = runEffectFn3 setTokensProvider_ monaco languageId marloweTokensProvider
 
-registerCompletionItemProvider :: Monaco -> String -> (Boolean -> String -> IRange -> Array CompletionItem) -> (String -> String) -> Effect Unit
-registerCompletionItemProvider = runEffectFn4 registerCompletionItemProvider_
+registerCompletionItemProvider :: Monaco -> String -> (Boolean -> String -> IRange -> Array CompletionItem) -> (String -> String) -> (Uri -> Array IMarkerData -> Array CodeAction) -> Effect Unit
+registerCompletionItemProvider = runEffectFn5 registerCompletionItemProvider_
 
 setPosition :: Editor -> IPosition -> Effect Unit
 setPosition = runEffectFn2 setPosition_
