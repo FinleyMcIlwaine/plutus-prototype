@@ -64,7 +64,7 @@ exports.markerSeverity_ = function(name) {
 }
 
 exports.registerCompletionItemProvider_ = function(monaco, languageId, suggestionsProvider, format, provideCodeActions) {
-  let m = require('./Marlowe/Monaco.ts')
+  let m = require('src/Marlowe/Monaco.ts')
   let uncurriedSuggestions = (stripParens, contract, range) => suggestionsProvider(stripParens)(contract)(range);
   let uncurriedProvideCodeActions = (a, b) => provideCodeActions(a)(b);
   let provider = new m.MarloweCompletionItemProvider(uncurriedSuggestions);

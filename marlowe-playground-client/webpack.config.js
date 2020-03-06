@@ -103,7 +103,8 @@ module.exports = {
             'node_modules'
         ],
         alias: {
-            grammar: path.resolve(__dirname, './grammar.ne')
+            grammar: path.resolve(__dirname, './grammar.ne'),
+            src: path.resolve(__dirname, './src')
         },
         extensions: ['.purs', '.js', 'ts', 'tsx']
     },
