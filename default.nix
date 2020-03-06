@@ -472,6 +472,7 @@ let
                                 easyPS.purs
                                 easyPS.spago
                                 easyPS.purty
+                                pkgs.yarn2nix-moretea.yarn2nix
                               ];
         });
     };
