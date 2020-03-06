@@ -26,6 +26,9 @@ module.exports = {
                 options: {
                     baseDir: '.'
                 }
+            }, {
+                test: /\.tsx?$/,
+                loader: "ts-loader"
             },
             {
                 test: /\.purs$/,

@@ -15,7 +15,7 @@ import Data.Tuple (Tuple(..))
 import Editor as Editor
 import Examples.Marlowe.Contracts as Contracts
 import Marlowe.Semantics (AccountId(..), ChoiceId(..), Contract(..), Input(..), Token(..), Party(..))
-import MonadApp (class MonadApp, applyTransactions, extendWith, marloweEditorSetAnnotations, updateContractInState, updateContractInStateP, updateMarloweState, updatePossibleActions, updateStateP)
+import MonadApp (class MonadApp, applyTransactions, extendWith, updateContractInState, updateContractInStateP, updateMarloweState, updatePossibleActions, updateStateP)
 import Network.RemoteData (RemoteData(..))
 import Test.Unit (TestSuite, suite, test)
 import Test.Unit.Assert (equal)
@@ -47,17 +47,11 @@ instance monadAppState :: MonadApp MockApp where
   haskellEditorHandleAction _ = pure unit
   marloweEditorSetValue _ _ = pure unit
   marloweEditorGetValue = pure (Just Contracts.escrow)
-  marloweEditorHandleAction _ = pure unit
-  marloweEditorSetAnnotations _ = pure unit
   marloweEditorMoveCursorToPosition _ = pure unit
   preventDefault _ = pure unit
   readFileFromDragEvent _ = pure ""
   updateContractInState contract = do
     updateContractInStateImpl contract
-    errors <- use (_marloweState <<< _Head <<< _editorErrors)
-    warnings <- use (_marloweState <<< _Head <<< _editorWarnings)
-    marloweEditorSetAnnotations (errors <> warnings)
-  updateState = wrap $ modifying _currentMarloweState updateStateP
   saveInitialState = pure unit
   updateMarloweState f = wrap $ modifying _marloweState (extendWith f)
   applyTransactions = wrap $ modifying _marloweState (extendWith updateStateP)

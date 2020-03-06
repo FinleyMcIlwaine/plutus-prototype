@@ -422,8 +422,6 @@ warningToMarker :: Warning -> IMarkerData
 warningToMarker warning =
   let
     { startColumn, startLineNumber, endColumn, endLineNumber } = getWarningRange warning
-
-    name = "someting"
   in
     { startColumn
     , startLineNumber
