@@ -39,7 +39,7 @@ import Language.Haskell.Interpreter (InterpreterError, InterpreterResult, Source
 import Marlowe (SPParams_)
 import Marlowe as Server
 import Marlowe.Holes (Holes(..), MarloweHole(..), fromTerm)
-import Marlowe.Linter (Position, lint)
+import Marlowe.Linter (Warning, getWarningPosition, lint)
 import Marlowe.Linter as L
 import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (ChoiceId(..), Contract(..), Party(..), PubKey, SlotInterval(..), TransactionInput(..), TransactionOutput(..), computeTransaction, extractRequiredActionsWithTxs, moneyInContract)
@@ -182,14 +182,7 @@ updateContractInStateP text state = case parseContract text of
     let
       lintResult = lint parsedContract
 
-      warnings =
-        map (warningToAnnotation text "The contract can make a negative payment here") (view L._negativePayments lintResult)
-          <> map (warningToAnnotation text "The contract can make a negative deposit here") (view L._negativeDeposits lintResult)
-          <> Set.toUnfoldable (Set.map (warningToAnnotation text "Timeouts should always increase in value") (view L._timeoutNotIncreasing lintResult))
-          <> map (warningToAnnotation text "The contract tries to Use a ValueId that has not been defined in a Let") (view L._uninitializedUse lintResult)
-          <> map (warningToAnnotation text "Let is redefining a ValueId that already exists") (view L._shadowedLet lintResult)
-          <> map (warningToAnnotation text "This Observation will always evaluate to True") (view L._trueObservation lintResult)
-          <> map (warningToAnnotation text "This Observation will always evaluate to False") (view L._falseObservation lintResult)
+      warnings = map warningToAnnotation (view (L._warnings <<< to Set.toUnfoldable) lintResult)
 
       mContract = fromTerm parsedContract
     in
@@ -206,8 +199,12 @@ updateContractInStateP text state = case parseContract text of
           (set _editorWarnings warnings <<< set _editorErrors errors <<< set _holes (Holes holes)) state
   Left error -> (set _editorErrors [ errorToAnnotation text error ] <<< set _holes mempty) state
 
-warningToAnnotation :: String -> String -> Position -> Annotation
-warningToAnnotation str text { row, column } = { column, row, text, "type": "warning" }
+warningToAnnotation :: Warning -> Annotation
+warningToAnnotation warning =
+  let
+    { column, row } = getWarningPosition warning
+  in
+    { column, row, text: show warning, "type": "warning" }
 
 holeToAnnotation :: String -> MarloweHole -> Annotation
 holeToAnnotation str (MarloweHole { name, marloweType, row, column }) = { column, row, text: "Found hole ?" <> name, "type": "warning" }

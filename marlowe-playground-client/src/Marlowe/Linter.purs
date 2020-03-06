@@ -3,27 +3,25 @@ module Marlowe.Linter
   , State(..)
   , Position
   , MaxTimeout
+  , Warning(..)
   , _holes
-  , _negativeDeposits
-  , _negativePayments
-  , _timeoutNotIncreasing
-  , _uninitializedUse
-  , _shadowedLet
-  , _trueObservation
-  , _falseObservation
+  , _warnings
   , suggestions
   , markers
   , format
   , provideCodeActions
+  , getWarningPosition
   ) where
 
 import Prelude
-import Data.Array (catMaybes, cons, fold, foldMap, take, (:))
+import Data.Array (catMaybes, fold, foldMap, take, (:))
 import Data.Array as Array
 import Data.Array.NonEmpty (index)
 import Data.BigInteger (BigInteger)
 import Data.Either (Either(..))
-import Data.Enum (fromEnum)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq (genericEq)
+import Data.Generic.Rep.Ord (genericCompare)
 import Data.Lens (Lens', over, to, view, (^.))
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
@@ -63,18 +61,53 @@ instance semigroupMax :: Semigroup MaxTimeout where
 instance monoidMaxTimeout :: Monoid MaxTimeout where
   mempty = MaxTimeout zero
 
+data Warning
+  = NegativePayment Position
+  | NegativeDeposit Position
+  | TimeoutNotIncreasing Position
+  | UninitializedUse Position
+  | ShadowedLet Position
+  | TrueObservation Position
+  | FalseObservation Position
+
+derive instance genericWarning :: Generic Warning _
+
+instance eqWarning :: Eq Warning where
+  eq = genericEq
+
+instance ordWarning :: Ord Warning where
+  compare = genericCompare
+
+instance showWarning :: Show Warning where
+  show (NegativePayment _) = "The contract can make a negative payment"
+  show (NegativeDeposit _) = "The contract can make a negative deposit"
+  show (TimeoutNotIncreasing _) = "Timeouts should always increase in value"
+  show (UninitializedUse _) = "The contract tries to Use a ValueId that has not been defined in a Let"
+  show (ShadowedLet _) = "Let is redefining a ValueId that already exists"
+  show (TrueObservation _) = "This Observation will always evaluate to True"
+  show (FalseObservation _) = "This Observation will always evaluate to False"
+
+getWarningPosition :: Warning -> Position
+getWarningPosition (NegativePayment pos) = pos
+
+getWarningPosition (NegativeDeposit pos) = pos
+
+getWarningPosition (TimeoutNotIncreasing pos) = pos
+
+getWarningPosition (UninitializedUse pos) = pos
+
+getWarningPosition (ShadowedLet pos) = pos
+
+getWarningPosition (TrueObservation pos) = pos
+
+getWarningPosition (FalseObservation pos) = pos
+
 newtype State
   = State
   { holes :: Holes
-  , negativePayments :: Array Position
-  , negativeDeposits :: Array Position
   , maxTimeout :: MaxTimeout
-  , timeoutNotIncreasing :: Set Position
   , letBindings :: Set ValueId
-  , uninitializedUse :: Array Position
-  , shadowedLet :: Array Position
-  , trueObservation :: Array Position
-  , falseObservation :: Array Position
+  , warnings :: Set Warning
   }
 
 derive instance newtypeState :: Newtype State _
@@ -86,32 +119,14 @@ derive newtype instance monoidState :: Monoid State
 _holes :: Lens' State Holes
 _holes = _Newtype <<< prop (SProxy :: SProxy "holes")
 
-_negativePayments :: Lens' State (Array Position)
-_negativePayments = _Newtype <<< prop (SProxy :: SProxy "negativePayments")
-
-_negativeDeposits :: Lens' State (Array Position)
-_negativeDeposits = _Newtype <<< prop (SProxy :: SProxy "negativeDeposits")
-
 _maxTimeout :: Lens' State Timeout
 _maxTimeout = _Newtype <<< prop (SProxy :: SProxy "maxTimeout") <<< _Newtype
 
-_timeoutNotIncreasing :: Lens' State (Set Position)
-_timeoutNotIncreasing = _Newtype <<< prop (SProxy :: SProxy "timeoutNotIncreasing")
+_warnings :: Lens' State (Set Warning)
+_warnings = _Newtype <<< prop (SProxy :: SProxy "warnings")
 
 _letBindings :: Lens' State (Set ValueId)
 _letBindings = _Newtype <<< prop (SProxy :: SProxy "letBindings")
-
-_uninitializedUse :: Lens' State (Array Position)
-_uninitializedUse = _Newtype <<< prop (SProxy :: SProxy "uninitializedUse")
-
-_shadowedLet :: Lens' State (Array Position)
-_shadowedLet = _Newtype <<< prop (SProxy :: SProxy "shadowedLet")
-
-_trueObservation :: Lens' State (Array Position)
-_trueObservation = _Newtype <<< prop (SProxy :: SProxy "trueObservation")
-
-_falseObservation :: Lens' State (Array Position)
-_falseObservation = _Newtype <<< prop (SProxy :: SProxy "falseObservation")
 
 -- | We go through a contract term collecting all warnings and holes etc so that we can display them in the editor
 -- | The aim here is to only traverse the contract once since we are concerned about performance with the linting
@@ -130,7 +145,7 @@ lint = go mempty
       newState =
         state
           # over _holes gatherHoles
-          # over _negativePayments (maybeCons (negativeValue payment))
+          # over _warnings (maybeInsert (NegativePayment <$> negativeValue payment))
     in
       go newState contract <> lintValue newState payment
 
@@ -143,12 +158,12 @@ lint = go mempty
       newState = case timeoutTerm of
         (Term timeout { row, column }) ->
           let
-            timeoutNotIncreasing = if timeout > (view _maxTimeout state) then mempty else Set.singleton { row, column }
+            insertTimeoutNotIncreasing = if timeout > (view _maxTimeout state) then identity else Set.insert (TimeoutNotIncreasing { row, column })
           in
             (fold states)
               # over _holes (insertHole timeoutTerm)
               # over _maxTimeout (max timeout)
-              # over _timeoutNotIncreasing (append timeoutNotIncreasing)
+              # over _warnings insertTimeoutNotIncreasing
         _ ->
           (fold states)
             # over _holes (insertHole timeoutTerm)
@@ -162,17 +177,17 @@ lint = go mempty
       newState = case valueIdTerm of
         (Term valueId { row, column }) ->
           let
-            shadowedLet = if Set.member valueId (view _letBindings state) then [ { row, column } ] else []
+            shadowedLet = if Set.member valueId (view _letBindings state) then Set.singleton (ShadowedLet { row, column }) else mempty
           in
             state
               # over _holes gatherHoles
-              # over _negativePayments (maybeCons (negativeValue value))
+              # over _warnings (maybeInsert (NegativePayment <$> negativeValue value))
               # over _letBindings (Set.insert valueId)
-              # over _shadowedLet (append shadowedLet)
+              # over _warnings (Set.union shadowedLet)
         _ ->
           state
             # over _holes gatherHoles
-            # over _negativePayments (maybeCons (negativeValue value))
+            # over _warnings (maybeInsert (NegativePayment <$> negativeValue value))
     in
       go newState contract <> lintValue newState value
 
@@ -197,9 +212,9 @@ lintObservation state (Term (ValueLE a b) _) = lintValue state a <> lintValue st
 
 lintObservation state (Term (ValueEQ a b) _) = lintValue state a <> lintValue state b
 
-lintObservation state (Term TrueObs { row, column }) = over _trueObservation (cons { row, column }) state
+lintObservation state (Term TrueObs { row, column }) = over _warnings (Set.insert (TrueObservation { row, column })) state
 
-lintObservation state (Term FalseObs { row, column }) = over _falseObservation (cons { row, column }) state
+lintObservation state (Term FalseObs { row, column }) = over _warnings (Set.insert (FalseObservation { row, column })) state
 
 lintObservation state hole@(Hole _ _ _) = over _holes (insertHole hole) state
 
@@ -230,20 +245,20 @@ lintValue state (Term SlotIntervalEnd _) = state
 
 lintValue state (Term (UseValue (Term valueId { row, column })) _) =
   let
-    uninitializedUse = if Set.member valueId (view _letBindings state) then [] else [ { row, column } ]
+    addWarnings = if Set.member valueId (view _letBindings state) then identity else Set.insert (UninitializedUse { row, column })
   in
     state
       # over _holes (getHoles valueId)
-      # over _uninitializedUse (append uninitializedUse)
+      # over _warnings addWarnings
 
 lintValue state (Term (UseValue hole) _) = over _holes (insertHole hole) state
 
 lintValue state hole@(Hole _ _ _) = over _holes (insertHole hole) state
 
-maybeCons :: forall a. Maybe a -> Array a -> Array a
-maybeCons Nothing xs = xs
+maybeInsert :: forall a. Ord a => Maybe a -> Set a -> Set a
+maybeInsert Nothing xs = xs
 
-maybeCons (Just x) xs = x : xs
+maybeInsert (Just x) xs = Set.insert x xs
 
 collectFromTuples :: forall a b. Array (a /\ b) -> Array a /\ Array b
 collectFromTuples = foldMap (\(a /\ b) -> [ a ] /\ [ b ])
@@ -253,7 +268,7 @@ lintCase state (Term (Case action contract) _) =
   let
     newState =
       state
-        # over _negativeDeposits (maybeCons (negativeDeposit action))
+        # over _warnings (maybeInsert (negativeDeposit action))
   in
     lintAction newState action /\ Just contract
 
@@ -274,8 +289,8 @@ lintAction state (Term (Notify obs) _) = lintObservation state obs
 
 lintAction state hole@(Hole _ _ _) = over _holes (insertHole hole) state
 
-negativeDeposit :: Term Action -> Maybe Position
-negativeDeposit (Term (Deposit _ _ _ value) _) = negativeValue value
+negativeDeposit :: Term Action -> Maybe Warning
+negativeDeposit (Term (Deposit _ _ _ value) _) = NegativeDeposit <$> negativeValue value
 
 negativeDeposit _ = Nothing
 
@@ -348,7 +363,13 @@ markers contract = case lint <$> parseContract contract of
         , source: ""
         }
       ]
-  Right state -> state ^. (_holes <<< to holesToMarkers)
+  Right state ->
+    let
+      holesMarkers = state ^. (_holes <<< to holesToMarkers)
+
+      warningsMarkers = state ^. (_warnings <<< to Set.toUnfoldable <<< to (map warningToMarker))
+    in
+      holesMarkers <> warningsMarkers
 
 -- other types of warning could do with being refactored to a Warning ADT first so we don't need to repeat ourselves
 holesToMarkers :: Holes -> Array IMarkerData
@@ -384,6 +405,23 @@ holeToMarkers hole@(MarloweHole { name, marloweType, row, column }) =
 
 markerToHole :: IMarkerData -> MarloweType -> MarloweHole
 markerToHole { startColumn, startLineNumber } marloweType = MarloweHole { name: "unknown", marloweType, row: startLineNumber, column: startColumn }
+
+warningToMarker :: Warning -> IMarkerData
+warningToMarker warning =
+  let
+    { row, column } = getWarningPosition warning
+
+    name = "someting"
+  in
+    { startColumn: column
+    , startLineNumber: row
+    , endColumn: column + (length name) + 1
+    , endLineNumber: row
+    , message: show warning
+    , severity: markerSeverity "Warning"
+    , code: ""
+    , source: ""
+    }
 
 format :: String -> String
 format contractString = case parseContract contractString of
