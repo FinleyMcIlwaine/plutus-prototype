@@ -39,7 +39,7 @@ import Language.Haskell.Interpreter (InterpreterError, InterpreterResult, Source
 import Marlowe (SPParams_)
 import Marlowe as Server
 import Marlowe.Holes (Holes(..), MarloweHole(..), fromTerm)
-import Marlowe.Linter (Warning, getWarningPosition, lint)
+import Marlowe.Linter (Warning, getWarningRange, lint)
 import Marlowe.Linter as L
 import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (ChoiceId(..), Contract(..), Party(..), PubKey, SlotInterval(..), TransactionInput(..), TransactionOutput(..), computeTransaction, extractRequiredActionsWithTxs, moneyInContract)
@@ -182,41 +182,16 @@ updateContractInStateP text state = case parseContract text of
     let
       lintResult = lint parsedContract
 
-      warnings = map warningToAnnotation (view (L._warnings <<< to Set.toUnfoldable) lintResult)
-
       mContract = fromTerm parsedContract
     in
       case mContract of
         Just contract -> do
-          set _editorWarnings warnings <<< set _editorErrors [] <<< set _contract (Just contract) $ state
+          set _editorErrors [] <<< set _contract (Just contract) $ state
         Nothing -> do
           let
             (Holes holes) = view L._holes lintResult
-
-            holesArray = Set.toUnfoldable $ fold $ Map.values holes
-
-            errors = map (holeToAnnotation text) holesArray
-          (set _editorWarnings warnings <<< set _editorErrors errors <<< set _holes (Holes holes)) state
-  Left error -> (set _editorErrors [ errorToAnnotation text error ] <<< set _holes mempty) state
-
-warningToAnnotation :: Warning -> Annotation
-warningToAnnotation warning =
-  let
-    { column, row } = getWarningPosition warning
-  in
-    { column, row, text: show warning, "type": "warning" }
-
-holeToAnnotation :: String -> MarloweHole -> Annotation
-holeToAnnotation str (MarloweHole { name, marloweType, row, column }) = { column, row, text: "Found hole ?" <> name, "type": "warning" }
-
-errorToAnnotation :: String -> ContractParseError -> Annotation
-errorToAnnotation str EmptyInput = { column: 0, row: 0, text: "No input provided", "type": "error" }
-
-errorToAnnotation str (ContractParseError { row, column, message, token }) =
-  let
-    msg = unlines $ take 4 $ lines message
-  in
-    { column, row, text: msg, "type": "error" }
+          (set _holes (Holes holes)) state
+  Left error -> (set _holes mempty) state
 
 updatePossibleActions :: MarloweState -> MarloweState
 updatePossibleActions oldState =

@@ -10,7 +10,7 @@ module Marlowe.Linter
   , markers
   , format
   , provideCodeActions
-  , getWarningPosition
+  , getWarningRange
   ) where
 
 import Prelude
@@ -39,7 +39,7 @@ import Data.Tuple.Nested (type (/\), (/\))
 import Marlowe.Holes (Action(..), Argument, Case(..), Contract(..), Holes(..), MarloweHole(..), MarloweType(..), Observation(..), Term(..), Value(..), ValueId, constructMarloweType, getHoles, getMarloweConstructors, holeSuggestions, insertHole, readMarloweType)
 import Marlowe.Parser (ContractParseError(..), parseContract)
 import Marlowe.Semantics (Timeout)
-import Monaco (CodeAction, CompletionItem, IMarkerData, IRange, Uri, markerSeverity)
+import Monaco (CodeAction, CompletionItem, IMarkerData, Uri, IRange, markerSeverity)
 import Text.Parsing.StringParser (Pos)
 import Text.Pretty (pretty)
 
@@ -62,13 +62,13 @@ instance monoidMaxTimeout :: Monoid MaxTimeout where
   mempty = MaxTimeout zero
 
 data Warning
-  = NegativePayment Position
-  | NegativeDeposit Position
-  | TimeoutNotIncreasing Position
-  | UninitializedUse Position
-  | ShadowedLet Position
-  | TrueObservation Position
-  | FalseObservation Position
+  = NegativePayment IRange
+  | NegativeDeposit IRange
+  | TimeoutNotIncreasing IRange
+  | UninitializedUse IRange
+  | ShadowedLet IRange
+  | TrueObservation IRange
+  | FalseObservation IRange
 
 derive instance genericWarning :: Generic Warning _
 
@@ -87,20 +87,20 @@ instance showWarning :: Show Warning where
   show (TrueObservation _) = "This Observation will always evaluate to True"
   show (FalseObservation _) = "This Observation will always evaluate to False"
 
-getWarningPosition :: Warning -> Position
-getWarningPosition (NegativePayment pos) = pos
+getWarningRange :: Warning -> IRange
+getWarningRange (NegativePayment range) = range
 
-getWarningPosition (NegativeDeposit pos) = pos
+getWarningRange (NegativeDeposit range) = range
 
-getWarningPosition (TimeoutNotIncreasing pos) = pos
+getWarningRange (TimeoutNotIncreasing range) = range
 
-getWarningPosition (UninitializedUse pos) = pos
+getWarningRange (UninitializedUse range) = range
 
-getWarningPosition (ShadowedLet pos) = pos
+getWarningRange (ShadowedLet range) = range
 
-getWarningPosition (TrueObservation pos) = pos
+getWarningRange (TrueObservation range) = range
 
-getWarningPosition (FalseObservation pos) = pos
+getWarningRange (FalseObservation range) = range
 
 newtype State
   = State
@@ -127,6 +127,14 @@ _warnings = _Newtype <<< prop (SProxy :: SProxy "warnings")
 
 _letBindings :: Lens' State (Set ValueId)
 _letBindings = _Newtype <<< prop (SProxy :: SProxy "letBindings")
+
+termToRange :: forall a. Show a => a -> { row :: Int, column :: Int } -> IRange
+termToRange a { row, column } =
+  { startLineNumber: row
+  , startColumn: column
+  , endLineNumber: row
+  , endColumn: column + (length (show a))
+  }
 
 -- | We go through a contract term collecting all warnings and holes etc so that we can display them in the editor
 -- | The aim here is to only traverse the contract once since we are concerned about performance with the linting
@@ -156,9 +164,9 @@ lint = go mempty
       (states /\ contracts) = collectFromTuples (map (lintCase state) cases)
 
       newState = case timeoutTerm of
-        (Term timeout { row, column }) ->
+        (Term timeout pos) ->
           let
-            insertTimeoutNotIncreasing = if timeout > (view _maxTimeout state) then identity else Set.insert (TimeoutNotIncreasing { row, column })
+            insertTimeoutNotIncreasing = if timeout > (view _maxTimeout state) then identity else Set.insert (TimeoutNotIncreasing (termToRange timeout pos))
           in
             (fold states)
               # over _holes (insertHole timeoutTerm)
@@ -175,9 +183,9 @@ lint = go mempty
       gatherHoles = getHoles valueIdTerm
 
       newState = case valueIdTerm of
-        (Term valueId { row, column }) ->
+        (Term valueId pos) ->
           let
-            shadowedLet = if Set.member valueId (view _letBindings state) then Set.singleton (ShadowedLet { row, column }) else mempty
+            shadowedLet = if Set.member valueId (view _letBindings state) then Set.singleton (ShadowedLet (termToRange valueId pos)) else mempty
           in
             state
               # over _holes gatherHoles
@@ -212,9 +220,9 @@ lintObservation state (Term (ValueLE a b) _) = lintValue state a <> lintValue st
 
 lintObservation state (Term (ValueEQ a b) _) = lintValue state a <> lintValue state b
 
-lintObservation state (Term TrueObs { row, column }) = over _warnings (Set.insert (TrueObservation { row, column })) state
+lintObservation state (Term TrueObs pos) = over _warnings (Set.insert (TrueObservation (termToRange TrueObs pos))) state
 
-lintObservation state (Term FalseObs { row, column }) = over _warnings (Set.insert (FalseObservation { row, column })) state
+lintObservation state (Term FalseObs pos) = over _warnings (Set.insert (FalseObservation (termToRange FalseObs pos))) state
 
 lintObservation state hole@(Hole _ _ _) = over _holes (insertHole hole) state
 
@@ -243,9 +251,9 @@ lintValue state (Term SlotIntervalStart _) = state
 
 lintValue state (Term SlotIntervalEnd _) = state
 
-lintValue state (Term (UseValue (Term valueId { row, column })) _) =
+lintValue state (Term (UseValue (Term valueId pos)) _) =
   let
-    addWarnings = if Set.member valueId (view _letBindings state) then identity else Set.insert (UninitializedUse { row, column })
+    addWarnings = if Set.member valueId (view _letBindings state) then identity else Set.insert (UninitializedUse (termToRange valueId pos))
   in
     state
       # over _holes (getHoles valueId)
@@ -294,10 +302,14 @@ negativeDeposit (Term (Deposit _ _ _ value) _) = NegativeDeposit <$> negativeVal
 
 negativeDeposit _ = Nothing
 
-negativeValue :: Term Value -> Maybe Position
-negativeValue term@(Term _ { row, column }) = case constantValue term of
+negativeValue :: Term Value -> Maybe IRange
+negativeValue term@(Term _ pos) = case constantValue term of
   Nothing -> Nothing
-  Just v -> if v < zero then Just { row, column } else Nothing
+  Just v ->
+    if v < zero then
+      Just (termToRange v pos)
+    else
+      Nothing
 
 negativeValue _ = Nothing
 
@@ -409,14 +421,14 @@ markerToHole { startColumn, startLineNumber } marloweType = MarloweHole { name: 
 warningToMarker :: Warning -> IMarkerData
 warningToMarker warning =
   let
-    { row, column } = getWarningPosition warning
+    { startColumn, startLineNumber, endColumn, endLineNumber } = getWarningRange warning
 
     name = "someting"
   in
-    { startColumn: column
-    , startLineNumber: row
-    , endColumn: column + (length name) + 1
-    , endLineNumber: row
+    { startColumn
+    , startLineNumber
+    , endColumn
+    , endLineNumber
     , message: show warning
     , severity: markerSeverity "Warning"
     , code: ""
