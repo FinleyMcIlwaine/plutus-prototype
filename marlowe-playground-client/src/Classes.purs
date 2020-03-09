@@ -114,3 +114,18 @@ isActiveTab state activeView = if state ^. _view <<< (to (eq activeView)) then [
 
 isActiveDemo :: FrontendState -> Array ClassName
 isActiveDemo state = if true then [ ClassName "active-text" ] else []
+
+rTable :: ClassName
+rTable = ClassName "Rtable"
+
+rTable6cols :: ClassName
+rTable6cols = ClassName "Rtable--6cols"
+
+rTableCell :: ClassName
+rTableCell = ClassName "Rtable-cell"
+
+rTableCellHeader :: ClassName
+rTableCellHeader = ClassName "Rtable-cell-header"
+
+first :: ClassName
+first = ClassName "first"

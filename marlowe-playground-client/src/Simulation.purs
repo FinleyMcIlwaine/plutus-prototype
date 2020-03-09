@@ -4,7 +4,7 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, rTable, rTable6cols, rTableCell, rTableCellHeader, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Control.Alternative (map)
 import Data.Array (catMaybes, concatMap, fromFoldable, head, length, sortBy)
 import Data.Array as Array
@@ -386,6 +386,14 @@ bottomPanel state =
                       ]
                       [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
                   ]
+              , ul [ classes [ ClassName "end-item", aHorizontal ] ]
+                  [ li_
+                      [ a_ [ text "Contract Expiration ", strong_ [ state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ] ]
+                      ]
+                  , li [ class_ (ClassName "space-left") ]
+                      [ a_ [ text "Current Blocks ", strong_ [ state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ] ]
+                      ]
+                  ]
               ]
           ]
       , panelContents state (state ^. _simulationBottomPanelView)
@@ -398,11 +406,37 @@ bottomPanel state =
 
   errors = state ^. (_marloweState <<< _Head <<< _editorErrors)
 
+  contractMaxTime Nothing = "Closed"
+
+  contractMaxTime (Just contract) = let t = maxTime contract in if t == zero then "Closed" else show t
+
+tableCellFirst :: forall p. FrontendState -> Array (HTML p HAction) -> HTML p HAction
+tableCellFirst state contents = div [ classes [ rTableCell, first ] ] contents
+
+tableCellHeader :: forall p. FrontendState -> Array (HTML p HAction) -> HTML p HAction
+tableCellHeader state contents = div [ classes [ rTableCell, rTableCellHeader ] ] contents
+
+tableCell :: forall p. FrontendState -> Array (HTML p HAction) -> HTML p HAction
+tableCell state contents = div [ class_ rTableCell ] contents
+
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
-  section
-    [ classes [ ClassName "panel-sub-header", aHorizontal ] ]
-    [ text "state" ]
+  div [ classes [ rTable, rTable6cols ] ]
+    [ tableCellFirst state
+        [ h3_ [ text "Accounts" ]
+        ]
+    , tableCellHeader state [ text "Account ID" ]
+    , tableCellHeader state [ text "Account ID" ]
+    , tableCellHeader state [ text "Account ID" ]
+    , tableCellHeader state [ text "Account ID" ]
+    , tableCellHeader state [ text "Account ID" ]
+    , tableCellFirst state [ text "" ]
+    , tableCell state [ text "Next" ]
+    , tableCell state [ text "Next" ]
+    , tableCell state [ text "Next" ]
+    , tableCell state [ text "Next" ]
+    , tableCell state [ text "Next" ]
+    ]
 
 panelContents state StaticAnalysisView =
   section

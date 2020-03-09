@@ -127,6 +127,10 @@ button.small-btn {
   justify-content: flex-end;
 }
 
+.end-item {
+  margin-left: auto;
+}
+
 .space-left {
   margin-left: 1rem;
 }

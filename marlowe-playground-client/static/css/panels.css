@@ -41,8 +41,14 @@
 }
 
 .demo-list li + li {
-  padding-left: 2vw;
+  padding: 0 1vw;
   border-left: 1px solid var(--layout-accent-color);
+}
+
+.demo-list li {
+  line-height: 1.2;
+  text-align: center;
+  width: 100%;
 }
 
 .demo-arrow, .github-icon, .drawer-icon {
@@ -129,10 +135,6 @@ button.minus-btn:hover {
   padding-top: 1rem;
 }
 
-.transaction-btns .demo-list li + li {
-  padding: 0 1vw;
-}
-
 .documentation-panel {
   color: var(--white);
   margin-top: 2rem;
@@ -153,18 +155,20 @@ button.minus-btn:hover {
 }
 
 .analysis-panel {
+  position: absolute;
   width: calc(100% - 4rem);
   bottom: 0;
+  z-index: 1;
+}
+
+.analysis-panel .panel-header {
+  margin-bottom: 1rem;
 }
 
 .footer-panel-bg {
+  display: none;
   min-height: 16rem;
   padding:2rem;
   background: var(--bg-light);
   box-shadow: var(--box-shadow);
-  display: none;
-}
-
-.haskell-editor {
-  min-height: 400px;
 }

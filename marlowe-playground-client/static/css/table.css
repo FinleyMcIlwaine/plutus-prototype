@@ -1,0 +1,32 @@
+.Rtable {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0;
+  text-align: center;
+}
+.Rtable-cell {
+  box-sizing: border-box;
+  flex-grow: 1;
+  width: 100%;  
+  padding: 0.8em 1.2em;
+  overflow: hidden; 
+  list-style: none;
+  border-left: solid 1px var(--layout-accent-color);
+}
+
+.Rtable-cell.first {
+  border-left: none;
+}
+
+.Rtable-cell-header {
+  font-style: italic;
+}
+.Rtable-cell > h1, .Rtable-cell > h2, .Rtable-cell > h3, .Rtable-cell > h4 {
+  margin: 0;
+}
+
+.Rtable--2cols > .Rtable-cell  { width: 50%; }
+.Rtable--3cols > .Rtable-cell  { width: 33.33%; }
+.Rtable--4cols > .Rtable-cell  { width: 25%; }
+.Rtable--5cols > .Rtable-cell  { width: 20%; }
+.Rtable--6cols > .Rtable-cell  { width: 16.6%; }
