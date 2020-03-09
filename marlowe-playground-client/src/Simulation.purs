@@ -4,7 +4,8 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, rTable, rTable6cols, rTableCell, rTableCellHeader, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, rTable, rTable6cols, rTableCell, rTableCellHeader, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (catMaybes, concatMap, fromFoldable, head, length, sortBy)
 import Data.Array as Array
@@ -410,32 +411,40 @@ bottomPanel state =
 
   contractMaxTime (Just contract) = let t = maxTime contract in if t == zero then "Closed" else show t
 
-tableCellFirst :: forall p. FrontendState -> Array (HTML p HAction) -> HTML p HAction
-tableCellFirst state contents = div [ classes [ rTableCell, first ] ] contents
-
-tableCellHeader :: forall p. FrontendState -> Array (HTML p HAction) -> HTML p HAction
-tableCellHeader state contents = div [ classes [ rTableCell, rTableCellHeader ] ] contents
-
-tableCell :: forall p. FrontendState -> Array (HTML p HAction) -> HTML p HAction
-tableCell state contents = div [ class_ rTableCell ] contents
-
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
   div [ classes [ rTable, rTable6cols ] ]
-    [ tableCellFirst state
-        [ h3_ [ text "Accounts" ]
-        ]
-    , tableCellHeader state [ text "Account ID" ]
-    , tableCellHeader state [ text "Account ID" ]
-    , tableCellHeader state [ text "Account ID" ]
-    , tableCellHeader state [ text "Account ID" ]
-    , tableCellHeader state [ text "Account ID" ]
-    , tableCellFirst state [ text "" ]
-    , tableCell state [ text "Next" ]
-    , tableCell state [ text "Next" ]
-    , tableCell state [ text "Next" ]
-    , tableCell state [ text "Next" ]
-    , tableCell state [ text "Next" ]
+    ( headerRow "Accounts" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
+        <> row "a" "b" "c" "d" "e"
+        <> row "a" "b" "c" "d" "e"
+        <> headerRow "Choices" "Choice ID" "Participant" "Chosen Value" "" ""
+        <> row "a" "b" "c" "d" "e"
+        <> emptyRow "Payments" "No payments have been recorded"
+        <> emptyRow "Let Bindings" "No values have been bound"
+    )
+  where
+  headerRow a b c d e f =
+    [ div [ classes [ rTableCell, first, Classes.header ] ] [ text a ]
+    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text b ]
+    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text c ]
+    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text d ]
+    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text e ]
+    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text f ]
+    ]
+
+  row a b c d e =
+    [ div [ classes [ rTableCell, first ] ] []
+    , div [ class_ rTableCell ] [ text a ]
+    , div [ class_ rTableCell ] [ text b ]
+    , div [ class_ rTableCell ] [ text c ]
+    , div [ class_ rTableCell ] [ text d ]
+    , div [ class_ rTableCell ] [ text e ]
+    ]
+
+  emptyRow title message =
+    [ div [ classes [ rTableCell, first, Classes.header ] ]
+        [ text title ]
+    , div [ classes [ rTableCell, rTableEmptyRow, Classes.header ] ] [ text message ]
     ]
 
 panelContents state StaticAnalysisView =

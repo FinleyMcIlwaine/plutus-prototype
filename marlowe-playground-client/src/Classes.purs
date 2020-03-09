@@ -129,3 +129,9 @@ rTableCellHeader = ClassName "Rtable-cell-header"
 
 first :: ClassName
 first = ClassName "first"
+
+header :: ClassName
+header = ClassName "header"
+
+rTableEmptyRow :: ClassName
+rTableEmptyRow = ClassName "RTable-empty-row"
