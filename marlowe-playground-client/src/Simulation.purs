@@ -4,7 +4,7 @@ import API (RunResult(RunResult))
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Bootstrap (btn, btnInfo, btnPrimary, btnSecondary, btnSmall, card, cardBody_, card_, col3_, col6, col9, col_, dropdownToggle, empty, listGroupItem_, listGroup_, row_)
 import Bootstrap.Extra (ariaExpanded, ariaHasPopup, ariaLabelledBy, dataToggle)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, rTable, rTable6cols, rTableCell, rTableCellHeader, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (catMaybes, concatMap, fromFoldable, head, length, sortBy)
@@ -25,19 +25,21 @@ import Data.Maybe (Maybe(..), isJust)
 import Data.Set (Set)
 import Data.Set as Set
 import Data.Tuple (Tuple(..), snd)
+import Data.Tuple.Nested (uncurry5, (/\), type (/\))
+import Debug.Trace (trace)
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
 import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PropName(..), a, a_, article, aside, b_, br_, button, code_, col, colgroup, div, div_, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, pre_, section, slot, small, small_, span, span_, strong_, table_, tbody_, td, td_, text, th, th_, thead_, tr, ul, ul_)
 import Halogen.HTML.Events (onClick, onDragOver, onDrop, onValueChange)
-import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, href, id_, placeholder, prop, src, type_, value)
+import Halogen.HTML.Properties (ButtonType(..), InputType(InputNumber), alt, class_, classes, enabled, id_, placeholder, prop, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
 import Help (toHTML)
 import Marlowe.Holes (Holes(..), MarloweHole(..), MarloweType(..), getMarloweConstructors)
-import Marlowe.Parser (transactionInputList, transactionWarningList)
+import Marlowe.Parser (currencySymbol, transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), ChosenNum, CurrencySymbol, Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TokenName, TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
 import Marlowe.Symbolic.Types.Response as R
 import Network.RemoteData (RemoteData(..), isLoading)
-import Prelude (class Show, bind, compare, const, flip, identity, mempty, not, pure, show, unit, zero, ($), (+), (<$>), (<<<), (<>), (>))
+import Prelude (class Show, Unit, bind, compare, const, flip, identity, mempty, not, pure, show, unit, zero, ($), (+), (<$>), (<<<), (<>), (>))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), MarloweError(..), MarloweState, SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _holes, _marloweCompileResult, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _selectedHole, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
@@ -280,7 +282,7 @@ transactionComposer state =
             , li_
                 [ button
                     [ onClick $ Just <<< const ApplyTransaction
-                    , enabled $ isContractValid state
+                    , enabled $ trace (isContractValid state) \_ -> isContractValid state
                     ]
                     [ text "Apply" ]
                 ]
@@ -388,12 +390,10 @@ bottomPanel state =
                       [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
                   ]
               , ul [ classes [ ClassName "end-item", aHorizontal ] ]
-                  [ li_
-                      [ a_ [ text "Contract Expiration ", strong_ [ state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ] ]
-                      ]
-                  , li [ class_ (ClassName "space-left") ]
-                      [ a_ [ text "Current Blocks ", strong_ [ state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ] ]
-                      ]
+                  [ li [ classes [ Classes.stateLabel ] ]
+                      [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
+                  , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
+                      [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
                   ]
               ]
           ]
@@ -414,22 +414,68 @@ bottomPanel state =
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
   div [ classes [ rTable, rTable6cols ] ]
-    ( headerRow "Accounts" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
-        <> row "a" "b" "c" "d" "e"
-        <> row "a" "b" "c" "d" "e"
-        <> headerRow "Choices" "Choice ID" "Participant" "Chosen Value" "" ""
-        <> row "a" "b" "c" "d" "e"
-        <> emptyRow "Payments" "No payments have been recorded"
-        <> emptyRow "Let Bindings" "No values have been bound"
+    ( tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
+        accountsData
+        <> tableRow "Choices" "No Choices have been made" "Choice ID" "Participant" "Chosen Value" "" ""
+            choicesData
+        <> tableRow "Payments" "No payments have been recorded" "Party" "Currency Symbol" "Token Name" "Money" "" paymentsData
+        <> tableRow "Let Bindings" "No values have been bound" "Identifier" "Value" "" "" "" bindingsData
     )
   where
-  headerRow a b c d e f =
-    [ div [ classes [ rTableCell, first, Classes.header ] ] [ text a ]
+  accountsData =
+    let
+      (accounts :: Array _) = state ^. (_marloweState <<< _Head <<< _state <<< _accounts <<< to Map.toUnfoldable)
+
+      asTuple (Tuple (Tuple (AccountId accountNumber accountOwner) (Token currSym tokName)) value) = show accountNumber /\ show accountOwner /\ show currSym /\ show tokName /\ show value /\ unit
+    in
+      map asTuple accounts
+
+  choicesData =
+    let
+      (choices :: Array _) = state ^. (_marloweState <<< _Head <<< _state <<< _choices <<< to Map.toUnfoldable)
+
+      asTuple (Tuple (ChoiceId choiceName choiceOwner) value) = show choiceName /\ show choiceOwner /\ show value /\ mempty /\ mempty /\ unit
+    in
+      map asTuple choices
+
+  paymentsData =
+    let
+      payments = state ^. (_marloweState <<< _Head <<< _payments)
+
+      asTuple :: Payment -> Array (String /\ String /\ String /\ String /\ String /\ Unit)
+      asTuple (Payment party (Assets mon)) =
+        concatMap
+          ( \(Tuple currencySymbol tokenMap) ->
+              ( map
+                  ( \(Tuple tokenName value) ->
+                      (show party /\ currencySymbol /\ tokenName /\ show value /\ mempty /\ unit)
+                  )
+                  (Map.toUnfoldable tokenMap)
+              )
+          )
+          (Map.toUnfoldable mon)
+    in
+      concatMap asTuple payments
+
+  bindingsData =
+    let
+      (bindings :: Array _) = state ^. (_marloweState <<< _Head <<< _state <<< _boundValues <<< to Map.toUnfoldable)
+
+      asTuple (Tuple (ValueId valueId) value) = show valueId /\ show value /\ mempty /\ mempty /\ mempty /\ unit
+    in
+      map asTuple bindings
+
+  tableRow title emptyMessage a b c d e [] = emptyRow title emptyMessage
+
+  tableRow title emptyMessage a b c d e rowData = headerRow title a b c d e <> foldMap (\dataTuple -> uncurry5 row dataTuple) rowData
+
+  headerRow title a b c d e =
+    [ div [ classes [ rTableCell, first, Classes.header ] ] [ text title ]
+    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text a ]
     , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text b ]
     , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text c ]
     , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text d ]
     , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text e ]
-    , div [ classes [ rTableCell, rTableCell, Classes.header ] ] [ text f ]
     ]
 
   row a b c d e =

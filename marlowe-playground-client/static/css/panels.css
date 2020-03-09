@@ -32,6 +32,7 @@
   flex: 6;
   display:flex;
   justify-content: space-between;
+  cursor: pointer;
 }
 
 .code-to-blockly-wrap {
@@ -171,4 +172,10 @@ button.minus-btn:hover {
   padding:2rem;
   background: var(--bg-light);
   box-shadow: var(--box-shadow);
+}
+
+.state-label {
+    font-weight: normal;
+    font-size: small;
+    color: var(--text-color);
 }
