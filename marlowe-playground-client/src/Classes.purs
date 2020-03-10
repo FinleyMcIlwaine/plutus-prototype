@@ -138,3 +138,6 @@ rTableEmptyRow = ClassName "RTable-empty-row"
 
 stateLabel :: ClassName
 stateLabel = ClassName "state-label"
+
+pointer :: ClassName
+pointer = ClassName "pointer"

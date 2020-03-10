@@ -6,7 +6,6 @@ import Ace.Editor (getSession) as Editor
 import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
-import Bootstrap (active, btn, btnGroup, btnInfo, btnPrimary, btnSmall, colXs12, colSm6, colSm5, container, container_, empty, hidden, listGroupItem_, listGroup_, navItem_, navLink, navTabs_, noGutters, pullRight, row, justifyContentBetween)
 import Classes (aCenter, aHorizontal, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
@@ -15,7 +14,6 @@ import Control.Monad.Maybe.Trans (MaybeT(..), lift, runMaybeT)
 import Control.Monad.Reader.Class (class MonadAsk)
 import Control.Monad.State.Trans (class MonadState)
 import Data.Array (catMaybes, delete, intercalate, snoc)
-import Data.Array as Array
 import Data.Either (Either(..), note)
 import Data.Function (flip)
 import Data.Json.JsonEither (JsonEither(..))
@@ -29,28 +27,25 @@ import Data.Num (negate)
 import Data.String (Pattern(..), stripPrefix, stripSuffix, trim)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple))
-import Data.Tuple.Nested ((/\))
 import Editor (Action(..), Preferences, loadPreferences) as Editor
-import Editor (compileButton, editorView, editorFeedback)
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Foreign.Class (decode)
 import Foreign.JSON (parseJSON)
 import Gist (_GistId, gistFileContent, gistId)
-import Gists (GistAction(..), gistControls, parseGistUrl)
+import Gists (GistAction(..), parseGistUrl)
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
-import Halogen.HTML (ClassName(ClassName), HTML, a, button, code_, div, div_, h1, header, img, main, nav, p, p_, pre, section, slot, strong_, text)
+import Halogen.HTML (ClassName(ClassName), HTML, button, div, h1, header, img, main, nav, p, p_, section, slot, text)
 import Halogen.HTML.Events (onClick)
-import Halogen.HTML.Extra (mapComponent)
-import Halogen.HTML.Properties (alt, class_, classes, disabled, href, id_, src)
+import Halogen.HTML.Properties (alt, class_, classes, id_, src)
 import Halogen.Query (HalogenM)
 import Halogen.SVG (GradientUnits(..), Translate(..), d, defs, gradientUnits, linearGradient, offset, path, stop, stopColour, svg, transform, x1, x2, y2)
 import Halogen.SVG as SVG
 import HaskellEditor as HaskellEditor
-import Language.Haskell.Interpreter (SourceCode(SourceCode), InterpreterError(CompilationErrors, TimeoutError), CompilationError(CompilationError, RawError), InterpreterResult(InterpreterResult), _InterpreterResult)
+import Language.Haskell.Interpreter (CompilationError(CompilationError, RawError), InterpreterError(CompilationErrors, TimeoutError), SourceCode(SourceCode), _InterpreterResult)
 import Marlowe (SPParams_)
 import Marlowe.Blockly as MB
 import Marlowe.Gists (mkNewGist, playgroundGistFile)
@@ -59,14 +54,14 @@ import Marlowe.Parser (contract, hole, parseTerm)
 import Marlowe.Parser as P
 import Marlowe.Semantics (ChoiceId, Input(..), State(..), inBounds)
 import MonadApp (haskellEditorHandleAction, class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorMoveCursorToPosition, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
-import Network.RemoteData (RemoteData(..), _Success, isLoading, isSuccess)
-import Prelude (class Show, Unit, add, bind, const, discard, not, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==), (||))
+import Network.RemoteData (RemoteData(..), _Success)
+import Prelude (class Show, Unit, add, bind, const, discard, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
 import Servant.PureScript.Settings (SPSettings_)
 import Simulation as Simulation
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Text.Pretty (genericPretty, pretty)
-import Types (ActionInput(..), ChildSlots, FrontendState(FrontendState), HAction(..), HQuery(..), HelpContext(..), Message, SimulationBottomPanelView(..), View(..), _analysisState, _authStatus, _blocklySlot, _compilationResult, _createGistResult, _currentContract, _currentMarloweState, _editorPreferences, _gistUrl, _haskellEditorSlot, _helpContext, _marloweState, _oldContract, _pendingInputs, _possibleActions, _result, _selectedHole, _simulationBottomPanelView, _slot, _state, _view, emptyMarloweState)
+import Types (ActionInput(..), ChildSlots, FrontendState(FrontendState), HAction(..), HQuery(..), HelpContext(..), Message, SimulationBottomPanelView(..), View(..), _analysisState, _authStatus, _blocklySlot, _compilationResult, _createGistResult, _currentContract, _currentMarloweState, _gistUrl, _helpContext, _marloweState, _oldContract, _pendingInputs, _possibleActions, _result, _selectedHole, _showRightPanel, _simulationBottomPanelView, _slot, _state, _view, emptyMarloweState)
 import WebSocket (WebSocketResponseMessage(..))
 
 mkInitialState :: Editor.Preferences -> FrontendState
@@ -86,6 +81,8 @@ mkInitialState editorPreferences =
     , analysisState: NotAsked
     , selectedHole: Nothing
     , helpContext: MarloweHelp
+    , showRightPanel: true
+    , showBottomPanel: true
     }
 
 ------------------------------------------------------------
@@ -222,6 +219,10 @@ toEvent (InsertHole _ _ _) = Nothing
 toEvent (ChangeSimulationView view) = Just $ (defaultEvent "ChangeSimulationView") { label = Just $ show view }
 
 toEvent (ChangeHelpContext help) = Just $ (defaultEvent "ChangeHelpContext") { label = Just $ show help }
+
+toEvent (ShowRightPanel val) = Just $ (defaultEvent "ShowRightPanel") { label = Just $ show val }
+
+toEvent (ShowBottomPanel val) = Just $ (defaultEvent "ShowBottomPanel") { label = Just $ show val }
 
 toEvent (HandleBlocklyMessage _) = Nothing
 
@@ -415,11 +416,13 @@ handleAction (InsertHole constructor firstHole holes) = do
           withoutSuffix <- stripSuffix (Pattern ")") withoutPrefix
           pure withoutSuffix
 
-handleAction (ChangeSimulationView view) = do
-  assign _simulationBottomPanelView view
+handleAction (ChangeSimulationView view) = assign _simulationBottomPanelView view
 
-handleAction (ChangeHelpContext help) = do
-  assign _helpContext help
+handleAction (ChangeHelpContext help) = assign _helpContext help
+
+handleAction (ShowRightPanel val) = assign _showRightPanel val
+
+handleAction (ShowBottomPanel val) = assign _showRightPanel val
 
 handleAction (HandleBlocklyMessage Initialized) = pure unit
 
@@ -598,153 +601,3 @@ render state =
             ]
         ]
     ]
-
------------------------------------------------------------- Old Design -------------------------------------------------------
-renderOld ::
-  forall m.
-  MonadAff m =>
-  FrontendState ->
-  ComponentHTML HAction ChildSlots m
-renderOld state =
-  let
-    stateView = view _view state
-
-    editorPreferences = view _editorPreferences state
-  in
-    div [ class_ $ ClassName "main-frame" ]
-      [ container_
-          [ mainHeader
-          , div [ classes [ row, noGutters, justifyContentBetween ] ]
-              [ div [ classes [ colXs12, colSm6 ] ] [ mainTabBar stateView ]
-              , div
-                  [ classes [ colXs12, colSm5 ] ]
-                  [ GistAction <$> gistControls (unwrap state) ]
-              ]
-          ]
-      , viewContainer stateView HaskellEditor
-          [ loadScriptsPane
-          , mapComponent HaskellEditorAction
-              $ editorView defaultContents _haskellEditorSlot StaticData.bufferLocalStorageKey editorPreferences
-          , compileButton CompileHaskellProgram (unwrap <$> (view _compilationResult state))
-          , mapComponent HaskellEditorAction $ editorFeedback (unwrap <$> (view _compilationResult state))
-          , resultPane state
-          ]
-      , viewContainer stateView Simulation
-          [ -- simulationPane state
-          ]
-      , viewContainer stateView BlocklyEditor
-          [ slot _blocklySlot unit (blockly blockDefinitions) unit (Just <<< HandleBlocklyMessage)
-          , MB.toolbox
-          , MB.workspaceBlocks
-          ]
-      ]
-  where
-  defaultContents = Map.lookup "Escrow" StaticData.demoFiles
-
-  blockDefinitions = MB.blockDefinitions
-
-loadScriptsPane :: forall p. HTML p HAction
-loadScriptsPane =
-  div [ class_ $ ClassName "mb-3" ]
-    ( Array.cons
-        ( strong_
-            [ text "Demos: "
-            ]
-        )
-        (loadScriptButton <$> Array.fromFoldable (Map.keys StaticData.demoFiles))
-    )
-
-loadScriptButton :: forall p. String -> HTML p HAction
-loadScriptButton key =
-  button
-    [ classes [ btn, btnInfo, btnSmall ]
-    , onClick $ const $ Just $ LoadHaskellScript key
-    ]
-    [ text key ]
-
-viewContainer :: forall p i. View -> View -> Array (HTML p i) -> HTML p i
-viewContainer currentView targetView =
-  if currentView == targetView then
-    div [ classes [ container ] ]
-  else
-    div [ classes [ container, hidden ] ]
-
-mainHeader :: forall p. HTML p HAction
-mainHeader =
-  div_
-    [ div [ classes [ btnGroup, pullRight ] ] (makeLink <$> links)
-    , h1 [ class_ $ ClassName "main-title" ] [ text "Marlowe Playground" ]
-    ]
-  where
-  links =
-    [ Tuple "Tutorial" "./tutorial"
-    , Tuple "Privacy" "https://static.iohk.io/docs/data-protection/iohk-data-protection-gdpr-policy.pdf"
-    ]
-
-  makeLink (Tuple name link) =
-    a
-      [ classes
-          [ btn
-          , btnSmall
-          ]
-      , href link
-      ]
-      [ text name
-      ]
-
-mainTabBar :: forall p. View -> HTML p HAction
-mainTabBar activeView = navTabs_ (mkTab <$> tabs)
-  where
-  tabs =
-    [ HaskellEditor /\ "Haskell Editor"
-    , Simulation /\ "Simulation"
-    , BlocklyEditor /\ "Blockly"
-    ]
-
-  mkTab (link /\ title) =
-    navItem_
-      [ a
-          [ classes
-              $ [ navLink
-                ]
-              <> activeClass
-          , onClick $ const $ Just $ ChangeView link
-          ]
-          [ text title
-          ]
-      ]
-    where
-    activeClass =
-      if link == activeView then
-        [ active
-        ]
-      else
-        []
-
-resultPane :: forall p. FrontendState -> HTML p HAction
-resultPane state =
-  let
-    compilationResult = view _compilationResult state
-  in
-    case compilationResult of
-      Success (JsonEither (Right (InterpreterResult result))) ->
-        listGroup_
-          [ listGroupItem_
-              [ div_
-                  [ button
-                      [ classes
-                          [ btn
-                          , btnPrimary
-                          , ClassName "float-right"
-                          ]
-                      , onClick $ const $ Just SendResult
-                      , disabled (isLoading compilationResult || (not isSuccess) compilationResult)
-                      ]
-                      [ text "Send to Simulator" ]
-                  , code_
-                      [ pre [ class_ $ ClassName "success-code" ] [ text (unwrap result.result) ]
-                      ]
-                  ]
-              ]
-          ]
-      _ -> empty

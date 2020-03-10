@@ -14,7 +14,6 @@ module Marlowe.Linter
   ) where
 
 import Prelude
-
 import Data.Array (catMaybes, cons, fold, foldMap, (:))
 import Data.BigInteger (BigInteger)
 import Data.Lens (Lens', over, view)

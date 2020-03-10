@@ -1,7 +1,6 @@
 module Marlowe.ContractTests where
 
 import Prelude
-
 import Control.Monad.State (class MonadState, StateT, runState)
 import Data.Array (snoc)
 import Data.Either (Either(..))

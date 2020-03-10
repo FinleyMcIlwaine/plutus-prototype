@@ -74,6 +74,8 @@ data HAction
   -- simulation view
   | ChangeSimulationView SimulationBottomPanelView
   | ChangeHelpContext HelpContext
+  | ShowRightPanel Boolean
+  | ShowBottomPanel Boolean
   -- blockly
   | HandleBlocklyMessage BlocklyMessage
   | SetBlocklyCode
@@ -141,6 +143,8 @@ newtype FrontendState
   , analysisState :: RemoteData String Result
   , selectedHole :: Maybe String
   , helpContext :: HelpContext
+  , showRightPanel :: Boolean
+  , showBottomPanel :: Boolean
   }
 
 derive instance newtypeFrontendState :: Newtype FrontendState _
@@ -189,6 +193,12 @@ _analysisState = _Newtype <<< prop (SProxy :: SProxy "analysisState")
 
 _selectedHole :: Lens' FrontendState (Maybe String)
 _selectedHole = _Newtype <<< prop (SProxy :: SProxy "selectedHole")
+
+_showRightPanel :: Lens' FrontendState Boolean
+_showRightPanel = _Newtype <<< prop (SProxy :: SProxy "showRightPanel")
+
+_showBottomPanel :: Lens' FrontendState Boolean
+_showBottomPanel = _Newtype <<< prop (SProxy :: SProxy "showBottomPanel")
 
 -- editable
 _timestamp ::
@@ -314,7 +324,6 @@ actionToActionInput state (Deposit accountId party token value) =
 actionToActionInput _ (Choice choiceId bounds) = Tuple (ChoiceInputId choiceId bounds) (ChoiceInput choiceId bounds (minimumBound bounds))
 
 actionToActionInput _ (Notify _) = Tuple NotifyInputId NotifyInput
-
 
 data HelpContext
   = MarloweHelp

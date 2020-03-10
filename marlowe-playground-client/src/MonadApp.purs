@@ -1,7 +1,6 @@
 module MonadApp where
 
 import Prelude
-
 import API (RunResult)
 import Ace (Annotation, Editor)
 import Ace as Ace

@@ -4,7 +4,6 @@ import Blockly (BlockDefinition, ElementId(..))
 import Blockly as Blockly
 import Blockly.Generator (Generator, newBlock, workspaceToCode)
 import Blockly.Types as BT
-import Bootstrap (btn, btnInfo, btnSmall)
 import Control.Alt ((<|>))
 import Control.Monad.Except (ExceptT(..), runExceptT, lift)
 import Control.Monad.ST as ST
@@ -153,7 +152,7 @@ render state =
 toCodeButton :: forall p. String -> HTML p BlocklyAction
 toCodeButton key =
   button
-    [ classes [ btn, btnInfo, btnSmall ]
+    [ classes []
     , onClick $ const $ Just GetCode
     ]
     [ text key ]
