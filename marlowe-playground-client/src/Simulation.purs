@@ -1,7 +1,7 @@
 module Simulation where
 
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, downloadIcon, first, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, footerPanelBg, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (concatMap, length)
@@ -30,7 +30,7 @@ import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Pa
 import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _simulationBottomPanelView, _slot, _state)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -79,7 +79,7 @@ render state =
       , div [ classes [ panelSubHeaderSide ] ] []
       ]
   , section [ class_ (ClassName "code-panel") ]
-      [ div [ class_ (ClassName "code-editor") ]
+      [ div [ class_ (codeEditor state) ]
           [ marloweEditor state ]
       , sidebar state
       ]
@@ -370,8 +370,59 @@ transactionRow state isEnabled (Tuple INotify person) =
     ]
 
 bottomPanel :: forall p. FrontendState -> Array (HTML p HAction)
-bottomPanel state =
-  [ div [ classes ([ ClassName "footer-panel-bg" ] <> isActiveTab state Simulation) ]
+bottomPanel state = if state ^. _showBottomPanel then bottomPanelMax state else bottomPanelMin state
+
+bottomPanelMin :: forall p. FrontendState -> Array (HTML p HAction)
+bottomPanelMin state =
+  [ div [ classes ([ footerPanelBg state ] <> isActiveTab state Simulation) ]
+      [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
+          [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+              [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+                  [ li
+                      [ classes ([] <> isActive CurrentStateView)
+                      , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+                      ]
+                      [ text "Current State" ]
+                  , li
+                      [ classes ([] <> isActive StaticAnalysisView)
+                      , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
+                      ]
+                      [ text "Static Analysis" ]
+                  , li
+                      [ classes ([] <> isActive MarloweWarningsView)
+                      , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
+                      ]
+                      [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
+                  , li
+                      [ classes ([] <> isActive MarloweErrorsView)
+                      , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
+                      ]
+                      [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
+                  ]
+              , ul [ classes [ ClassName "end-item", aHorizontal ] ]
+                  [ li [ classes [ Classes.stateLabel ] ]
+                      [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
+                  , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
+                      [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
+                  ]
+              ]
+          ]
+      ]
+  ]
+  where
+  isActive view = if state ^. _simulationBottomPanelView <<< (to (eq view)) then [ ClassName "active-text" ] else []
+
+  warnings = state ^. (_marloweState <<< _Head <<< _editorWarnings)
+
+  errors = state ^. (_marloweState <<< _Head <<< _editorErrors)
+
+  contractMaxTime Nothing = "Closed"
+
+  contractMaxTime (Just contract) = let t = maxTime contract in if t == zero then "Closed" else show t
+
+bottomPanelMax :: forall p. FrontendState -> Array (HTML p HAction)
+bottomPanelMax state =
+  [ div [ classes ([ footerPanelBg state ] <> isActiveTab state Simulation) ]
       [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
           [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
               [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]

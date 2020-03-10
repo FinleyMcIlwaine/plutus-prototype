@@ -6,7 +6,7 @@ import Ace.Editor (getSession) as Editor
 import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
-import Classes (aCenter, aHorizontal, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
+import Classes (aCenter, aHorizontal, analysisPanel, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
@@ -591,7 +591,7 @@ render state =
                 , MB.workspaceBlocks
                 ]
             -- bottom panel
-            , div [ class_ (ClassName "analysis-panel") ]
+            , div [ class_ (analysisPanel state) ]
                 [ div [ class_ flex ]
                     [ div [ class_ flexTen ]
                         (Simulation.bottomPanel state <> HaskellEditor.bottomPanel state) --panel

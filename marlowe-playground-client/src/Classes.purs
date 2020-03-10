@@ -3,7 +3,7 @@ module Classes where
 import Prelude
 import Data.Lens (to, (^.))
 import Halogen (ClassName(..))
-import Types (FrontendState, View, _view)
+import Types (FrontendState, View, _showBottomPanel, _view)
 
 foreign import closeDrawerIcon :: String
 
@@ -141,3 +141,12 @@ stateLabel = ClassName "state-label"
 
 pointer :: ClassName
 pointer = ClassName "pointer"
+
+analysisPanel :: FrontendState -> ClassName
+analysisPanel state = if state ^. _showBottomPanel then ClassName "analysis-panel" else ClassName "analysis-panel-min"
+
+codeEditor :: FrontendState -> ClassName
+codeEditor state = if state ^. _showBottomPanel then ClassName "code-editor" else ClassName "code-editor-min"
+
+footerPanelBg :: FrontendState -> ClassName
+footerPanelBg state = if state ^. _showBottomPanel then ClassName "footer-panel-bg" else ClassName "footer-panel-bg-min"

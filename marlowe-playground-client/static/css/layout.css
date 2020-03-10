@@ -16,7 +16,7 @@ main section {
   flex:15;
 }
 
-.sidebar-composer, .code-editor {
+.sidebar-composer, .code-editor, .code-editor-min {
   height: calc(100vh - 21vh);
   overflow-x: scroll;
 }

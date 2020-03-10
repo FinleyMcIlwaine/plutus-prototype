@@ -6,7 +6,7 @@
   min-height:3rem;
 }
 
-.panel-header-main, .panel-sub-header-main, .code-editor {
+.panel-header-main, .panel-sub-header-main, .code-editor, .code-editor-min {
   flex: 10;
 }
 
@@ -80,6 +80,11 @@
 .code-editor {
   background: var(--white);
   padding-bottom:16rem;
+}
+
+.code-editor-min {
+  background: var(--white);
+  padding-bottom:3rem;
 }
 
 .panel-header-side, .panel-sub-header-side {
@@ -171,6 +176,14 @@ button.minus-btn:hover {
   height: 16rem;
 }
 
+.analysis-panel-min {
+  position: absolute;
+  width: calc(100% - 4rem);
+  bottom: 0;
+  z-index: 0;
+  height: 3rem;
+}
+
 .analysis-panel .panel-header {
   margin-bottom: 1rem;
 }
@@ -179,6 +192,14 @@ button.minus-btn:hover {
   display: none;
   min-height: 16rem;
   padding:2rem;
+  background: var(--bg-light);
+  box-shadow: var(--box-shadow);
+}
+
+.footer-panel-bg-min {
+  display: none;
+  min-height: 3rem;
+  padding: 0 2rem;
   background: var(--bg-light);
   box-shadow: var(--box-shadow);
 }
