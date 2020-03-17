@@ -1,7 +1,7 @@
 module Simulation where
 
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, footerPanelBg, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (concatMap, length)
@@ -10,13 +10,14 @@ import Data.BigInteger (BigInteger, fromString, fromInt)
 import Data.Either (Either(..))
 import Data.Eq (eq, (/=), (==))
 import Data.Foldable (foldMap)
-import Data.HeytingAlgebra ((&&), (||))
+import Data.HeytingAlgebra (not, (&&), (||))
 import Data.Lens (to, view, (^.))
 import Data.List (List, toUnfoldable)
 import Data.List.NonEmpty as NEL
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..))
+import Data.Newtype (wrap)
 import Data.Tuple (Tuple(..), snd)
 import Data.Tuple.Nested (uncurry5, (/\), type (/\))
 import Editor (initEditor) as Editor
@@ -24,6 +25,9 @@ import Effect.Aff.Class (class MonadAff)
 import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, section, slot, small, small_, span, strong_, text, ul, ul_)
 import Halogen.HTML.Events (onClick, onValueChange)
 import Halogen.HTML.Properties (InputType(InputNumber), alt, class_, classes, enabled, placeholder, src, type_, value)
+import Halogen.HTML.Properties.ARIA (role)
+import Halogen.SVG (svg, xlink, xlinkNS)
+import Halogen.SVG as SVG
 import Help (toHTML)
 import Marlowe.Parser (transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Token(..), TransactionError, TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, maxTime)
@@ -48,12 +52,21 @@ render state =
       [ div [ classes [ panelHeaderMain, aHorizontal, noMargins, accentBorderBottom ] ]
           [ h4 [] [ text "Marlowe Contract" ] ]
       , div [ classes [ panelHeaderSide, aHorizontal, accentBorderBottom ] ]
-          [ a [ onClick $ const $ Just $ ShowRightPanel false ]
-              [ img [ class_ (ClassName "drawer-icon"), src closeDrawerIcon, alt "close drawer icon" ]
-              ]
-          , div [ class_ aHorizontal ]
-              [ a [] [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ] ]
-              , button [ class_ spaceLeft ] [ text "Save to github" ]
+          [ div [ classes ([ ClassName "vertical", ClassName "flip-container" ] <> githubDisplay state) ]
+              [ div [ class_ (ClassName "flipper") ]
+                  [ div [ class_ (ClassName "front") ]
+                      [ a_
+                          [ img [ class_ (ClassName "drawer-icon"), src closeDrawerIcon, alt "close drawer icon" ]
+                          ]
+                      , div [ class_ aHorizontal ]
+                          [ a_
+                              [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ]
+                              ]
+                          , button [ class_ spaceLeft ] [ text "Save to github" ]
+                          ]
+                      ]
+                  , div [ class_ (ClassName "back") ] [ text "Amazing new stuff" ]
+                  ]
               ]
           ]
       ]
@@ -79,7 +92,7 @@ render state =
       , div [ classes [ panelSubHeaderSide ] ] []
       ]
   , section [ class_ (ClassName "code-panel") ]
-      [ div [ class_ (codeEditor state) ]
+      [ div [ classes (codeEditor state) ]
           [ marloweEditor state ]
       , sidebar state
       ]
@@ -370,11 +383,8 @@ transactionRow state isEnabled (Tuple INotify person) =
     ]
 
 bottomPanel :: forall p. FrontendState -> Array (HTML p HAction)
-bottomPanel state = if state ^. _showBottomPanel then bottomPanelMax state else bottomPanelMin state
-
-bottomPanelMin :: forall p. FrontendState -> Array (HTML p HAction)
-bottomPanelMin state =
-  [ div [ classes ([ footerPanelBg state ] <> isActiveTab state Simulation) ]
+bottomPanel state =
+  [ div [ classes (footerPanelBg state <> isActiveTab state Simulation) ]
       [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
           [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
               [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
@@ -404,54 +414,24 @@ bottomPanelMin state =
                       [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
                   , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
                       [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
-                  ]
-              ]
-          ]
-      ]
-  ]
-  where
-  isActive view = if state ^. _simulationBottomPanelView <<< (to (eq view)) then [ ClassName "active-text" ] else []
-
-  warnings = state ^. (_marloweState <<< _Head <<< _editorWarnings)
-
-  errors = state ^. (_marloweState <<< _Head <<< _editorErrors)
-
-  contractMaxTime Nothing = "Closed"
-
-  contractMaxTime (Just contract) = let t = maxTime contract in if t == zero then "Closed" else show t
-
-bottomPanelMax :: forall p. FrontendState -> Array (HTML p HAction)
-bottomPanelMax state =
-  [ div [ classes ([ footerPanelBg state ] <> isActiveTab state Simulation) ]
-      [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
-          [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
-              [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                  [ li
-                      [ classes ([] <> isActive CurrentStateView)
-                      , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+                  , li [ class_ spaceLeft ]
+                      [ svg
+                          [ SVG.width (wrap 24.0)
+                          , SVG.height (wrap 24.0)
+                          , role "presentation"
+                          -- FIXME: can't seem to add className to SVG
+                          -- classes [ ClassName "control-icon", ClassName "control-icon-expand" ]
+                          ]
+                          [ SVG.use xlinkNS [ xlink "#expand-more" ] [] ]
+                      , svg
+                          [ SVG.width (wrap 24.0)
+                          , SVG.height (wrap 24.0)
+                          , role "presentation"
+                          -- classes [ ClassName "control-icon", ClassName "control-icon-close" ]
+                          ]
+                          [ SVG.use xlinkNS [ xlink "#close" ] [] ]
                       ]
-                      [ text "Current State" ]
-                  , li
-                      [ classes ([] <> isActive StaticAnalysisView)
-                      , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
-                      ]
-                      [ text "Static Analysis" ]
-                  , li
-                      [ classes ([] <> isActive MarloweWarningsView)
-                      , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
-                      ]
-                      [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
-                  , li
-                      [ classes ([] <> isActive MarloweErrorsView)
-                      , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
-                      ]
-                      [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
-                  ]
-              , ul [ classes [ ClassName "end-item", aHorizontal ] ]
-                  [ li [ classes [ Classes.stateLabel ] ]
-                      [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
-                  , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
-                      [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
+                  , li_ [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ] [ text "X" ] ]
                   ]
               ]
           ]

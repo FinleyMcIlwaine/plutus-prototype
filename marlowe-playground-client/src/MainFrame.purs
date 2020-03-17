@@ -17,7 +17,7 @@ import Data.Array (catMaybes, delete, intercalate, snoc)
 import Data.Either (Either(..), note)
 import Data.Function (flip)
 import Data.Json.JsonEither (JsonEither(..))
-import Data.Lens (_Just, assign, modifying, over, preview, use, view)
+import Data.Lens (_Just, assign, modifying, over, preview, use, view, (^.))
 import Data.List.NonEmpty as NEL
 import Data.Map (Map)
 import Data.Map as Map
@@ -54,14 +54,14 @@ import Marlowe.Parser (contract, hole, parseTerm)
 import Marlowe.Parser as P
 import Marlowe.Semantics (ChoiceId, Input(..), State(..), inBounds)
 import MonadApp (haskellEditorHandleAction, class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorMoveCursorToPosition, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
-import Network.RemoteData (RemoteData(..), _Success)
-import Prelude (class Show, Unit, add, bind, const, discard, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
+import Network.RemoteData (RemoteData(..), _Success, isLoading)
+import Prelude (class Show, Unit, add, bind, const, discard, not, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
 import Servant.PureScript.Settings (SPSettings_)
 import Simulation as Simulation
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Text.Pretty (genericPretty, pretty)
-import Types (ActionInput(..), ChildSlots, FrontendState(FrontendState), HAction(..), HQuery(..), HelpContext(..), Message, SimulationBottomPanelView(..), View(..), _analysisState, _authStatus, _blocklySlot, _compilationResult, _createGistResult, _currentContract, _currentMarloweState, _gistUrl, _helpContext, _marloweState, _oldContract, _pendingInputs, _possibleActions, _result, _selectedHole, _showRightPanel, _simulationBottomPanelView, _slot, _state, _view, emptyMarloweState)
+import Types (ActionInput(..), ChildSlots, FrontendState(FrontendState), HAction(..), HQuery(..), HelpContext(..), Message, SimulationBottomPanelView(..), View(..), _analysisState, _authStatus, _blocklySlot, _compilationResult, _createGistResult, _currentContract, _currentMarloweState, _gistUrl, _helpContext, _marloweState, _oldContract, _pendingInputs, _possibleActions, _result, _selectedHole, _showBottomPanel, _showRightPanel, _simulationBottomPanelView, _slot, _state, _view, emptyMarloweState)
 import WebSocket (WebSocketResponseMessage(..))
 
 mkInitialState :: Editor.Preferences -> FrontendState
@@ -256,6 +256,15 @@ handleAction (MarloweHandleEditorMessage (TextChanged text)) = do
   assign _selectedHole Nothing
   saveMarloweBuffer text
   updateContractInState text
+  analysis <- use _analysisState
+  when (not (isLoading analysis)) do
+    currContract <- use _currentContract
+    currState <- use (_currentMarloweState <<< _state)
+    case currContract of
+      Nothing -> pure unit
+      Just contract -> do
+        checkContractForWarnings (show contract) (showStateForHaskell currState)
+        assign _analysisState Loading
 
 handleAction (MarloweHandleDragEvent event) = preventDefault event
 
@@ -422,7 +431,7 @@ handleAction (ChangeHelpContext help) = assign _helpContext help
 
 handleAction (ShowRightPanel val) = assign _showRightPanel val
 
-handleAction (ShowBottomPanel val) = assign _showRightPanel val
+handleAction (ShowBottomPanel val) = assign _showBottomPanel val
 
 handleAction (HandleBlocklyMessage Initialized) = pure unit
 
@@ -591,13 +600,18 @@ render state =
                 , MB.workspaceBlocks
                 ]
             -- bottom panel
-            , div [ class_ (analysisPanel state) ]
+            , div [ classes (analysisPanel state) ]
                 [ div [ class_ flex ]
                     [ div [ class_ flexTen ]
-                        (Simulation.bottomPanel state <> HaskellEditor.bottomPanel state) --panel
+                        bottomPanel
                     , div [ class_ flexFour ] []
                     ]
                 ]
             ]
         ]
     ]
+  where
+    bottomPanel = case state ^. _view of
+      HaskellEditor -> HaskellEditor.bottomPanel state
+      Simulation -> Simulation.bottomPanel state
+      _ -> []

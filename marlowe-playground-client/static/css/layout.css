@@ -5,6 +5,7 @@ html, body, .site-wrap {
   
 main {
   display:flex;
+  overflow:hidden;
   height: calc(100vh - 80px);
 }
 
@@ -16,7 +17,7 @@ main section {
   flex:15;
 }
 
-.sidebar-composer, .code-editor, .code-editor-min {
+.sidebar-composer, .code-editor {
   height: calc(100vh - 21vh);
   overflow-x: scroll;
 }

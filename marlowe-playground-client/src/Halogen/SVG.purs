@@ -1,12 +1,13 @@
 module Halogen.SVG where
 
+import Prelude
 import DOM.HTML.Indexed (Interactive)
 import Data.Array as Array
+import Data.Newtype (class Newtype)
 import Data.String (joinWith)
 import Halogen.HTML (AttrName(..), ElemName(..), HTML, Namespace(..), Node, elementNS, text)
 import Halogen.HTML as HH
 import Halogen.HTML.Properties (CSSPixel, IProp)
-import Prelude
 
 ------------------------------------------------------------
 -- Nodes.
@@ -18,6 +19,8 @@ type SVGNode
           , xmlns :: Namespace
           , width :: Length
           , height :: Length
+          , class :: String
+          , role :: String
           )
       )
 
@@ -84,8 +87,16 @@ type SVGpath
     , transform :: Translate
     )
 
+type SVGUse
+  = ( xmlns :: Namespace
+    , xlink :: String
+    )
+
 svgNS :: Namespace
 svgNS = Namespace "http://www.w3.org/2000/svg"
+
+xlinkNS :: Namespace
+xlinkNS = Namespace "http://www.w3.org/2000/svg"
 
 svg :: forall p i. Node SVGNode p i
 svg attributes = elementNS svgNS (ElemName "svg") (Array.snoc attributes (xmlns svgNS))
@@ -113,6 +124,9 @@ g = elementNS svgNS (ElemName "g")
 
 line :: forall p i. Node SVGline p i
 line = elementNS svgNS (ElemName "line")
+
+use :: forall p i. Namespace -> Node SVGUse p i
+use ns = elementNS ns (ElemName "use")
 
 ------------------------------------------------------------
 -- Attributes.
@@ -195,6 +209,9 @@ style = attr (AttrName "style")
 viewBox :: forall i r. Box -> IProp ( viewBox :: Box | r ) i
 viewBox = attr (AttrName "viewBox")
 
+xlink :: forall i r. String -> IProp ( xlink :: String | r ) i
+xlink = attr (AttrName "xlink:href")
+
 ------------------------------------------------------------
 -- Types
 ------------------------------------------------------------
@@ -254,6 +271,8 @@ instance isAttrGradientUnits :: IsAttr GradientUnits where
 
 newtype Length
   = Length Number
+
+derive instance newtypeLength :: Newtype Length _
 
 instance isAttrLength :: IsAttr Length where
   toAttrValue (Length n) = show n

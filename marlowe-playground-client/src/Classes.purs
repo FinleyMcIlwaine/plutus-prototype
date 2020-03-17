@@ -142,11 +142,15 @@ stateLabel = ClassName "state-label"
 pointer :: ClassName
 pointer = ClassName "pointer"
 
-analysisPanel :: FrontendState -> ClassName
-analysisPanel state = if state ^. _showBottomPanel then ClassName "analysis-panel" else ClassName "analysis-panel-min"
+analysisPanel :: FrontendState -> Array ClassName
+analysisPanel state = if state ^. _showBottomPanel then [ ClassName "analysis-panel" ] else [ ClassName "analysis-panel", ClassName "collapse" ]
 
-codeEditor :: FrontendState -> ClassName
-codeEditor state = if state ^. _showBottomPanel then ClassName "code-editor" else ClassName "code-editor-min"
+codeEditor :: FrontendState -> Array ClassName
+codeEditor state = if state ^. _showBottomPanel then [ ClassName "code-editor" ] else [ ClassName "code-editor", ClassName "expanded" ]
 
-footerPanelBg :: FrontendState -> ClassName
-footerPanelBg state = if state ^. _showBottomPanel then ClassName "footer-panel-bg" else ClassName "footer-panel-bg-min"
+footerPanelBg :: FrontendState -> Array ClassName
+footerPanelBg state = if state ^. _showBottomPanel then [ ClassName "footer-panel-bg", ClassName "expanded" ] else [ ClassName "footer-panel-bg" ]
+
+-- FIXME: get correct piece of state
+githubDisplay :: FrontendState -> Array ClassName
+githubDisplay state = if state ^. _showBottomPanel then [ ClassName "hover" ] else []

@@ -24,9 +24,24 @@
     background: var(--bg-light);
     box-shadow: var(--box-shadow-left);
     z-index: 1;
+    transform:translateX(95%);
+    transition: transform .3s ease-in-out;
   }
 
   .panel-header-side.accent-border-bottom {
     border-bottom: none;
+  }
+
+  .panel-header .panel-header-side.expanded, .panel-sub-header .panel-sub-header-side.expanded,  .code-panel .sidebar-composer.expanded {
+    transform: translatex(0);
+  }
+
+  .code-panel .sidebar-composer > div, .code-panel .sidebar-composer > article {
+    opacity: 0;
+    transition: opacity .3s ease-in;
+  }
+
+  .code-panel .sidebar-composer.expanded > div, .code-panel .sidebar-composer.expanded > article {
+    opacity: 1;
   }
 }
