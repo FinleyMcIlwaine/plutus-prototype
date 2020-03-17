@@ -92,6 +92,8 @@ initialState =
     , analysisState: NotAsked
     , selectedHole: Nothing
     , helpContext: MarloweHelp
+    , showRightPanel: true
+    , showBottomPanel: true
     }
 
 runTests :: forall a. MockApp a -> Tuple a FrontendState
