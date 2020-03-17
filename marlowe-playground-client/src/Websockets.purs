@@ -1,7 +1,6 @@
 module Websockets where
 
 import Prelude
-
 import Control.Coroutine (Producer, Consumer)
 import Control.Coroutine as CR
 import Control.Coroutine.Aff (emit, produce)
@@ -9,7 +8,6 @@ import Control.Monad.Except (runExcept)
 import Data.Either (hush)
 import Data.Foldable (for_)
 import Data.Maybe (Maybe(..))
-import Debug.Trace (trace)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Foreign (Foreign, F, readString)
@@ -47,7 +45,8 @@ wsSender socket query =
         case msg of
           WebsocketMessage contents -> do
             state <- liftEffect $ WS.readyState socket
-            if state == WSRS.Open
-             then void $ trace "send" \_ -> liftEffect $ WS.sendString socket contents
-             else trace state \_ -> void $ query $ ReceiveWebsocketMessage "websocket not open" unit
+            if state == WSRS.Open then
+              void $ liftEffect $ WS.sendString socket contents
+            else
+              void $ query $ ReceiveWebsocketMessage "websocket not open" unit
         pure Nothing

@@ -538,7 +538,7 @@ panelContents state StaticAnalysisView =
   section
     [ classes [ ClassName "panel-sub-header", aHorizontal ]
     ]
-    [analysisResultPane state]
+    [ analysisResultPane state ]
 
 panelContents state MarloweWarningsView =
   section
@@ -746,7 +746,9 @@ analysisResultPane state =
     case result of
       NotAsked ->
         div [ classes [ ClassName "padded-explanation" ] ]
-          [ text "Press the button below to analyse the contract for runtime warnings." ]
+          [ text "Press the button below to analyse the contract for runtime warnings."
+          , button [ onClick $ const $ Just $ AnalyseContract ] [ text "Analyse" ]
+          ]
       Success (R.Valid) ->
         div [ classes [ ClassName "padded-explanation" ] ]
           [ h3_ [ text "Analysis Result: Pass" ]

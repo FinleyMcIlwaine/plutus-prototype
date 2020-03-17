@@ -27,7 +27,6 @@ import Data.Num (negate)
 import Data.String (Pattern(..), stripPrefix, stripSuffix, trim)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple))
-import Debug.Trace (trace)
 import Editor (Action(..), Preferences, loadPreferences) as Editor
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -55,8 +54,8 @@ import Marlowe.Parser (contract, hole, parseTerm)
 import Marlowe.Parser as P
 import Marlowe.Semantics (ChoiceId, Input(..), State(..), inBounds)
 import MonadApp (haskellEditorHandleAction, class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorMoveCursorToPosition, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
-import Network.RemoteData (RemoteData(..), _Success, isLoading)
-import Prelude (class Show, Unit, add, bind, const, discard, not, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
+import Network.RemoteData (RemoteData(..), _Success)
+import Prelude (class Show, Unit, add, bind, const, discard, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
 import Servant.PureScript.Settings (SPSettings_)
 import Simulation as Simulation
 import StaticData as StaticData
@@ -257,16 +256,6 @@ handleAction (MarloweHandleEditorMessage (TextChanged text)) = do
   assign _selectedHole Nothing
   saveMarloweBuffer text
   updateContractInState text
-  analysis <- use _analysisState
-  when (trace (isLoading analysis) \_ -> (not (isLoading analysis))) do
-    currContract <- use _currentContract
-    currState <- use (_currentMarloweState <<< _state)
-    case currContract of
-      Nothing -> pure unit
-      Just contract -> do
-        trace "loading" \_ -> pure unit
-        checkContractForWarnings (show contract) (showStateForHaskell currState)
-        assign _analysisState Loading
 
 handleAction (MarloweHandleDragEvent event) = preventDefault event
 
@@ -613,7 +602,7 @@ render state =
         ]
     ]
   where
-    bottomPanel = case state ^. _view of
-      HaskellEditor -> HaskellEditor.bottomPanel state
-      Simulation -> Simulation.bottomPanel state
-      _ -> []
+  bottomPanel = case state ^. _view of
+    HaskellEditor -> HaskellEditor.bottomPanel state
+    Simulation -> Simulation.bottomPanel state
+    _ -> []
