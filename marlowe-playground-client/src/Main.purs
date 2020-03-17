@@ -1,11 +1,10 @@
 module Main where
 
 import Prelude
-
 import Control.Coroutine (Consumer, Process, connect, consumer, runProcess, ($$))
 import Control.Monad.Reader.Trans (runReaderT)
 import Data.Maybe (Maybe(..))
-import Effect (Effect, untilE)
+import Effect (Effect)
 import Effect.Aff (forkAff, Aff)
 import Effect.Class (liftEffect)
 import Effect.Console (log)
@@ -23,7 +22,6 @@ import Web.HTML as W
 import Web.HTML.Location as WL
 import Web.HTML.Window as WW
 import Web.Socket.WebSocket as WS
-import Web.Socket.ReadyState as WSRS
 import Websockets (wsConsumer, wsProducer, wsSender)
 
 ajaxSettings :: SPSettings_ SPParams_
@@ -56,10 +54,7 @@ main = do
   runHalogenAff do
     body <- awaitBody
     driver <- runUI (hoist (flip runReaderT ajaxSettings) mainFrame) unit body
-    liftEffect $ untilE (do
-      state <- WS.readyState socket
-      pure $ state == WSRS.Open)
-    driver.subscribe $ wsSender socket
+    driver.subscribe $ wsSender socket driver.query
     void $ forkAff $ runProcess (wsProducer socket $$ wsConsumer driver.query)
     forkAff $ runProcess watchLocalStorageProcess
 

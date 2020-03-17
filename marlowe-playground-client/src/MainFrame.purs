@@ -27,6 +27,7 @@ import Data.Num (negate)
 import Data.String (Pattern(..), stripPrefix, stripSuffix, trim)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple))
+import Debug.Trace (trace)
 import Editor (Action(..), Preferences, loadPreferences) as Editor
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -257,12 +258,13 @@ handleAction (MarloweHandleEditorMessage (TextChanged text)) = do
   saveMarloweBuffer text
   updateContractInState text
   analysis <- use _analysisState
-  when (not (isLoading analysis)) do
+  when (trace (isLoading analysis) \_ -> (not (isLoading analysis))) do
     currContract <- use _currentContract
     currState <- use (_currentMarloweState <<< _state)
     case currContract of
       Nothing -> pure unit
       Just contract -> do
+        trace "loading" \_ -> pure unit
         checkContractForWarnings (show contract) (showStateForHaskell currState)
         assign _analysisState Loading
 

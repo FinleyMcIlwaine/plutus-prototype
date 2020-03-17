@@ -1,6 +1,7 @@
 module Websockets where
 
 import Prelude
+
 import Control.Coroutine (Producer, Consumer)
 import Control.Coroutine as CR
 import Control.Coroutine.Aff (emit, produce)
@@ -8,6 +9,7 @@ import Control.Monad.Except (runExcept)
 import Data.Either (hush)
 import Data.Foldable (for_)
 import Data.Maybe (Maybe(..))
+import Debug.Trace (trace)
 import Effect.Aff (Aff)
 import Effect.Class (liftEffect)
 import Foreign (Foreign, F, readString)
@@ -15,6 +17,7 @@ import Types (HQuery(..), Message(..))
 import Web.Event.EventTarget (addEventListener, eventListener)
 import Web.Socket.Event.EventTypes (onMessage)
 import Web.Socket.Event.MessageEvent as MessageEvent
+import Web.Socket.ReadyState as WSRS
 import Web.Socket.WebSocket (WebSocket)
 import Web.Socket.WebSocket as WS
 
@@ -37,10 +40,14 @@ wsConsumer query =
     void $ query $ ReceiveWebsocketMessage msg unit
     pure Nothing
 
-wsSender :: WebSocket -> Consumer Message Aff Unit
-wsSender socket =
+wsSender :: WebSocket -> (forall a. HQuery a -> Aff (Maybe a)) -> Consumer Message Aff Unit
+wsSender socket query =
   CR.consumer
     $ \msg -> do
         case msg of
-          WebsocketMessage contents -> void $ liftEffect $ WS.sendString socket contents
+          WebsocketMessage contents -> do
+            state <- liftEffect $ WS.readyState socket
+            if state == WSRS.Open
+             then void $ trace "send" \_ -> liftEffect $ WS.sendString socket contents
+             else trace state \_ -> void $ query $ ReceiveWebsocketMessage "websocket not open" unit
         pure Nothing
