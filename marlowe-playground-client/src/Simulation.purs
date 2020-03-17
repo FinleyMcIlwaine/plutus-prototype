@@ -8,7 +8,7 @@ import Data.Array (concatMap, length)
 import Data.Array as Array
 import Data.BigInteger (BigInteger, fromString, fromInt)
 import Data.Either (Either(..))
-import Data.Eq (eq, (/=), (==))
+import Data.Eq (eq, (==))
 import Data.Foldable (foldMap)
 import Data.HeytingAlgebra (not, (&&), (||))
 import Data.Lens (to, view, (^.))
@@ -33,8 +33,8 @@ import Help (toHTML)
 import Marlowe.Parser (transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, maxTime)
 import Marlowe.Symbolic.Types.Response as R
-import Network.RemoteData (RemoteData(..))
-import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>))
+import Network.RemoteData (RemoteData(..), isLoading)
+import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>), (/=))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
@@ -538,7 +538,9 @@ panelContents state StaticAnalysisView =
   section
     [ classes [ ClassName "panel-sub-header", aHorizontal ]
     ]
-    [ analysisResultPane state ]
+    [ analysisResultPane state
+    , button [ onClick $ const $ Just $ AnalyseContract, enabled (state ^. _analysisState <<< to isLoading <<< to not) ] [ text "Analyse" ]
+    ]
 
 panelContents state MarloweWarningsView =
   section
@@ -747,7 +749,6 @@ analysisResultPane state =
       NotAsked ->
         div [ classes [ ClassName "padded-explanation" ] ]
           [ text "Press the button below to analyse the contract for runtime warnings."
-          , button [ onClick $ const $ Just $ AnalyseContract ] [ text "Analyse" ]
           ]
       Success (R.Valid) ->
         div [ classes [ ClassName "padded-explanation" ] ]
@@ -793,4 +794,4 @@ analysisResultPane state =
                   ]
               ]
           ]
-      _ -> text "not asked"
+      _ -> text "Analysing..."
