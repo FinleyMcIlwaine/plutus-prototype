@@ -13,6 +13,7 @@ import Data.Foldable (foldMap)
 import Data.HeytingAlgebra (not, (&&), (||))
 import Data.Lens (to, view, (^.))
 import Data.List (List, toUnfoldable)
+import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.Map (Map)
 import Data.Map as Map
@@ -22,19 +23,21 @@ import Data.Tuple (Tuple(..), snd)
 import Data.Tuple.Nested (uncurry5, (/\), type (/\))
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, section, slot, small, small_, span, strong_, text, ul, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, section, slot, small, small_, span, span_, strong_, text, ul, ul_)
 import Halogen.HTML.Events (onClick, onValueChange)
 import Halogen.HTML.Properties (InputType(InputNumber), alt, class_, classes, enabled, placeholder, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
 import Halogen.SVG (svg, xlink, xlinkNS)
 import Halogen.SVG as SVG
 import Help (toHTML)
-import Marlowe.Parser (transactionWarningList)
-import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Token(..), TransactionError, TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, maxTime)
+import Marlowe.Parser (transactionInputList, transactionWarningList)
+import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, maxTime)
+import Marlowe.Symbolic.Types.Response as R
+import Network.RemoteData (RemoteData(..))
 import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -535,7 +538,7 @@ panelContents state StaticAnalysisView =
   section
     [ classes [ ClassName "panel-sub-header", aHorizontal ]
     ]
-    [ text "sa" ]
+    [analysisResultPane state]
 
 panelContents state MarloweWarningsView =
   section
@@ -577,6 +580,37 @@ transactionErrors (Just error) =
           <> printTransError error
       )
   ]
+
+displayTransactionList :: forall p. String -> HTML p HAction
+displayTransactionList transactionList = case runParser transactionInputList transactionList of
+  Right pTL ->
+    ol_
+      ( do
+          ( TransactionInput
+              { interval: SlotInterval (Slot from) (Slot to)
+            , inputs: inputList
+            }
+          ) <-
+            ((toUnfoldable pTL) :: Array TransactionInput)
+          pure
+            ( li_
+                [ span_
+                    [ b_ [ text "Transaction" ]
+                    , text " with slot interval "
+                    , b_ [ text $ (show from <> " to " <> show to) ]
+                    , if List.null inputList then
+                        text " and no inputs (empty transaction)."
+                      else
+                        text " and inputs:"
+                    ]
+                , if List.null inputList then
+                    text ""
+                  else
+                    displayInputList inputList
+                ]
+            )
+      )
+  Left _ -> code_ [ text transactionList ]
 
 displayInputList :: forall p. List Input -> HTML p HAction
 displayInputList inputList =
@@ -703,3 +737,58 @@ displayWarning (TransactionShadowing valId oldVal newVal) =
   , b_ [ text (show newVal) ]
   , text "."
   ]
+
+analysisResultPane :: forall p. FrontendState -> HTML p HAction
+analysisResultPane state =
+  let
+    result = state ^. _analysisState
+  in
+    case result of
+      NotAsked ->
+        div [ classes [ ClassName "padded-explanation" ] ]
+          [ text "Press the button below to analyse the contract for runtime warnings." ]
+      Success (R.Valid) ->
+        div [ classes [ ClassName "padded-explanation" ] ]
+          [ h3_ [ text "Analysis Result: Pass" ]
+          , text "Static analysis could not find any execution that results in any warning."
+          ]
+      Success (R.CounterExample { initialSlot, transactionList, transactionWarning }) ->
+        div [ classes [ ClassName "padded-explanation" ] ]
+          [ h3_ [ text "Analysis Result: Fail" ]
+          , text "Static analysis found the following counterexample:"
+          , ul_
+              [ li_
+                  [ spanText "Initial slot: "
+                  , b_ [ spanText (show initialSlot) ]
+                  ]
+              , li_
+                  [ spanText "Offending transaction list: "
+                  , displayTransactionList transactionList
+                  ]
+              , li_
+                  [ spanText "Warnings issued: "
+                  , displayWarningList transactionWarning
+                  ]
+              ]
+          ]
+      Success (R.Error str) ->
+        div [ classes [ ClassName "padded-explanation" ] ]
+          [ h3_ [ text "Error during analysis" ]
+          , text "Analysis failed for the following reason:"
+          , ul_
+              [ li_
+                  [ b_ [ spanText str ]
+                  ]
+              ]
+          ]
+      Failure failure ->
+        div [ classes [ ClassName "padded-explanation" ] ]
+          [ h3_ [ text "Error during analysis" ]
+          , text "Analysis failed for the following reason:"
+          , ul_
+              [ li_
+                  [ b_ [ spanText failure ]
+                  ]
+              ]
+          ]
+      _ -> text "not asked"
