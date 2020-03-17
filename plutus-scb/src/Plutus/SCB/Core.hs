@@ -37,6 +37,7 @@ module Plutus.SCB.Core
 
 import           Control.Error.Util                         (note)
 import           Control.Monad                              (void)
+import Control.Monad.Freer (Eff, Members, Member, LastMember)
 import           Control.Monad.Except                       (MonadError, throwError)
 import           Control.Monad.Except.Extras                (mapError)
 import           Control.Monad.IO.Class                     (MonadIO, liftIO)
@@ -91,8 +92,8 @@ import           Plutus.SCB.Types                           (ActiveContract (Act
                                                              contractPath, dbConfigFile, dbConfigPoolSize, hooks,
                                                              newState, partiallyDecodedResponse)
 import           Plutus.SCB.Utils                           (liftError, render, tshow)
-import           Wallet.API                                 (ChainIndexAPI, NodeAPI, WalletAPI, WalletDiagnostics)
 import qualified Wallet.API                                 as WAPI
+import Wallet.Emulator.MultiAgent (EmulatedWalletEffects)
 
 newtype Connection =
     Connection (SqlEventStoreConfig SqlEvent JSONString, ConnectionPool)
@@ -141,19 +142,20 @@ activateContract filePath = do
     pure activeContractId
 
 updateContract ::
-       ( MonadLogger m
-       , MonadEventStore ChainEvent m
-       , MonadContract m
-       , MonadError SCBError m
-       , WalletAPI m
-       , NodeAPI m
-       , WalletDiagnostics m
-       , ChainIndexAPI m
-       )
+       ( Members EmulatedWalletEffects effs)
+    --        MonadLogger m
+    --    , MonadEventStore ChainEvent m
+    --    , MonadContract m
+    --    , MonadError SCBError m
+    --    , WalletAPI m
+    --    , NodeAPI m
+    --    , WalletDiagnostics m
+    --    , ChainIndexAPI m
+    --    )
     => UUID
     -> Text
     -> JSON.Value
-    -> m ()
+    -> Eff effs ()
 updateContract uuid endpointName endpointPayload = do
     logInfoN "Finding Contract"
     oldContractState <- liftError $ lookupActiveContractState uuid
@@ -171,42 +173,28 @@ updateContract uuid endpointName endpointPayload = do
     logInfoN "Done"
 
 handleBlockchainEvents ::
-       ( MonadError SCBError m
-       , MonadLogger m
-       , MonadEventStore ChainEvent m
-       , WalletAPI m
-       , WalletDiagnostics m
-       , NodeAPI m
-       , ChainIndexAPI m
-       )
+       (Members EmulatedWalletEffects effs)
     => PartiallyDecodedResponse
-    -> m ()
+    -> Eff effs ()
 handleBlockchainEvents response = do
     handleTxHook response
     handleUtxoAtHook response
     handleOwnPubKeyHook response
 
 parseSingleHook ::
-       MonadError SCBError m
+       (Members EmulatedWalletEffects effs)
     => (JSON.Value -> Parser a)
     -> PartiallyDecodedResponse
-    -> m a
+    -> Eff effs a
 parseSingleHook parser response =
     case JSON.parseEither parser (hooks response) of
         Left err     -> throwError $ ContractCommandError 0 $ Text.pack err
         Right result -> pure result
 
 handleTxHook ::
-       ( MonadError SCBError m
-       , MonadLogger m
-       , MonadEventStore ChainEvent m
-       , WalletAPI m
-       , WalletDiagnostics m
-       , NodeAPI m
-       , ChainIndexAPI m
-       )
+       (Members EmulatedWalletEffects effs)
     => PartiallyDecodedResponse
-    -> m ()
+    -> Eff effs ()
 handleTxHook response = do
     logInfoN "Handling 'tx' hook."
     unbalancedTxs <- parseSingleHook txKeyParser response
@@ -220,9 +208,9 @@ handleTxHook response = do
     traverse_ (runCommand saveBalancedTxResult NodeEventSource) balanceResults
 
 handleUtxoAtHook ::
-       (MonadError SCBError m, MonadLogger m)
+       (Members EmulatedWalletEffects effs)
     => PartiallyDecodedResponse
-    -> m ()
+    -> Eff effs ()
 handleUtxoAtHook response = do
     logInfoN "Handling 'utxo-at' hook."
     utxoAts <- parseSingleHook utxoAtKeyParser response
@@ -230,9 +218,9 @@ handleUtxoAtHook response = do
     logWarnN "UNIMPLEMENTED: handleUtxoAtHook"
 
 handleOwnPubKeyHook ::
-       (MonadError SCBError m, MonadLogger m)
+       (Members EmulatedWalletEffects effs)
     => PartiallyDecodedResponse
-    -> m ()
+    -> Eff effs ()
 handleOwnPubKeyHook response = do
     logInfoN "Handling 'own-pubkey' hook."
     ownPubKeys <- parseSingleHook ownPubKeyParser response
@@ -241,7 +229,7 @@ handleOwnPubKeyHook response = do
 
 -- | A wrapper around the NodeAPI function that returns some more
 -- useful evidence of the work done.
-submitTxn :: (Monad m, NodeAPI m) => Ledger.Tx -> m Ledger.Tx
+submitTxn :: (Members EmulatedWalletEffects effs) => Ledger.Tx -> Eff effs Ledger.Tx
 submitTxn txn = do
     WAPI.submitTxn txn
     pure txn
