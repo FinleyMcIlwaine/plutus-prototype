@@ -1,6 +1,7 @@
 module MonadApp where
 
 import Prelude
+
 import API (RunResult)
 import Ace (Annotation, Editor)
 import Ace as Ace
@@ -48,6 +49,7 @@ import Servant.PureScript.Ajax (AjaxError)
 import Servant.PureScript.Settings (SPSettings_)
 import StaticData (bufferLocalStorageKey, marloweBufferLocalStorageKey)
 import Text.Parsing.StringParser.Basic (lines)
+import Text.Pretty (pretty)
 import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction, MarloweState, Message(..), WebData, _Head, _blocklySlot, _contract, _currentMarloweState, _editorErrors, _editorWarnings, _haskellEditorSlot, _holes, _marloweEditorSlot, _marloweState, _moneyInContract, _oldContract, _payments, _pendingInputs, _possibleActions, _slot, _state, _transactionError, _transactionWarnings, actionToActionInput, emptyMarloweState)
 import Web.HTML.Event.DragEvent (DragEvent)
 import WebSocket (WebSocketRequestMessage(CheckForWarnings))
@@ -161,6 +163,10 @@ instance monadAppHalogenApp ::
     wrap $ assign _marloweState $ NEL.singleton (emptyMarloweState zero)
     wrap $ assign _oldContract Nothing
     updateContractInStateImpl $ fromMaybe "" newContract
+    mContract <- use (_marloweState <<< _Head <<< _contract)
+    case mContract of
+      Just contract -> marloweEditorSetValue (show $ pretty contract) (Just 1)
+      _ -> pure unit
   saveBuffer text = wrap $ Editor.saveBuffer bufferLocalStorageKey text
   saveMarloweBuffer text = wrap $ Editor.saveBuffer marloweBufferLocalStorageKey text
   getOauthStatus = runAjax Server.getOauthStatus

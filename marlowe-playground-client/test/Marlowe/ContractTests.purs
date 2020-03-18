@@ -44,11 +44,13 @@ instance monadAppState :: MonadApp MockApp where
   haskellEditorGetValue = pure Nothing
   haskellEditorSetAnnotations _ = pure unit
   haskellEditorHandleAction _ = pure unit
+  haskellEditorResize = pure unit
   marloweEditorSetValue _ _ = pure unit
   marloweEditorGetValue = pure (Just Contracts.escrow)
   marloweEditorHandleAction _ = pure unit
   marloweEditorSetAnnotations _ = pure unit
   marloweEditorMoveCursorToPosition _ = pure unit
+  marloweEditorResize = pure unit
   preventDefault _ = pure unit
   readFileFromDragEvent _ = pure ""
   updateContractInState contract = do
