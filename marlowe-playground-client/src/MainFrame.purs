@@ -38,9 +38,9 @@ import Gists (GistAction(..), parseGistUrl)
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
-import Halogen.HTML (ClassName(ClassName), HTML, button, div, h1, header, img, main, nav, p, p_, section, slot, text)
+import Halogen.HTML (ClassName(ClassName), HTML, a, button, div, h1, header, img, main, nav, p, p_, section, slot, text)
 import Halogen.HTML.Events (onClick)
-import Halogen.HTML.Properties (alt, class_, classes, id_, src)
+import Halogen.HTML.Properties (alt, class_, classes, href, id_, src)
 import Halogen.Query (HalogenM)
 import Halogen.SVG (GradientUnits(..), Translate(..), d, defs, gradientUnits, linearGradient, offset, path, stop, stopColour, svg, transform, x1, x2, y2)
 import Halogen.SVG as SVG
@@ -569,7 +569,7 @@ render state =
                 , div [] [ text "Blockly" ]
                 ]
             , div [ class_ (ClassName "nav-bottom-links") ]
-                [ button [ classes [ btnSecondary, aHorizontal, ClassName "open-link-icon" ] ] [ text "Tutorial" ]
+                [ a [ href "./tutorial", classes [ btnSecondary, aHorizontal, ClassName "open-link-icon" ] ] [ text "Tutorial" ]
                 , p_ [ text "Privacy Policy" ]
                 , p_
                     [ text "by "

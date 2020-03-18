@@ -82,8 +82,15 @@
 }
 
 .open-link-icon {
-  padding:0.5rem 2rem 0.5rem 0.75rem;
+  padding: 0.5rem 1rem;
   position:relative;
+  cursor: pointer;
+  position: relative;
+  background: var(--gradient-bg);
+  color: var(--white);
+  border-radius: var(--border-radius);
+  border: none;
+  z-index: 1;
 }
 
 .open-link-icon:after {
