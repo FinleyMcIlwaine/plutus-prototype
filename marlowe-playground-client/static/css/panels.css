@@ -51,13 +51,21 @@
   width: 100%;
 }
 
-.demo-arrow, .github-icon, .drawer-icon {
+.demo-arrow, .github-icon, .drawer-icon, .minimize-icon {
   height: 30px;
   width: 30px;
 }
 
 .drawer-icon {
   display:none;
+}
+
+.expanded.minimize-icon {
+  transform: rotate(90deg);
+}
+
+.minimize-icon {
+  transform: rotate(-90deg);
 }
 
 .blockly-btn-icon {

@@ -2,7 +2,7 @@ module Simulation where
 
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Auth (AuthRole(..), authStatusAuthRole)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (concatMap, length)
@@ -422,24 +422,10 @@ bottomPanel state =
                               [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
                           , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
                               [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
-                          , li [ class_ spaceLeft ]
-                              [ svg
-                                  [ SVG.width (wrap 24.0)
-                                  , SVG.height (wrap 24.0)
-                                  , role "presentation"
-                                  -- FIXME: can't seem to add className to SVG
-                                  -- classes [ ClassName "control-icon", ClassName "control-icon-expand" ]
-                                  ]
-                                  [ SVG.use xlinkNS [ xlink "#expand-more" ] [] ]
-                              , svg
-                                  [ SVG.width (wrap 24.0)
-                                  , SVG.height (wrap 24.0)
-                                  , role "presentation"
-                                  -- classes [ ClassName "control-icon", ClassName "control-icon-close" ]
-                                  ]
-                                  [ SVG.use xlinkNS [ xlink "#close" ] [] ]
+                          , li [class_ (ClassName "space-left")]
+                              [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ]
+                                  [ img [ classes (minimizeIcon state), src closeDrawerIcon, alt "close drawer icon" ] ]
                               ]
-                          , li_ [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ] [ text "X" ] ]
                           ]
                       ]
                   ]

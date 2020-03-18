@@ -167,3 +167,6 @@ footerPanelBg state _ =
 -- FIXME: get correct piece of state
 githubDisplay :: FrontendState -> Array ClassName
 githubDisplay state = if state ^. _showBottomPanel then [ ClassName "hover" ] else []
+
+minimizeIcon :: FrontendState -> Array ClassName
+minimizeIcon state = if state ^. _showBottomPanel then [ ClassName "minimize-icon", ClassName "expanded" ] else [ ClassName "minimize-icon" ]
