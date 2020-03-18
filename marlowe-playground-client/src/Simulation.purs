@@ -5,7 +5,7 @@ import Auth (AuthRole(..), authStatusAuthRole)
 import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
-import Data.Array (concatMap, intercalate, length)
+import Data.Array (concatMap, fold, intercalate, length)
 import Data.Array as Array
 import Data.BigInteger (BigInteger, fromString, fromInt)
 import Data.Either (Either(..))
@@ -33,14 +33,14 @@ import Halogen.SVG (svg, xlink, xlinkNS)
 import Halogen.SVG as SVG
 import Help (toHTML)
 import Icons (Icon(..), icon)
-import Marlowe.Parser (transactionInputList, transactionWarningList)
+import Marlowe.Parser (token, transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
 import Marlowe.Symbolic.Types.Response as R
 import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>), (/=))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _authStatus, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _authStatus, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state, _transactionWarnings)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -207,12 +207,12 @@ inputItem isEnabled person (ChoiceInput choiceId@(ChoiceId choiceName choiceOwne
     [ classes [ ClassName "choice-a", aHorizontal ] ]
     [ button
         [ classes [ plusBtn, smallBtn ]
-        , enabled isEnabled
+        , enabled (isEnabled && inBounds chosenNum bounds)
         , onClick $ const $ Just
             $ AddInput person (IChoice (ChoiceId choiceName choiceOwner) chosenNum) bounds
         ]
         [ text "+" ]
-    , p [class_ (ClassName "choice-input")]
+    , p [ class_ (ClassName "choice-input") ]
         [ spanText "Choice "
         , b_ [ spanText (show choiceName) ]
         , spanText ": Choose value "
@@ -455,14 +455,25 @@ bottomPanel state =
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
   div [ classes [ rTable, rTable6cols ] ]
-    ( tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
-        accountsData
+    ( warningsRow
+        <> tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
+            accountsData
         <> tableRow "Choices" "No Choices have been made" "Choice ID" "Participant" "Chosen Value" "" ""
             choicesData
         <> tableRow "Payments" "No payments have been recorded" "Party" "Currency Symbol" "Token Name" "Money" "" paymentsData
         <> tableRow "Let Bindings" "No values have been bound" "Identifier" "Value" "" "" "" bindingsData
     )
   where
+  warnings = state ^. (_marloweState <<< _Head <<< _transactionWarnings)
+
+  warningsRow =
+    if Array.null warnings then
+      []
+    else
+      (headerRow "Warnings" "type" "details" "" "" "") <> foldMap displayWarning' warnings'
+
+  warnings' = state ^. (_marloweState <<< _Head <<< _transactionWarnings)
+
   accountsData =
     let
       (accounts :: Array _) = state ^. (_marloweState <<< _Head <<< _state <<< _accounts <<< to Map.toUnfoldable)
@@ -532,6 +543,79 @@ panelContents state CurrentStateView =
     [ div [ classes [ rTableCell, first, Classes.header ] ]
         [ text title ]
     , div [ classes [ rTableCell, rTableEmptyRow, Classes.header ] ] [ text message ]
+    ]
+
+  displayWarning' (TransactionNonPositiveDeposit party (AccountId accNum owner) tok amount) =
+    [ div [ classes [ rTableCell, first ] ] []
+    , div [ class_ (ClassName "RTable-2-cells") ] [ text "TransactionNonPositiveDeposit" ]
+    , div [ class_ (ClassName "RTable-4-cells") ]
+        [ text $ "Party " <> show party <> " is asked to deposit " <> show amount
+            <> " units of "
+            <> show tok
+            <> " into account "
+            <> show accNum
+            <> " of "
+            <> show owner
+            <> "."
+        ]
+    ]
+
+  displayWarning' (TransactionNonPositivePay (AccountId accNum owner) payee tok amount) =
+    [ div [ classes [ rTableCell, first ] ] []
+    , div [ class_ (ClassName "RTable-2-cells") ] [ text "TransactionNonPositivePay" ]
+    , div [ class_ (ClassName "RTable-4-cells") ]
+        [ text $ "The contract is supposed to make a payment of "
+            <> show amount
+            <> " units of "
+            <> show tok
+            <> " from account "
+            <> show accNum
+            <> " of "
+            <> show owner
+            <> " to "
+            <> ( case payee of
+                  (Account (AccountId accNum2 owner2)) -> "account " <> show accNum2 <> " of " <> show owner2
+                  (Party dest) -> "party " <> show dest
+              )
+            <> "."
+        ]
+    ]
+
+  displayWarning' (TransactionPartialPay (AccountId accNum owner) payee tok amount expected) =
+    [ div [ classes [ rTableCell, first ] ] []
+    , div [ class_ (ClassName "RTable-2-cells") ] [ text "TransactionPartialPay" ]
+    , div [ class_ (ClassName "RTable-4-cells") ]
+        [ text $ "The contract is supposed to make a payment of "
+            <> show expected
+            <> " units of "
+            <> show tok
+            <> " from account "
+            <> show accNum
+            <> " of "
+            <> show owner
+            <> " to "
+            <> ( case payee of
+                  (Account (AccountId accNum2 owner2)) -> ("account " <> show accNum2 <> " of " <> show owner2)
+                  (Party dest) -> ("party " <> show dest)
+              )
+            <> " but there is only "
+            <> show amount
+            <> "."
+        ]
+    ]
+
+  displayWarning' (TransactionShadowing valId oldVal newVal) =
+    [ div [ classes [ rTableCell, first ] ] []
+    , div [ class_ (ClassName "RTable-2-cells") ] [ text "TransactionShadowing" ]
+    , div [ class_ (ClassName "RTable-4-cells") ]
+        [ text $ "The contract defined the value with id "
+            <> show valId
+            <> " before, it was assigned the value "
+            <> show oldVal
+            <> " and now it is being assigned the value "
+            <> show newVal
+            <> "."
+        ]
     ]
 
 panelContents state StaticAnalysisView =
