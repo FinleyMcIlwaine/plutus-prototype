@@ -28,3 +28,16 @@ a:hover {
 #editor-preferences {
     padding: 0.5rem;
 }
+
+.choice-a {
+    display: flex;
+    flex-wrap: wrap;
+}
+
+.choice-a > button {
+    width: 24px;
+}
+
+.choice-a > .choice-input {
+    width: auto;
+}

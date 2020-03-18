@@ -5,7 +5,7 @@ import Auth (AuthRole(..), authStatusAuthRole)
 import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
-import Data.Array (concatMap, length)
+import Data.Array (concatMap, intercalate, length)
 import Data.Array as Array
 import Data.BigInteger (BigInteger, fromString, fromInt)
 import Data.Either (Either(..))
@@ -25,7 +25,7 @@ import Data.Tuple.Nested (uncurry5, (/\), type (/\))
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
 import Gists (gistControls, idPublishGist)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, section, slot, small, small_, span, span_, strong_, text, ul, ul_)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p, p_, pre, section, slot, small, small_, span, span_, strong_, text, ul, ul_)
 import Halogen.HTML.Events (onClick, onValueChange)
 import Halogen.HTML.Properties (InputType(InputNumber), alt, class_, classes, disabled, enabled, href, placeholder, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
@@ -34,7 +34,7 @@ import Halogen.SVG as SVG
 import Help (toHTML)
 import Icons (Icon(..), icon)
 import Marlowe.Parser (transactionInputList, transactionWarningList)
-import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, maxTime)
+import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
 import Marlowe.Symbolic.Types.Response as R
 import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>), (/=))
@@ -191,7 +191,7 @@ inputItem ::
   ActionInput ->
   HTML p HAction
 inputItem isEnabled person (DepositInput accountId party token value) =
-  li [ classes [ ClassName "choice-a", aHorizontal ] ]
+  li [ classes [ ClassName "deposit-a", aHorizontal ] ]
     [ button
         [ classes [ plusBtn, smallBtn ]
         , enabled isEnabled
@@ -212,14 +212,20 @@ inputItem isEnabled person (ChoiceInput choiceId@(ChoiceId choiceName choiceOwne
             $ AddInput person (IChoice (ChoiceId choiceName choiceOwner) chosenNum) bounds
         ]
         [ text "+" ]
-    , p_
+    , p [class_ (ClassName "choice-input")]
         [ spanText "Choice "
         , b_ [ spanText (show choiceName) ]
         , spanText ": Choose value "
         , marloweActionInput isEnabled (SetChoice choiceId) chosenNum
         ]
-    , input []
+    , p_ error
     ]
+  where
+  error = if inBounds chosenNum bounds then [] else [ text boundsError ]
+
+  boundsError = "Choice must be between " <> intercalate " or " (map boundError bounds)
+
+  boundError (Bound from to) = show from <> " and " <> show to
 
 inputItem isEnabled person NotifyInput =
   li
@@ -422,7 +428,7 @@ bottomPanel state =
                               [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
                           , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
                               [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
-                          , li [class_ (ClassName "space-left")]
+                          , li [ class_ (ClassName "space-left") ]
                               [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ]
                                   [ img [ classes (minimizeIcon state), src closeDrawerIcon, alt "close drawer icon" ] ]
                               ]
