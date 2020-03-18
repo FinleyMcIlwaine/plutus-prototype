@@ -96,6 +96,7 @@
 
 .sidebar-composer {
   padding-left:20px;
+  padding-bottom: 4rem;
 }
 
 .input-composer {
@@ -179,7 +180,7 @@ button.minus-btn:hover {
 }
 
 .analysis-panel .panel-header {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
 .footer-panel-bg {

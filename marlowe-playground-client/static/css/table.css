@@ -1,8 +1,10 @@
 .Rtable {
   display: flex;
   flex-wrap: wrap;
-  padding: 0;
+  padding: 0.5rem 0 0 0;
   text-align: center;
+  height: 8rem;
+  overflow-x: scroll;
 }
 .Rtable-cell {
   box-sizing: border-box;
