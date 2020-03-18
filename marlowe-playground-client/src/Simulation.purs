@@ -18,7 +18,7 @@ import Data.List as List
 import Data.List.NonEmpty as NEL
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isJust, isNothing)
 import Data.Newtype (wrap)
 import Data.Tuple (Tuple(..), snd)
 import Data.Tuple.Nested (uncurry5, (/\), type (/\))
@@ -40,7 +40,7 @@ import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>), (/=))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _authStatus, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state, _transactionWarnings)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _authStatus, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state, _transactionError, _transactionWarnings)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -403,7 +403,7 @@ bottomPanel state =
                   [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
                       [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
                           [ li
-                              [ classes ([] <> isActive CurrentStateView)
+                              [ classes ((if hasRuntimeWarnings || hasRuntimeError then [ ClassName "error-tab" ] else []) <> isActive CurrentStateView)
                               , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
                               ]
                               [ text "Current State" ]
@@ -448,6 +448,10 @@ bottomPanel state =
 
   errors = state ^. (_marloweState <<< _Head <<< _editorErrors)
 
+  hasRuntimeWarnings = state ^. (_marloweState <<< _Head <<< _transactionWarnings <<< to Array.null <<< to not)
+
+  hasRuntimeError = state ^. (_marloweState <<< _Head <<< _transactionError <<< to isJust)
+
   contractMaxTime Nothing = "Closed"
 
   contractMaxTime (Just contract) = let t = maxTime contract in if t == zero then "Closed" else show t
@@ -455,7 +459,7 @@ bottomPanel state =
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
   div [ classes [ rTable, rTable6cols ] ]
-    ( warningsRow
+    ( warningsRow <> errorRow
         <> tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
             accountsData
         <> tableRow "Choices" "No Choices have been made" "Choice ID" "Participant" "Chosen Value" "" ""
@@ -470,9 +474,19 @@ panelContents state CurrentStateView =
     if Array.null warnings then
       []
     else
-      (headerRow "Warnings" "type" "details" "" "" "") <> foldMap displayWarning' warnings'
+      (headerRow "Warnings" "type" "details" "" "" "") <> foldMap displayWarning' warnings
 
-  warnings' = state ^. (_marloweState <<< _Head <<< _transactionWarnings)
+  error = state ^. (_marloweState <<< _Head <<< _transactionError)
+
+  errorRow =
+    if isNothing error then
+      []
+    else
+      (headerRow "Errors" "type" "details" "" "" "") <> displayError error
+
+  displayError Nothing = []
+
+  displayError (Just err) = [ div [ class_ (ClassName "RTable-5-cells") ] [ text $ show err ] ]
 
   accountsData =
     let
