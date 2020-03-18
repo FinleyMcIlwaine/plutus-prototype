@@ -9,6 +9,7 @@ module Plutus.SCB.Types where
 
 import qualified Cardano.ChainIndex.Types                   as ChainIndex
 import qualified Cardano.Node.Server                        as NodeServer
+import           Servant.Client   (BaseUrl)
 import qualified Cardano.SigningProcess.Server              as SigningProcess
 import qualified Cardano.Wallet.Server                      as WalletServer
 import           Control.Lens.TH                            (makePrisms)
@@ -121,10 +122,18 @@ data Config =
         { dbConfig             :: DbConfig
         , walletServerConfig   :: WalletServer.Config
         , nodeServerConfig     :: NodeServer.MockServerConfig
+        , scbWebserverConfig   :: WebserverConfig
         , chainIndexConfig     :: ChainIndex.ChainIndexConfig
         , signingProcessConfig :: SigningProcess.SigningProcessConfig
         }
     deriving (Show, Eq, Generic, FromJSON)
+
+newtype WebserverConfig =
+    WebserverConfig
+        { baseUrl :: BaseUrl
+        }
+    deriving (Show, Eq, Generic)
+    deriving anyclass (FromJSON, ToJSON)
 
 data Source
     = ContractEventSource

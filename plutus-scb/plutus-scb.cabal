@@ -71,6 +71,9 @@ library
         Plutus.SCB.Command
         Plutus.SCB.ContractCLI
         Plutus.SCB.Core
+        Plutus.SCB.Webserver.Types
+        Plutus.SCB.Webserver.API
+        Plutus.SCB.Webserver.Server
         Plutus.SCB.Events
         Plutus.SCB.Query
         Plutus.SCB.Relation
