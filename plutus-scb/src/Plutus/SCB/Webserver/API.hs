@@ -6,7 +6,7 @@ module Plutus.SCB.Webserver.API
     ) where
 
 import           Plutus.SCB.Webserver.Types (FullReport)
-import           Servant.API                ((:<|>), (:>), Capture, Get, JSON, NoContent, Post, ReqBody)
+import           Servant.API                ((:<|>), (:>), Get, JSON)
 
 type API
      = "healthcheck" :> Get '[ JSON] ()

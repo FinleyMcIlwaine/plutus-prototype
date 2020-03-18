@@ -16,6 +16,8 @@ derive instance genericRawJson :: Generic RawJson _
 
 derive instance newtypeRawJson :: Newtype RawJson _
 
+derive instance eqRawJson :: Eq RawJson
+
 _RawJson :: Iso' RawJson String
 _RawJson = _Newtype
 

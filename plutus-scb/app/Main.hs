@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts    #-}
 {-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE ApplicativeDo      #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -37,6 +38,7 @@ import           Plutus.SCB.Types              (Config (Config), chainIndexConfi
                                                 signingProcessConfig, walletServerConfig)
 import           Plutus.SCB.Utils              (logErrorS, render)
 import qualified Plutus.SCB.Webserver.Server   as SCBServer
+import qualified PSGenerator
 import           System.Exit                   (ExitCode (ExitFailure), exitSuccess, exitWith)
 import qualified System.Remote.Monitoring      as EKG
 
@@ -56,6 +58,9 @@ data Command
     | ReportActiveContracts
     | ReportTxHistory
     | SCBWebserver
+    | PSGenerator
+          { _outputDir :: !FilePath
+          }
     deriving (Show, Eq)
 
 versionOption :: Parser (a -> a)
@@ -91,6 +96,7 @@ commandParser =
              , allServersParser
              , mockWalletParser
              , scbWebserverParser
+             , psGeneratorCommandParser
              , mockNodeParser
              , chainIndexParser
              , signingProcessParser
@@ -111,6 +117,17 @@ commandParser =
                             , reportContractHistoryParser
                             ]))
                   (fullDesc <> progDesc "Manage your smart contracts.")))
+
+psGeneratorCommandParser :: Mod CommandFields Command
+psGeneratorCommandParser =
+    command "psgenerator" $
+    flip info fullDesc $ do
+        _outputDir <-
+            argument
+                str
+                (metavar "OUTPUT_DIR" <>
+                 help "Output directory to write PureScript files to.")
+        pure PSGenerator {_outputDir}
 
 migrationParser :: Mod CommandFields Command
 migrationParser =
@@ -281,6 +298,7 @@ runCliCommand _ (ReportContractHistory uuid) = do
         (\index contract ->
              logInfoN $ render (parens (pretty index) <+> pretty contract)) =<<
         Core.activeContractHistory uuid
+runCliCommand _ PSGenerator {_outputDir} = liftIO $ PSGenerator.generate _outputDir
 
 main :: IO ()
 main = do

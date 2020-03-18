@@ -21,8 +21,7 @@ import           Eventful                   (streamEventEvent)
 import           Network.Wai.Handler.Warp   (run)
 import           Plutus.SCB.App             (App, runApp)
 import           Plutus.SCB.Arbitrary       ()
-import           Plutus.SCB.Core            (MonadEventStore, runGlobalQuery)
-import           Plutus.SCB.Events          (ChainEvent)
+import           Plutus.SCB.Core            (runGlobalQuery)
 import qualified Plutus.SCB.Query           as Query
 import           Plutus.SCB.Types           (Config, WebserverConfig (..), scbWebserverConfig)
 import           Plutus.SCB.Utils           (tshow)
@@ -54,10 +53,7 @@ app config =
     serve (Proxy @API) $
     hoistServer (Proxy @API) (asHandler config) $ healthcheck :<|> fullReport
 
-main ::
-       (MonadIO m, MonadLogger m, MonadEventStore ChainEvent m)
-    => Config
-    -> m ()
+main :: (MonadIO m, MonadLogger m) => Config -> m ()
 main config = do
     let port = baseUrlPort $ baseUrl $ scbWebserverConfig config
     logInfoN $ "Starting SCB backend server on port: " <> tshow port
