@@ -58,11 +58,13 @@ class
   haskellEditorGetValue :: m (Maybe String)
   haskellEditorHandleAction :: Editor.Action -> m Unit
   haskellEditorSetAnnotations :: Array Annotation -> m Unit
+  haskellEditorResize :: m Unit
   marloweEditorSetValue :: String -> Maybe Int -> m Unit
   marloweEditorGetValue :: m (Maybe String)
   marloweEditorHandleAction :: Editor.Action -> m Unit
   marloweEditorSetAnnotations :: Array Annotation -> m Unit
   marloweEditorMoveCursorToPosition :: Ace.Position -> m Unit
+  marloweEditorResize :: m Unit
   preventDefault :: DragEvent -> m Unit
   readFileFromDragEvent :: DragEvent -> m String
   updateContractInState :: String -> m Unit
@@ -118,6 +120,10 @@ instance monadAppHalogenApp ::
           liftEffect do
             session <- AceEditor.getSession editor
             Session.setAnnotations annotations session
+  haskellEditorResize =
+    void
+      $ withHaskellEditor \editor ->
+          liftEffect $ AceEditor.resize Nothing editor
   marloweEditorSetValue contents i = void $ withMarloweEditor $ liftEffect <<< AceEditor.setValue contents i
   marloweEditorGetValue = withMarloweEditor $ liftEffect <<< AceEditor.getValue
   marloweEditorHandleAction action = void $ withMarloweEditor (Editor.handleAction marloweBufferLocalStorageKey action)
@@ -133,6 +139,10 @@ instance monadAppHalogenApp ::
   marloweEditorMoveCursorToPosition (Ace.Position { column, row }) = do
     void $ withMarloweEditor $ liftEffect <<< AceEditor.focus
     void $ withMarloweEditor $ liftEffect <<< AceEditor.navigateTo (row - 1) (column - 1)
+  marloweEditorResize =
+    void
+      $ withMarloweEditor \editor ->
+          liftEffect $ AceEditor.resize Nothing editor
   preventDefault event = wrap $ liftEffect $ FileEvents.preventDefault event
   readFileFromDragEvent event = wrap $ liftAff $ FileEvents.readFileFromDragEvent event
   updateContractInState contract = do
