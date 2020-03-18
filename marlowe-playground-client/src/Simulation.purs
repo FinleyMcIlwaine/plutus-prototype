@@ -1,7 +1,8 @@
 module Simulation where
 
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Auth (AuthRole(..), authStatusAuthRole)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (concatMap, length)
@@ -23,13 +24,15 @@ import Data.Tuple (Tuple(..), snd)
 import Data.Tuple.Nested (uncurry5, (/\), type (/\))
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
+import Gists (gistControls, idPublishGist)
 import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p_, pre, section, slot, small, small_, span, span_, strong_, text, ul, ul_)
 import Halogen.HTML.Events (onClick, onValueChange)
-import Halogen.HTML.Properties (InputType(InputNumber), alt, class_, classes, enabled, placeholder, src, type_, value)
+import Halogen.HTML.Properties (InputType(InputNumber), alt, class_, classes, disabled, enabled, href, placeholder, src, type_, value)
 import Halogen.HTML.Properties.ARIA (role)
 import Halogen.SVG (svg, xlink, xlinkNS)
 import Halogen.SVG as SVG
 import Help (toHTML)
+import Icons (Icon(..), icon)
 import Marlowe.Parser (transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, maxTime)
 import Marlowe.Symbolic.Types.Response as R
@@ -37,7 +40,7 @@ import Network.RemoteData (RemoteData(..), isLoading)
 import Prelude (class Show, Unit, bind, const, mempty, pure, show, unit, zero, ($), (<$>), (<<<), (<>), (>), (/=))
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
-import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
+import Types (ActionInput(..), ActionInputId, ChildSlots, FrontendState, HAction(..), HelpContext(..), SimulationBottomPanelView(..), View(..), _Head, _analysisState, _authStatus, _contract, _editorErrors, _editorPreferences, _editorWarnings, _helpContext, _marloweEditorSlot, _marloweState, _payments, _pendingInputs, _possibleActions, _showBottomPanel, _simulationBottomPanelView, _slot, _state)
 
 isContractValid :: FrontendState -> Boolean
 isContractValid state =
@@ -65,7 +68,7 @@ render state =
                           [ a_
                               [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ]
                               ]
-                          , button [ class_ spaceLeft ] [ text "Save to github" ]
+                          , gistButton state
                           ]
                       ]
                   , div [ class_ (ClassName "back") ] [ text "Amazing new stuff" ]
@@ -387,58 +390,63 @@ transactionRow state isEnabled (Tuple INotify person) =
 
 bottomPanel :: forall p. FrontendState -> Array (HTML p HAction)
 bottomPanel state =
-  [ div [ classes (footerPanelBg state <> isActiveTab state Simulation) ]
-      [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
-          [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
-              [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                  [ li
-                      [ classes ([] <> isActive CurrentStateView)
-                      , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
-                      ]
-                      [ text "Current State" ]
-                  , li
-                      [ classes ([] <> isActive StaticAnalysisView)
-                      , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
-                      ]
-                      [ text "Static Analysis" ]
-                  , li
-                      [ classes ([] <> isActive MarloweWarningsView)
-                      , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
-                      ]
-                      [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
-                  , li
-                      [ classes ([] <> isActive MarloweErrorsView)
-                      , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
-                      ]
-                      [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
-                  ]
-              , ul [ classes [ ClassName "end-item", aHorizontal ] ]
-                  [ li [ classes [ Classes.stateLabel ] ]
-                      [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
-                  , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
-                      [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
-                  , li [ class_ spaceLeft ]
-                      [ svg
-                          [ SVG.width (wrap 24.0)
-                          , SVG.height (wrap 24.0)
-                          , role "presentation"
-                          -- FIXME: can't seem to add className to SVG
-                          -- classes [ ClassName "control-icon", ClassName "control-icon-expand" ]
+  [ div [ class_ flex ]
+      [ div [ class_ flexTen ]
+          [ div [ classes (footerPanelBg state Simulation <> isActiveTab state Simulation) ]
+              [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
+                  [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+                      [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+                          [ li
+                              [ classes ([] <> isActive CurrentStateView)
+                              , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+                              ]
+                              [ text "Current State" ]
+                          , li
+                              [ classes ([] <> isActive StaticAnalysisView)
+                              , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
+                              ]
+                              [ text "Static Analysis" ]
+                          , li
+                              [ classes ([] <> isActive MarloweWarningsView)
+                              , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
+                              ]
+                              [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
+                          , li
+                              [ classes ([] <> isActive MarloweErrorsView)
+                              , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
+                              ]
+                              [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
                           ]
-                          [ SVG.use xlinkNS [ xlink "#expand-more" ] [] ]
-                      , svg
-                          [ SVG.width (wrap 24.0)
-                          , SVG.height (wrap 24.0)
-                          , role "presentation"
-                          -- classes [ ClassName "control-icon", ClassName "control-icon-close" ]
+                      , ul [ classes [ ClassName "end-item", aHorizontal ] ]
+                          [ li [ classes [ Classes.stateLabel ] ]
+                              [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
+                          , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
+                              [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
+                          , li [ class_ spaceLeft ]
+                              [ svg
+                                  [ SVG.width (wrap 24.0)
+                                  , SVG.height (wrap 24.0)
+                                  , role "presentation"
+                                  -- FIXME: can't seem to add className to SVG
+                                  -- classes [ ClassName "control-icon", ClassName "control-icon-expand" ]
+                                  ]
+                                  [ SVG.use xlinkNS [ xlink "#expand-more" ] [] ]
+                              , svg
+                                  [ SVG.width (wrap 24.0)
+                                  , SVG.height (wrap 24.0)
+                                  , role "presentation"
+                                  -- classes [ ClassName "control-icon", ClassName "control-icon-close" ]
+                                  ]
+                                  [ SVG.use xlinkNS [ xlink "#close" ] [] ]
+                              ]
+                          , li_ [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ] [ text "X" ] ]
                           ]
-                          [ SVG.use xlinkNS [ xlink "#close" ] [] ]
                       ]
-                  , li_ [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ] [ text "X" ] ]
                   ]
+              , panelContents state (state ^. _simulationBottomPanelView)
               ]
           ]
-      , panelContents state (state ^. _simulationBottomPanelView)
+      , div [ class_ flexFour ] []
       ]
   ]
   where
@@ -795,3 +803,39 @@ analysisResultPane state =
               ]
           ]
       _ -> text "Analysing..."
+
+gistButton :: forall p. FrontendState -> HTML p HAction
+gistButton state =
+  let
+    authStatus = state ^. _authStatus
+  in
+    case view authStatusAuthRole <$> authStatus of
+      Failure _ ->
+        button
+          [ idPublishGist
+          , classes []
+          ]
+          [ text "Failure" ]
+      Success Anonymous ->
+        a
+          [ idPublishGist
+          , classes []
+          , href "/api/oauth/github"
+          ]
+          [ text "Log In"
+          ]
+      Success GithubUser -> text "authed"
+      Loading ->
+        button
+          [ idPublishGist
+          , classes []
+          , disabled true
+          ]
+          [ icon Spinner ]
+      NotAsked ->
+        button
+          [ idPublishGist
+          , classes []
+          , disabled true
+          ]
+          [ icon Spinner ]

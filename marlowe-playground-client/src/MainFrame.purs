@@ -591,13 +591,7 @@ render state =
                 , MB.workspaceBlocks
                 ]
             -- bottom panel
-            , div [ classes (analysisPanel state) ]
-                [ div [ class_ flex ]
-                    [ div [ class_ flexTen ]
-                        bottomPanel
-                    , div [ class_ flexFour ] []
-                    ]
-                ]
+            , div [ classes (analysisPanel state) ] bottomPanel
             ]
         ]
     ]

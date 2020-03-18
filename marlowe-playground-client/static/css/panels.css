@@ -78,6 +78,10 @@
   padding-bottom: 7rem;
 }
 
+.expanded > .code-editor {
+  padding-bottom: 2rem;
+}
+
 .panel-header-side, .panel-sub-header-side {
   padding-left:20px;
 }
@@ -174,10 +178,19 @@ button.minus-btn:hover {
   padding:0.5rem 2rem;
   background: var(--bg-light);
   box-shadow: var(--box-shadow);
+  min-height: 13rem;
 }
 
 .footer-panel-bg.expanded {
   height: 13rem;
+}
+
+.footer-panel-bg.footer-panel-haskell {
+  height: 13rem;
+}
+
+.footer-panel-bg.footer-panel-haskell.expanded {
+  height: 17rem;
 }
 
 .analysis-panel {

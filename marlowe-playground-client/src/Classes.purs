@@ -3,7 +3,7 @@ module Classes where
 import Prelude
 import Data.Lens (to, (^.))
 import Halogen (ClassName(..))
-import Types (FrontendState, View, _showBottomPanel, _view)
+import Types (FrontendState, View(..), _showBottomPanel, _view)
 
 foreign import closeDrawerIcon :: String
 
@@ -148,8 +148,21 @@ analysisPanel state = if state ^. _showBottomPanel then [ ClassName "analysis-pa
 codeEditor :: FrontendState -> Array ClassName
 codeEditor state = if state ^. _showBottomPanel then [ ClassName "code-editor" ] else [ ClassName "code-editor", ClassName "expanded" ]
 
-footerPanelBg :: FrontendState -> Array ClassName
-footerPanelBg state = if state ^. _showBottomPanel then [ ClassName "footer-panel-bg", ClassName "expanded" ] else [ ClassName "footer-panel-bg" ]
+haskellEditor :: FrontendState -> Array ClassName
+haskellEditor state = if state ^. _showBottomPanel then [ ClassName "code-panel", ClassName "haskell-editor" ] else [ ClassName "code-panel", ClassName "haskell-editor", ClassName "expanded" ]
+
+footerPanelBg :: FrontendState -> View -> Array ClassName
+footerPanelBg state HaskellEditor =
+  if state ^. _showBottomPanel then
+    [ ClassName "footer-panel-bg", ClassName "expanded", ClassName "footer-panel-haskell" ]
+  else
+    [ ClassName "footer-panel-bg", ClassName "footer-panel-haskell" ]
+
+footerPanelBg state _ =
+  if state ^. _showBottomPanel then
+    [ ClassName "footer-panel-bg", ClassName "expanded" ]
+  else
+    [ ClassName "footer-panel-bg" ]
 
 -- FIXME: get correct piece of state
 githubDisplay :: FrontendState -> Array ClassName
