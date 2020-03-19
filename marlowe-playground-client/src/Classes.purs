@@ -22,6 +22,9 @@ foreign import iohkIcon :: String
 active :: ClassName
 active = ClassName "active"
 
+hide :: ClassName
+hide = ClassName "hide"
+
 noMargins :: ClassName
 noMargins = ClassName "no-margins"
 
@@ -46,8 +49,11 @@ flexCol = ClassName "flex-col"
 tabIcon :: ClassName
 tabIcon = ClassName "tab-icon"
 
-panelContent :: ClassName
-panelContent = ClassName "panel-content"
+panelContents :: ClassName
+panelContents = ClassName "panel-contents"
+
+flexLeft :: ClassName
+flexLeft = ClassName "flex-left"
 
 panelHeader :: ClassName
 panelHeader = ClassName "panel-header"
@@ -145,6 +151,9 @@ pointer = ClassName "pointer"
 analysisPanel :: FrontendState -> Array ClassName
 analysisPanel state = if state ^. _showBottomPanel then [ ClassName "analysis-panel" ] else [ ClassName "analysis-panel", ClassName "collapse" ]
 
+simulationBottomPanel :: FrontendState -> Array ClassName
+simulationBottomPanel state = if state ^. _showBottomPanel then [ ClassName "simulation-bottom-panel" ] else [ ClassName "simulation-bottom-panel", ClassName "collapse" ]
+
 codeEditor :: FrontendState -> Array ClassName
 codeEditor state = if state ^. _showBottomPanel then [ ClassName "code-editor" ] else [ ClassName "code-editor", ClassName "expanded" ]
 
@@ -170,3 +179,4 @@ githubDisplay state = if state ^. _showBottomPanel then [ ClassName "hover" ] el
 
 minimizeIcon :: FrontendState -> Array ClassName
 minimizeIcon state = if state ^. _showBottomPanel then [ ClassName "minimize-icon", ClassName "expanded" ] else [ ClassName "minimize-icon" ]
+

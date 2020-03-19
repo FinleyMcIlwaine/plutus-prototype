@@ -6,7 +6,7 @@ import Ace.Editor (getSession) as Editor
 import Ace.Halogen.Component (AceMessage(TextChanged))
 import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
-import Classes (aCenter, aHorizontal, analysisPanel, btnSecondary, flex, flexCol, flexFour, flexTen, iohkIcon, isActiveTab, noMargins, panelContent, spaceLeft, tabIcon, tabLink, uppercase)
+import Classes (aCenter, aHorizontal, analysisPanel, btnSecondary, flex, flexCol, flexFour, flexTen, hide, iohkIcon, isActiveTab, noMargins, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
 import Control.Monad.Except (runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
@@ -55,7 +55,7 @@ import Marlowe.Parser as P
 import Marlowe.Semantics (ChoiceId, Input(..), State(..), inBounds)
 import MonadApp (class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorHandleAction, haskellEditorResize, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorMoveCursorToPosition, marloweEditorResize, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
 import Network.RemoteData (RemoteData(..), _Success)
-import Prelude (class Show, Unit, add, bind, const, discard, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
+import Prelude (class Show, Unit, add, bind, const, discard, mempty, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
 import Servant.PureScript.Settings (SPSettings_)
 import Simulation as Simulation
 import StaticData as StaticData
@@ -582,19 +582,19 @@ render state =
             ]
         , section [ id_ "main-panel" ]
             -- marlowe editor and simulation
-            [ div [ classes ([ panelContent ] <> isActiveTab state Simulation) ]
+            [ div [ classes ([ hide ] <> isActiveTab state Simulation) ]
                 (Simulation.render state)
             -- haskell editor
-            , div [ classes ([ panelContent ] <> isActiveTab state HaskellEditor) ]
+            , div [ classes ([ hide ] <> isActiveTab state HaskellEditor) ]
                 [ HaskellEditor.render state ]
             -- blockly
-            , div [ classes ([ panelContent ] <> isActiveTab state BlocklyEditor) ]
+            , div [ classes ([ hide ] <> isActiveTab state BlocklyEditor) ]
                 [ slot _blocklySlot unit (blockly MB.blockDefinitions) unit (Just <<< HandleBlocklyMessage)
                 , MB.toolbox
                 , MB.workspaceBlocks
                 ]
             -- bottom panel
-            , div [ classes (analysisPanel state) ] bottomPanel
+            , bottomPanel
             ]
         ]
     ]
@@ -602,4 +602,4 @@ render state =
   bottomPanel = case state ^. _view of
     HaskellEditor -> HaskellEditor.bottomPanel state
     Simulation -> Simulation.bottomPanel state
-    _ -> []
+    _ -> text mempty

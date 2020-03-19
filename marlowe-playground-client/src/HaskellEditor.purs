@@ -1,7 +1,7 @@
 module HaskellEditor where
 
 import Bootstrap (btn, btnPrimary, listGroupItem_, listGroup_)
-import Classes (aHorizontal, accentBorderBottom, closeDrawerIcon, footerPanelBg, haskellEditor, isActiveTab, minimizeIcon)
+import Classes (aHorizontal, accentBorderBottom, analysisPanel, closeDrawerIcon, footerPanelBg, haskellEditor, isActiveTab, minimizeIcon)
 import Data.Either (Either(..))
 import Data.Json.JsonEither (JsonEither(..))
 import Data.Lens (to, view, (^.))
@@ -37,26 +37,27 @@ render state =
 
   defaultContents = Map.lookup "Escrow" StaticData.demoFiles
 
-bottomPanel :: forall p. FrontendState -> Array (HTML p HAction)
+bottomPanel :: forall p. FrontendState -> HTML p HAction
 bottomPanel state =
-  [ div [ classes (footerPanelBg state HaskellEditor <> isActiveTab state HaskellEditor) ]
-      [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
-          [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
-              [ div
-                  [ classes ([ ClassName "panel-tab", aHorizontal ])
-                  ]
-                  [ button [ onClick $ const $ Just CompileHaskellProgram ] [ text "Compile" ]
-                  , a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ]
-                      [ img [ classes (minimizeIcon state), src closeDrawerIcon, alt "close drawer icon" ] ]
-                  ]
-              ]
-          ]
-      , section
-          [ classes [ ClassName "panel-sub-header", aHorizontal ]
-          ]
-          [ resultPane state ]
-      ]
-  ]
+  div [ classes (analysisPanel state) ]
+    [ div [ classes (footerPanelBg state HaskellEditor <> isActiveTab state HaskellEditor) ]
+        [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
+            [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+                [ div
+                    [ classes ([ ClassName "panel-tab", aHorizontal ])
+                    ]
+                    [ button [ onClick $ const $ Just CompileHaskellProgram ] [ text "Compile" ]
+                    , a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ]
+                        [ img [ classes (minimizeIcon state), src closeDrawerIcon, alt "close drawer icon" ] ]
+                    ]
+                ]
+            ]
+        , section
+            [ classes [ ClassName "panel-sub-header", aHorizontal ]
+            ]
+            [ resultPane state ]
+        ]
+    ]
 
 resultPane :: forall p. FrontendState -> HTML p HAction
 resultPane state =

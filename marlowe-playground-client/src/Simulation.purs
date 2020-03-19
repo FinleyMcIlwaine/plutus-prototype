@@ -2,7 +2,7 @@ module Simulation where
 
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Auth (AuthRole(..), authStatusAuthRole)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, analysisPanel, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexLeft, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, simulationBottomPanel, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
 import Data.Array (concatMap, fold, intercalate, length)
@@ -394,53 +394,53 @@ transactionRow state isEnabled (Tuple INotify person) =
         [ text "-" ]
     ]
 
-bottomPanel :: forall p. FrontendState -> Array (HTML p HAction)
+bottomPanel :: forall p. FrontendState -> HTML p HAction
 bottomPanel state =
-  [ div [ class_ flex ]
-      [ div [ class_ flexTen ]
-          [ div [ classes (footerPanelBg state Simulation <> isActiveTab state Simulation) ]
-              [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
-                  [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
-                      [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
-                          [ li
-                              [ classes ((if hasRuntimeWarnings || hasRuntimeError then [ ClassName "error-tab" ] else []) <> isActive CurrentStateView)
-                              , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
-                              ]
-                              [ text "Current State" ]
-                          , li
-                              [ classes ([] <> isActive StaticAnalysisView)
-                              , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
-                              ]
-                              [ text "Static Analysis" ]
-                          , li
-                              [ classes ([] <> isActive MarloweWarningsView)
-                              , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
-                              ]
-                              [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
-                          , li
-                              [ classes ([] <> isActive MarloweErrorsView)
-                              , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
-                              ]
-                              [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
-                          ]
-                      , ul [ classes [ ClassName "end-item", aHorizontal ] ]
-                          [ li [ classes [ Classes.stateLabel ] ]
-                              [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
-                          , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
-                              [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
-                          , li [ class_ (ClassName "space-left") ]
-                              [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ]
-                                  [ img [ classes (minimizeIcon state), src closeDrawerIcon, alt "close drawer icon" ] ]
-                              ]
-                          ]
-                      ]
-                  ]
-              , panelContents state (state ^. _simulationBottomPanelView)
-              ]
-          ]
-      , div [ class_ flexFour ] []
-      ]
-  ]
+  div [ classes (simulationBottomPanel state) ]
+    [ div [ class_ flex ]
+        [ div [ class_ flexTen ]
+            [ div [ classes (footerPanelBg state Simulation <> isActiveTab state Simulation) ]
+                [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
+                    [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+                        [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
+                            [ li
+                                [ classes ((if hasRuntimeWarnings || hasRuntimeError then [ ClassName "error-tab" ] else []) <> isActive CurrentStateView)
+                                , onClick $ const $ Just $ ChangeSimulationView CurrentStateView
+                                ]
+                                [ text "Current State" ]
+                            , li
+                                [ classes ([] <> isActive StaticAnalysisView)
+                                , onClick $ const $ Just $ ChangeSimulationView StaticAnalysisView
+                                ]
+                                [ text "Static Analysis" ]
+                            , li
+                                [ classes ([] <> isActive MarloweWarningsView)
+                                , onClick $ const $ Just $ ChangeSimulationView MarloweWarningsView
+                                ]
+                                [ text $ "Warnings" <> if warnings == [] then "" else " (" <> show (length warnings) <> ")" ]
+                            , li
+                                [ classes ([] <> isActive MarloweErrorsView)
+                                , onClick $ const $ Just $ ChangeSimulationView MarloweErrorsView
+                                ]
+                                [ a_ [ text $ "Errors" <> if errors == [] then "" else " (" <> show (length errors) <> ")" ] ]
+                            ]
+                        , ul [ classes [ ClassName "end-item", aHorizontal ] ]
+                            [ li [ classes [ Classes.stateLabel ] ]
+                                [ text "Contract Expiration: ", state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime <<< to text) ]
+                            , li [ classes [ ClassName "space-left", Classes.stateLabel ] ]
+                                [ text "Current Blocks: ", state ^. (_marloweState <<< _Head <<< _slot <<< to show <<< to text) ]
+                            , li [ class_ (ClassName "space-left") ]
+                                [ a [ onClick $ const $ Just $ ShowBottomPanel (state ^. _showBottomPanel <<< to not) ]
+                                    [ img [ classes (minimizeIcon state), src closeDrawerIcon, alt "close drawer icon" ] ]
+                                ]
+                            ]
+                        ]
+                    ]
+                , panelContents state (state ^. _simulationBottomPanelView)
+                ]
+            ]
+        ]
+    ]
   where
   isActive view = if state ^. _simulationBottomPanelView <<< (to (eq view)) then [ ClassName "active-text" ] else []
 
@@ -458,7 +458,7 @@ bottomPanel state =
 
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
-  div [ classes [ rTable, rTable6cols ] ]
+  div [ classes [ rTable, rTable6cols, Classes.panelContents ] ]
     ( warningsRow <> errorRow
         <> tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
             accountsData
@@ -634,7 +634,7 @@ panelContents state CurrentStateView =
 
 panelContents state StaticAnalysisView =
   section
-    [ classes [ ClassName "panel-sub-header", aHorizontal ]
+    [ classes [ ClassName "panel-sub-header", aHorizontal, Classes.panelContents ]
     ]
     [ analysisResultPane state
     , button [ onClick $ const $ Just $ AnalyseContract, enabled (state ^. _analysisState <<< to isLoading <<< to not) ] [ text "Analyse" ]
@@ -642,7 +642,7 @@ panelContents state StaticAnalysisView =
 
 panelContents state MarloweWarningsView =
   section
-    [ classes [ ClassName "panel-sub-header", aHorizontal ]
+    [ classes [ ClassName "panel-sub-header", aHorizontal, Classes.panelContents, flexLeft ]
     ]
     (map renderWarning (state ^. (_marloweState <<< _Head <<< _editorWarnings)))
   where
@@ -650,7 +650,7 @@ panelContents state MarloweWarningsView =
 
 panelContents state MarloweErrorsView =
   section
-    [ classes [ ClassName "panel-sub-header", aHorizontal ]
+    [ classes [ ClassName "panel-sub-header", aHorizontal, Classes.panelContents, flexLeft ]
     ]
     (map renderError (state ^. (_marloweState <<< _Head <<< _editorErrors)))
   where

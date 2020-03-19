@@ -179,6 +179,13 @@ button.minus-btn:hover {
   z-index: 0;
 }
 
+.simulation-bottom-panel {
+  position: absolute;
+  width: 67%;
+  bottom: 0;
+  z-index: 0;
+}
+
 .analysis-panel .panel-header {
   margin-bottom: 0;
 }
@@ -213,4 +220,14 @@ button.minus-btn:hover {
 /* V impoprtant to add this, either treble the class like this to enhance specificity or use !important if needed */
 .ace_gutter.ace_gutter.ace_gutter {
   z-index: 1;
+}
+
+.panel-contents {
+    height: 8rem;
+    overflow-x: scroll;
+}
+
+.flex-left {
+    flex-direction: column;
+    align-items: flex-start;
 }
