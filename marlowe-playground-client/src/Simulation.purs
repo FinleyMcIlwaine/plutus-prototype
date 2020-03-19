@@ -60,7 +60,7 @@ render state =
           [ h4 [] [ text "Marlowe Contract" ] ]
       , div [ classes [ panelHeaderSide, aHorizontal, accentBorderBottom ] ]
           [ div [ classes ([ ClassName "vertical", ClassName "flip-container" ] <> githubDisplay state) ]
-              [ gist state
+              [ authButton state
               ]
           ]
       ]
@@ -103,8 +103,7 @@ gist state =
         ]
     , label [ classes [ ClassName "sr-only", active ], HTML.for "github-input" ] [ text "Enter Github Gist" ]
     , div [ classes (map ClassName [ "input-group", "mb-2", "mr-sm-2" ]) ]
-        -- add error class to input if there is an error
-        [ gistInput publishStatus
+        [ gistInput loadStatus
         , div [ class_ (ClassName "input-group-append") ]
             [ div [ class_ (ClassName "input-group-text"), onClick $ const $ Just $ GistAction LoadGist ]
                 [ loadGistButton loadStatus
@@ -920,12 +919,12 @@ authButton state =
       Success Anonymous ->
         a
           [ idPublishGist
-          , classes []
+          , classes [ClassName "auth-button"]
           , href "/api/oauth/github"
           ]
           [ text "Log In"
           ]
-      Success GithubUser -> text "authed"
+      Success GithubUser -> gist state
       Loading ->
         button
           [ idPublishGist
@@ -962,7 +961,9 @@ loadGistButton (Right NotAsked) =
   svg [ clazz (ClassName "arrow-down"), SVG.width (Px 20), height (Px 20), viewBox (Box { x: 0, y: 0, width: 24, height: 24 }) ]
     [ path [ fill (Hex "#832dc4"), d "M19.92,12.08L12,20L4.08,12.08L5.5,10.67L11,16.17V2H13V16.17L18.5,10.66L19.92,12.08M12,20H2V22H22V20H12Z" ] [] ]
 
-gistInput :: forall p. RemoteData AjaxError Gist -> HTML p HAction
-gistInput (Failure _) = input [ HTML.type_ InputText, classes [ ClassName "form-control", ClassName "py-0", ClassName "error" ], HTML.id_ "github-input", placeholder "Gist ID", onValueInput $ Just <<< GistAction <<< SetGistUrl ]
+gistInput :: forall p. Either String (RemoteData AjaxError Gist) -> HTML p HAction
+gistInput (Left _) = input [ HTML.type_ InputText, classes [ ClassName "form-control", ClassName "py-0", ClassName "error" ], HTML.id_ "github-input", placeholder "Gist ID", onValueInput $ Just <<< GistAction <<< SetGistUrl ]
+
+gistInput (Right (Failure _)) = input [ HTML.type_ InputText, classes [ ClassName "form-control", ClassName "py-0", ClassName "error" ], HTML.id_ "github-input", placeholder "Gist ID", onValueInput $ Just <<< GistAction <<< SetGistUrl ]
 
 gistInput _ = input [ HTML.type_ InputText, classes [ ClassName "form-control", ClassName "py-0" ], HTML.id_ "github-input", placeholder "Gist ID", onValueInput $ Just <<< GistAction <<< SetGistUrl ]

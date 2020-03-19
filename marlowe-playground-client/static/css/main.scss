@@ -54,3 +54,25 @@ a:hover {
 .hide {
     display: none;
 }
+
+.auth-button {
+    padding: 0.5rem 1.5rem;
+    position:relative;
+    cursor: pointer;
+    position: relative;
+    background: var(--gradient-bg);
+    color: var(--white);
+    border-radius: var(--border-radius);
+    border: none;
+    z-index: 1;
+  }
+  
+  .auth-button:after {
+    content:'';
+    position: absolute;
+    right:0.5rem;
+    background: url('../images/open-link-icon-white.svg') no-repeat center center;
+    height: 18px;
+    width:18px;
+    background-size: 42px;
+  }
