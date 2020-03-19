@@ -191,14 +191,15 @@ button.minus-btn:hover {
 }
 
 .footer-panel-bg {
-  padding:0.5rem 2rem;
+  padding:0rem 2rem;
   background: var(--bg-light);
   box-shadow: var(--box-shadow);
-  min-height: 13rem;
 }
 
 .footer-panel-bg.expanded {
   height: 13rem;
+  padding:0.5rem 2rem;
+  min-height: 13rem;
 }
 
 .footer-panel-bg.footer-panel-haskell {
@@ -222,9 +223,14 @@ button.minus-btn:hover {
   z-index: 1;
 }
 
-.panel-contents {
+.expanded > .panel-contents {
     height: 8rem;
     overflow-x: scroll;
+    display: unset;
+}
+
+.panel-contents {
+  display: none;
 }
 
 .flex-left {

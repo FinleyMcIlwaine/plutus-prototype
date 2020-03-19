@@ -411,7 +411,7 @@ bottomPanel state =
         [ div [ class_ flexTen ]
             [ div [ classes (footerPanelBg state Simulation <> isActiveTab state Simulation) ]
                 [ section [ classes [ ClassName "panel-header", aHorizontal ] ]
-                    [ div [ classes [ ClassName "panel-sub-header-main", aHorizontal, accentBorderBottom ] ]
+                    [ div [ classes ([ ClassName "panel-sub-header-main", aHorizontal ] <> (if state ^. _showBottomPanel then [ accentBorderBottom ] else [])) ]
                         [ ul [ classes [ ClassName "demo-list", aHorizontal ] ]
                             [ li
                                 [ classes ((if hasRuntimeWarnings || hasRuntimeError then [ ClassName "error-tab" ] else []) <> isActive CurrentStateView)
@@ -468,15 +468,17 @@ bottomPanel state =
 
 panelContents :: forall p. FrontendState -> SimulationBottomPanelView -> HTML p HAction
 panelContents state CurrentStateView =
-  div [ classes [ rTable, rTable6cols, Classes.panelContents ] ]
-    ( warningsRow <> errorRow
-        <> tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
-            accountsData
-        <> tableRow "Choices" "No Choices have been made" "Choice ID" "Participant" "Chosen Value" "" ""
-            choicesData
-        <> tableRow "Payments" "No payments have been recorded" "Party" "Currency Symbol" "Token Name" "Money" "" paymentsData
-        <> tableRow "Let Bindings" "No values have been bound" "Identifier" "Value" "" "" "" bindingsData
-    )
+  div [ class_ Classes.panelContents ]
+    [ div [ classes [ rTable, rTable6cols, ClassName "panel-table" ] ]
+        ( warningsRow <> errorRow
+            <> tableRow "Accounts" "No accounts have been used" "Account ID" "Participant" "Currency Symbol" "Token Name" "Money"
+                accountsData
+            <> tableRow "Choices" "No Choices have been made" "Choice ID" "Participant" "Chosen Value" "" ""
+                choicesData
+            <> tableRow "Payments" "No payments have been recorded" "Party" "Currency Symbol" "Token Name" "Money" "" paymentsData
+            <> tableRow "Let Bindings" "No values have been bound" "Identifier" "Value" "" "" "" bindingsData
+        )
+    ]
   where
   warnings = state ^. (_marloweState <<< _Head <<< _transactionWarnings)
 
@@ -919,7 +921,7 @@ authButton state =
       Success Anonymous ->
         a
           [ idPublishGist
-          , classes [ClassName "auth-button"]
+          , classes [ ClassName "auth-button" ]
           , href "/api/oauth/github"
           ]
           [ text "Log In"
