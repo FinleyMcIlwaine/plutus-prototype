@@ -1,11 +1,12 @@
 module Halogen.SVG where
 
 import Prelude
+
 import DOM.HTML.Indexed (Interactive)
 import Data.Array as Array
-import Data.Newtype (class Newtype)
+import Data.Newtype (unwrap)
 import Data.String (joinWith)
-import Halogen.HTML (AttrName(..), ElemName(..), HTML, Namespace(..), Node, elementNS, text)
+import Halogen.HTML (AttrName(..), ClassName, ElemName(..), HTML, Namespace(..), Node, elementNS, text)
 import Halogen.HTML as HH
 import Halogen.HTML.Properties (CSSPixel, IProp)
 
@@ -41,7 +42,7 @@ type SVGg
   = SVGPresentation (SVGCore ())
 
 type SVGCore r
-  = ( id :: String | r )
+  = ( id :: String, class :: String | r )
 
 type SVGStyling r
   = ( style :: String | r )
@@ -81,10 +82,21 @@ type SVGstop
     , stopColour :: String
     )
 
+type SVGcircle
+  = SVGCore ( id :: String
+    , fill :: RGB
+    , strokeWidth :: CSSPixel
+    , strokeLinecap :: Linecap
+    , cx :: Length
+    , cy :: Length
+    , r :: Length
+    )
+
 type SVGpath
   = ( id :: String
     , d :: String
     , transform :: Translate
+    , fill :: RGB
     )
 
 type SVGUse
@@ -112,6 +124,9 @@ stop = elementNS svgNS (ElemName "stop")
 
 path :: forall p i. Node SVGpath p i
 path = elementNS svgNS (ElemName "path")
+
+circle :: forall p i. Node SVGcircle p i
+circle = elementNS svgNS (ElemName "circle")
 
 rect :: forall p i. Node SVGrect p i
 rect = elementNS svgNS (ElemName "rect")
@@ -164,6 +179,20 @@ x2 = attr (AttrName "x2")
 y2 :: forall r i. Length -> IProp ( y2 :: Length | r ) i
 y2 = attr (AttrName "y2")
 
+cx :: forall r i. Length -> IProp ( cx :: Length | r ) i
+cx = attr (AttrName "cx")
+
+cy :: forall r i. Length -> IProp ( cy :: Length | r ) i
+cy = attr (AttrName "cy")
+
+r :: forall r i. Length -> IProp ( r :: Length | r ) i
+r = attr (AttrName "r")
+
+-- | `AttrName "className"` as used by Halogen.HTML.Properties does not work with SVG
+-- | See https://github.com/niklasvh/html2canvas/pull/2034
+clazz :: forall r i. ClassName -> IProp ( class :: String | r ) i
+clazz = unwrap >>> attr (AttrName "class")
+
 height :: forall r i. Length -> IProp ( height :: Length | r ) i
 height = attr (AttrName "height")
 
@@ -199,6 +228,9 @@ stroke = attr (AttrName "stroke")
 
 strokeWidth :: forall r i. CSSPixel -> IProp ( strokeWidth :: CSSPixel | r ) i
 strokeWidth = attr (AttrName "stroke-width")
+
+strokeLinecap :: forall r i. Linecap -> IProp ( strokeLinecap :: Linecap | r ) i
+strokeLinecap = attr (AttrName "stroke-linecap")
 
 id_ :: forall r i. String -> IProp ( id :: String | r ) i
 id_ = attr (AttrName "id")
@@ -241,9 +273,13 @@ data RGB
     , green :: Int
     , blue :: Int
     }
+  | Hex String
+  | None
 
 instance isAttrRGB :: IsAttr RGB where
   toAttrValue (RGB { red, green, blue }) = "rgb" <> parens (joinWith "," (show <$> [ red, green, blue ]))
+  toAttrValue (Hex val) = val
+  toAttrValue None = "none"
 
 toRGB :: Int -> Int -> Int -> RGB
 toRGB red green blue = RGB { red, green, blue }
@@ -269,10 +305,15 @@ instance isAttrGradientUnits :: IsAttr GradientUnits where
   toAttrValue UserSpaceOnUse = "userSpaceOnUse"
   toAttrValue ObjectBoundingBox = "objectBoundingBox"
 
-newtype Length
+data Length
   = Length Number
-
-derive instance newtypeLength :: Newtype Length _
+  | Px Int
 
 instance isAttrLength :: IsAttr Length where
   toAttrValue (Length n) = show n
+  toAttrValue (Px n) = show n <> "px"
+
+data Linecap = Round
+
+instance isAttrLinecap :: IsAttr Linecap where
+  toAttrValue Round = "round"

@@ -2,10 +2,10 @@ module Simulation where
 
 import Ace.Halogen.Component (Autocomplete(Live), aceComponent)
 import Auth (AuthRole(..), authStatusAuthRole)
-import Classes (aHorizontal, accentBorderBottom, activeTextPrimary, analysisPanel, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexFour, flexLeft, flexTen, footerPanelBg, githubDisplay, githubIcon, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, simulationBottomPanel, smallBtn, spaceLeft, textSecondaryColor, uppercase)
+import Classes (aHorizontal, accentBorderBottom, active, activeTextPrimary, blocklyIcon, bold, closeDrawerIcon, codeEditor, downloadIcon, first, flex, flexLeft, flexTen, footerPanelBg, githubDisplay, infoIcon, isActiveDemo, isActiveTab, jFlexStart, minimizeIcon, minusBtn, noMargins, panelHeader, panelHeaderMain, panelHeaderSide, panelSubHeader, panelSubHeaderMain, panelSubHeaderSide, plusBtn, pointer, rTable, rTable6cols, rTableCell, rTableEmptyRow, simulationBottomPanel, smallBtn, spaceLeft, textSecondaryColor, uppercase)
 import Classes as Classes
 import Control.Alternative (map)
-import Data.Array (concatMap, fold, intercalate, length)
+import Data.Array (concatMap, intercalate, length)
 import Data.Array as Array
 import Data.BigInteger (BigInteger, fromString, fromInt)
 import Data.Either (Either(..))
@@ -19,21 +19,20 @@ import Data.List.NonEmpty as NEL
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), isJust, isNothing)
-import Data.Newtype (wrap)
 import Data.Tuple (Tuple(..), snd)
 import Data.Tuple.Nested (uncurry5, (/\), type (/\))
 import Editor (initEditor) as Editor
 import Effect.Aff.Class (class MonadAff)
-import Gists (gistControls, idPublishGist)
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h3_, h4, h6, h6_, img, input, li, li_, ol, ol_, p, p_, pre, section, slot, small, small_, span, span_, strong_, text, ul, ul_)
+import Gists (idPublishGist)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, a, a_, article, aside, b_, button, code_, div, em_, h2, h3_, h4, h6, h6_, img, input, label, li, li_, ol, ol_, p, p_, pre, section, slot, small, small_, span, span_, strong_, text, ul, ul_)
 import Halogen.HTML.Events (onClick, onValueChange)
-import Halogen.HTML.Properties (InputType(InputNumber), alt, class_, classes, disabled, enabled, href, placeholder, src, type_, value)
-import Halogen.HTML.Properties.ARIA (role)
-import Halogen.SVG (svg, xlink, xlinkNS)
+import Halogen.HTML.Properties (InputType(..), alt, class_, classes, disabled, enabled, href, placeholder, src, type_, value)
+import Halogen.HTML.Properties as HTML
+import Halogen.SVG (Box(..), Length(..), Linecap(..), RGB(..), circle, clazz, cx, cy, d, fill, height, path, r, strokeLinecap, strokeWidth, svg, viewBox)
 import Halogen.SVG as SVG
 import Help (toHTML)
 import Icons (Icon(..), icon)
-import Marlowe.Parser (token, transactionInputList, transactionWarningList)
+import Marlowe.Parser (transactionInputList, transactionWarningList)
 import Marlowe.Semantics (AccountId(..), Assets(..), Bound(..), ChoiceId(..), Input(..), Party, Payee(..), Payment(..), PubKey, Slot(..), SlotInterval(..), Token(..), TransactionError, TransactionInput(..), TransactionWarning(..), ValueId(..), _accounts, _boundValues, _choices, inBounds, maxTime)
 import Marlowe.Symbolic.Types.Response as R
 import Network.RemoteData (RemoteData(..), isLoading)
@@ -59,20 +58,7 @@ render state =
           [ h4 [] [ text "Marlowe Contract" ] ]
       , div [ classes [ panelHeaderSide, aHorizontal, accentBorderBottom ] ]
           [ div [ classes ([ ClassName "vertical", ClassName "flip-container" ] <> githubDisplay state) ]
-              [ div [ class_ (ClassName "flipper") ]
-                  [ div [ class_ (ClassName "front") ]
-                      [ a_
-                          [ img [ class_ (ClassName "drawer-icon"), src closeDrawerIcon, alt "close drawer icon" ]
-                          ]
-                      , div [ class_ aHorizontal ]
-                          [ a_
-                              [ img [ class_ (ClassName "github-icon"), src githubIcon, alt "github icon" ]
-                              ]
-                          , gistButton state
-                          ]
-                      ]
-                  , div [ class_ (ClassName "back") ] [ text "Amazing new stuff" ]
-                  ]
+              [ gist state
               ]
           ]
       ]
@@ -105,6 +91,33 @@ render state =
   ]
   where
   demoScriptLink key = li [ classes (isActiveDemo state) ] [ a [ onClick $ const $ Just $ LoadMarloweScript key ] [ text key ] ]
+
+gist :: forall p. FrontendState -> HTML p HAction
+gist state =
+  div [ classes [ ClassName "github-gist-panel", aHorizontal ] ]
+    [ div [ classes [ ClassName "input-group-text", ClassName "upload-btn" ] ]
+        [ svg [ SVG.style "width:20px;height:20px", SVG.viewBox (Box { x: 0, y: 0, width: 24, height: 24 }) ]
+            [ path [ fill (Hex "#832dc4"), d "M4.08,11.92L12,4L19.92,11.92L18.5,13.33L13,7.83V22H11V7.83L5.5,13.33L4.08,11.92M12,4H22V2H2V4H12Z" ] [] ]
+        ]
+    , label [ classes [ ClassName "sr-only", active ], HTML.for "github-input" ] [ text "Enter Github Gist" ]
+    , div [ classes (map ClassName [ "input-group", "mb-2", "mr-sm-2" ]) ]
+        -- add error class to input if there is an error
+        [ input [ HTML.type_ InputText, classes [ ClassName "form-control", ClassName "py-0" ], HTML.id_ "github-input", placeholder "Gist ID" ]
+        , div [ class_ (ClassName "input-group-append") ]
+            [ div [ class_ (ClassName "input-group-text") ]
+                [ rightIcon
+                ]
+            ]
+        ]
+    ]
+  where
+  rightIcon =
+    -- svg [ clazz (ClassName "spinner"), SVG.width (Px 65), height (Px 65), viewBox (Box { x: 0, y: 0, width: 66, height: 66 }) ]
+      -- [ circle [ clazz (ClassName "path"), fill SVG.None, strokeWidth 6, strokeLinecap Round, cx (Length 33.0), cy (Length 33.0), r (Length 30.0) ] [] ]
+    -- svg [ clazz (ClassName "arrow-down"), SVG.width (Px 20), height (Px 20), viewBox (Box { x: 0, y: 0, width: 24, height: 24 }) ]
+      -- [ path [ fill (Hex "#832dc4"), d "M19.92,12.08L12,20L4.08,12.08L5.5,10.67L11,16.17V2H13V16.17L18.5,10.66L19.92,12.08M12,20H2V22H22V20H12Z"] [] ]
+    svg [ clazz (ClassName "error-icon"), SVG.width (Px 20), height (Px 20), viewBox (Box { x: 0, y: 0, width: 24, height: 24 }) ]
+      [ path [ fill (Hex "#ff0000"), d "M13,13H11V7H13M12,17.3A1.3,1.3 0 0,1 10.7,16A1.3,1.3 0 0,1 12,14.7A1.3,1.3 0 0,1 13.3,16A1.3,1.3 0 0,1 12,17.3M15.73,3H8.27L3,8.27V15.73L8.27,21H15.73L21,15.73V8.27L15.73,3Z"] [] ]
 
 marloweEditor ::
   forall m.
