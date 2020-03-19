@@ -8,12 +8,14 @@ import Ace.Types (Annotation, Editor, Position(..))
 import Analytics (Event, defaultEvent, trackEvent)
 import Classes (aCenter, aHorizontal, analysisPanel, btnSecondary, flex, flexCol, flexFour, flexTen, hide, iohkIcon, isActiveTab, noMargins, spaceLeft, tabIcon, tabLink, uppercase)
 import Control.Bind (bindFlipped, map, void, when)
-import Control.Monad.Except (runExceptT)
+import Control.Monad.Except (ExceptT(..), except, runExceptT)
+import Control.Monad.Except.Extra (noteT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
 import Control.Monad.Maybe.Trans (MaybeT(..), lift, runMaybeT)
 import Control.Monad.Reader.Class (class MonadAsk)
 import Control.Monad.State.Trans (class MonadState)
 import Data.Array (catMaybes, delete, intercalate, snoc)
+import Data.Bifunctor (lmap)
 import Data.Either (Either(..), note)
 import Data.Function (flip)
 import Data.Json.JsonEither (JsonEither(..))
@@ -27,6 +29,7 @@ import Data.Num (negate)
 import Data.String (Pattern(..), stripPrefix, stripSuffix, trim)
 import Data.String as String
 import Data.Tuple (Tuple(Tuple))
+import Debug.Trace (trace)
 import Editor (Action(..), Preferences, loadPreferences) as Editor
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
@@ -35,6 +38,7 @@ import Foreign.Class (decode)
 import Foreign.JSON (parseJSON)
 import Gist (_GistId, gistFileContent, gistId)
 import Gists (GistAction(..), parseGistUrl)
+import Gists as Gists
 import Halogen (Component, ComponentHTML)
 import Halogen as H
 import Halogen.Blockly (BlocklyMessage(..), blockly)
@@ -56,12 +60,13 @@ import Marlowe.Semantics (ChoiceId, Input(..), State(..), inBounds)
 import MonadApp (class MonadApp, applyTransactions, checkContractForWarnings, getGistByGistId, getOauthStatus, haskellEditorGetValue, haskellEditorHandleAction, haskellEditorResize, haskellEditorSetAnnotations, haskellEditorSetValue, marloweEditorGetValue, marloweEditorMoveCursorToPosition, marloweEditorResize, marloweEditorSetValue, patchGistByGistId, postContractHaskell, postGist, preventDefault, readFileFromDragEvent, resetContract, resizeBlockly, runHalogenApp, saveBuffer, saveInitialState, saveMarloweBuffer, setBlocklyCode, updateContractInState, updateMarloweState)
 import Network.RemoteData (RemoteData(..), _Success)
 import Prelude (class Show, Unit, add, bind, const, discard, mempty, one, pure, show, unit, zero, ($), (-), (<$>), (<<<), (<>), (==))
+import Servant.PureScript.Ajax (errorToString)
 import Servant.PureScript.Settings (SPSettings_)
 import Simulation as Simulation
 import StaticData as StaticData
 import Text.Parsing.StringParser (runParser)
 import Text.Pretty (genericPretty, pretty)
-import Types (ActionInput(..), ChildSlots, FrontendState(FrontendState), HAction(..), HQuery(..), HelpContext(..), Message, SimulationBottomPanelView(..), View(..), _analysisState, _authStatus, _blocklySlot, _compilationResult, _createGistResult, _currentContract, _currentMarloweState, _gistUrl, _helpContext, _marloweState, _oldContract, _pendingInputs, _possibleActions, _result, _selectedHole, _showBottomPanel, _showRightPanel, _simulationBottomPanelView, _slot, _state, _view, emptyMarloweState)
+import Types (ActionInput(..), ChildSlots, FrontendState(FrontendState), HAction(..), HQuery(..), HelpContext(..), Message, SimulationBottomPanelView(..), View(..), _analysisState, _authStatus, _blocklySlot, _compilationResult, _createGistResult, _currentContract, _currentMarloweState, _gistUrl, _helpContext, _loadGistResult, _marloweState, _oldContract, _pendingInputs, _possibleActions, _result, _selectedHole, _showBottomPanel, _showRightPanel, _simulationBottomPanelView, _slot, _state, _view, emptyMarloweState)
 import WebSocket (WebSocketResponseMessage(..))
 
 mkInitialState :: Editor.Preferences -> FrontendState
@@ -74,6 +79,7 @@ mkInitialState editorPreferences =
     , marloweCompileResult: Right unit
     , authStatus: NotAsked
     , createGistResult: NotAsked
+    , loadGistResult: Right NotAsked
     , marloweState: NEL.singleton (emptyMarloweState zero)
     , oldContract: Nothing
     , gistUrl: Nothing
@@ -455,7 +461,7 @@ handleGistAction :: forall m. MonadApp m => MonadState FrontendState m => GistAc
 handleGistAction PublishGist =
   void
     $ runMaybeT do
-        mContents <- lift haskellEditorGetValue
+        mContents <- lift marloweEditorGetValue
         newGist <- hoistMaybe $ mkNewGist (SourceCode <$> mContents)
         mGist <- use _createGistResult
         assign _createGistResult Loading
@@ -471,24 +477,31 @@ handleGistAction PublishGist =
 handleGistAction (SetGistUrl newGistUrl) = assign _gistUrl (Just newGistUrl)
 
 handleGistAction LoadGist = do
-  eGistId <- (bindFlipped parseGistUrl <<< note "Gist Url not set.") <$> use _gistUrl
-  case eGistId of
-    Left err -> pure unit
-    Right gistId -> do
-      assign _createGistResult Loading
-      aGist <- getGistByGistId gistId
-      assign _createGistResult aGist
-      case aGist of
-        Success gist -> do
-          -- Load the source, if available.
-          case preview (_Just <<< gistFileContent <<< _Just) (playgroundGistFile gist) of
-            Nothing -> pure unit
-            Just contents -> do
-              haskellEditorSetValue contents (Just 1)
-              saveBuffer contents
-              assign _compilationResult NotAsked
-              pure unit
-        _ -> pure unit
+  res <- runExceptT
+    $ do
+        mGistId <- ExceptT (note "Gist Url not set." <$> use _gistUrl)
+        eGistId <- except $ Gists.parseGistUrl mGistId
+        --
+        assign _loadGistResult $ Right Loading
+        aGist <- lift $ getGistByGistId eGistId
+        assign _loadGistResult $ Right aGist
+        gist <- ExceptT $ pure $ toEither (Left "Gist not loaded.") $ lmap errorToString aGist
+        --
+        -- Load the source, if available.
+        content <- noteT "Source not found in gist." $ preview (_Just <<< gistFileContent <<< _Just) (playgroundGistFile gist)
+        lift $ marloweEditorSetValue content (Just 1)
+        lift $ saveBuffer content
+        pure aGist
+  assign _loadGistResult res
+  where
+  toEither :: forall e a. Either e a -> RemoteData e a -> Either e a
+  toEither _ (Success a) = Right a
+
+  toEither _ (Failure e) = Left e
+
+  toEither x Loading = x
+
+  toEither x NotAsked = x
 
 ------------------------------------------------------------
 showCompilationErrorAnnotations ::

@@ -136,6 +136,7 @@ newtype FrontendState
   , marloweCompileResult :: Either (Array MarloweError) Unit
   , authStatus :: WebData AuthStatus
   , createGistResult :: WebData Gist
+  , loadGistResult :: Either String (WebData Gist)
   , gistUrl :: Maybe String
   , marloweState :: NonEmptyList MarloweState
   , oldContract :: Maybe String
@@ -175,6 +176,9 @@ _authStatus = _Newtype <<< prop (SProxy :: SProxy "authStatus")
 
 _createGistResult :: Lens' FrontendState (WebData Gist)
 _createGistResult = _Newtype <<< prop (SProxy :: SProxy "createGistResult")
+
+_loadGistResult :: Lens' FrontendState (Either String (WebData Gist))
+_loadGistResult = _Newtype <<< prop (SProxy :: SProxy "loadGistResult")
 
 _gistUrl :: Lens' FrontendState (Maybe String)
 _gistUrl = _Newtype <<< prop (SProxy :: SProxy "gistUrl")

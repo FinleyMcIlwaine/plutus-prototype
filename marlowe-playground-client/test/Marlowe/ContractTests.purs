@@ -87,6 +87,7 @@ initialState =
     , marloweCompileResult: Right unit
     , authStatus: NotAsked
     , createGistResult: NotAsked
+    , loadGistResult: Right NotAsked
     , marloweState: NEL.singleton (emptyMarloweState zero)
     , oldContract: Nothing
     , gistUrl: Nothing
