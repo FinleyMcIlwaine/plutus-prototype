@@ -260,6 +260,15 @@ in rec {
 
     development = pkgs.dockerTools.buildImage {
       name = "plutus-development";
+      tag = "latest";
+      # pullImage args generated with `nix run nixpkgs.nix-prefetch-docker -c nix-prefetch-docker --image-name nixos/nix --image-tag 2.3.4`
+      fromImage = pkgs.dockerTools.pullImage {
+        imageName = "nixos/nix";
+        imageDigest = "sha256:40b406888a8237be46e5a6668599fefdd3c7aad8bbda1d91ae9d71d4d20cf2f6";
+        sha256 = "0225cmxf4bxcp49fs0d5jc8295mvjc79acgrjgxvvhhb16cabip0";
+        finalImageName = "nixos/nix";
+        finalImageTag = "2.3.4";
+      };
       contents =
         let runtimeGhc =
               haskell.packages.ghcWithPackages (ps: [
@@ -282,6 +291,14 @@ in rec {
             ];
       config = {
         Cmd = ["bash"];
+        Env = [
+          "ENV=/etc/profile"
+          "USER=root"
+          "PATH=/nix/var/nix/profiles/default/bin:/nix/var/nix/profiles/default/sbin:/bin:/sbin:/usr/bin:/usr/sbin"
+          "GIT_SSL_CAINFO=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt"
+          "NIX_SSL_CERT_FILE=/nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt"
+          "NIX_PATH=/nix/var/nix/profiles/per-user/root/channels"
+        ];
       };
     };
   };
