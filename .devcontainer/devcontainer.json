@@ -1,0 +1,12 @@
+{
+	"name": "Marlowe Enhancement",
+    "image": "finleymcilwaine/wyohack",
+    // Use this dockerfile if the image is taking forever to download or something
+	// "dockerFile": "./Dockerfile",
+	"settings": {
+		"terminal.integrated.shell.linux": "/bin/bash",
+	},
+	"extensions": [
+	],
+    "forwardPorts": [ 8080, 8009 ]
+}

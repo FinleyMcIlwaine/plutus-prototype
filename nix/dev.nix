@@ -65,6 +65,7 @@ pkgs.recurseIntoAttrs (rec {
         pkgs.git
         pkgs.python
         pkgs.gnumake
+        pkgs.gcc
         pkgs.gnused
         pkgs.nodejs-10_x
         pkgs.nodePackages_10_x.node-gyp
