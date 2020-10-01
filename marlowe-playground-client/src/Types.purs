@@ -35,8 +35,6 @@ data HQuery a
 
 data HAction
   = Init
-  -- Home Page
-  | ShowHomePageInFuture Boolean
   -- Haskell Editor
   | HaskellAction HE.Action
   | SimulationAction Simulation.Action
@@ -59,7 +57,6 @@ data HAction
 -- how to classify them.
 instance actionIsEvent :: IsEvent HAction where
   toEvent Init = Just $ defaultEvent "Init"
-  toEvent (ShowHomePageInFuture b) = Just $ (defaultEvent "ShowHomePageInFuture") { label = Just (show b) }
   toEvent (HaskellAction action) = toEvent action
   toEvent (JSHandleEditorMessage _) = Just $ defaultEvent "JSHandleEditorMessage"
   toEvent (SimulationAction action) = toEvent action
@@ -108,8 +105,7 @@ _walletSlot = SProxy
 
 -----------------------------------------------------------
 data View
-  = HomePage
-  | HaskellEditor
+  = HaskellEditor
   | JSEditor
   | Simulation
   | BlocklyEditor
@@ -140,7 +136,6 @@ newtype FrontendState
   , showBottomPanel :: Boolean
   , haskellState :: HE.State
   , simulationState :: Simulation.State
-  , showHomePage :: Boolean
   }
 
 derive instance newtypeFrontendState :: Newtype FrontendState _
@@ -177,9 +172,6 @@ _haskellState = _Newtype <<< prop (SProxy :: SProxy "haskellState")
 
 _simulationState :: Lens' FrontendState Simulation.State
 _simulationState = _Newtype <<< prop (SProxy :: SProxy "simulationState")
-
-_showHomePage :: Lens' FrontendState Boolean
-_showHomePage = _Newtype <<< prop (SProxy :: SProxy "showHomePage")
 
 -- editable
 _timestamp ::
