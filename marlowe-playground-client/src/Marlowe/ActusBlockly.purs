@@ -275,8 +275,9 @@ toDefinition (ActusContractType LinearAmortizer) =
             <> "termination date %9"
             <> "rate reset cycle %10"
             <> "interest payment cycle %11"
-            <> "observation constraints %12"
-            <> "payoff analysis constraints %13"
+            <> "interest calculation base cycle %12"
+            <> "observation constraints %13"
+            <> "payoff analysis constraints %14"
         , args0:
           [ DummyCentre
           , Value { name: "start_date", check: "date", align: Right }
@@ -289,6 +290,7 @@ toDefinition (ActusContractType LinearAmortizer) =
           , Value { name: "termination_date", check: "date", align: Right }
           , Value { name: "rate_reset_cycle", check: "cycle", align: Right }
           , Value { name: "interest_rate_cycle", check: "cycle", align: Right }
+          , Value { name: "interest_calculation_base_cycle", check: "cycle", align: Right }
           , Value { name: "interest_rate_ctr", check: "assertionCtx", align: Right }
           , Value { name: "payoff_ctr", check: "assertion", align: Right }
           ]
@@ -483,6 +485,7 @@ newtype ActusContract
   , premiumDiscount :: ActusValue
   , interestRate :: ActusValue
   , interestRateCycle :: ActusValue
+  , interestCalculationBaseCycle :: ActusValue
   , assertionCtx :: ActusValue
   , assertion :: ActusValue
   }
@@ -558,25 +561,45 @@ parseActusJsonCode str = do
   actusContractToTerms result
 
 instance hasBlockDefinitionActusContract :: HasBlockDefinition ActusContractType ActusContract where
-  blockDefinition _ g block =
-    Either.Right
-      $ ActusContract
-          { contractType: parseActusContractType block
-          , startDate: parseFieldActusValueJson g block "start_date"
-          , initialExchangeDate: parseFieldActusValueJson g block "initial_exchange_date"
-          , maturityDate: parseFieldActusValueJson g block "maturity_date"
-          , terminationDate: parseFieldActusValueJson g block "termination_date"
-          , purchaseDate: parseFieldActusValueJson g block "purchase_date"
-          , dayCountConvention: parseFieldActusValueJson g block "day_count_convention"
-          , endOfMonthConvention: parseFieldActusValueJson g block "end_of_month_convention"
-          , rateReset: parseFieldActusValueJson g block "rate_reset_cycle"
-          , notional: parseFieldActusValueJson g block "notional"
-          , premiumDiscount: parseFieldActusValueJson g block "premium_discount"
-          , interestRate: parseFieldActusValueJson g block "interest_rate"
-          , interestRateCycle: parseFieldActusValueJson g block "interest_rate_cycle"
-          , assertionCtx: parseFieldActusValueJson g block "interest_rate_ctr"
-          , assertion: parseFieldActusValueJson g block "payoff_ctr"
-          }
+  blockDefinition _ g block = case parseActusContractType block of
+    PAM -> Either.Right
+            $ ActusContract
+                { contractType: parseActusContractType block
+                , startDate: parseFieldActusValueJson g block "start_date"
+                , initialExchangeDate: parseFieldActusValueJson g block "initial_exchange_date"
+                , maturityDate: parseFieldActusValueJson g block "maturity_date"
+                , terminationDate: parseFieldActusValueJson g block "termination_date"
+                , purchaseDate: parseFieldActusValueJson g block "purchase_date"
+                , dayCountConvention: parseFieldActusValueJson g block "day_count_convention"
+                , endOfMonthConvention: parseFieldActusValueJson g block "end_of_month_convention"
+                , rateReset: parseFieldActusValueJson g block "rate_reset_cycle"
+                , notional: parseFieldActusValueJson g block "notional"
+                , premiumDiscount: parseFieldActusValueJson g block "premium_discount"
+                , interestRate: parseFieldActusValueJson g block "interest_rate"
+                , interestRateCycle: parseFieldActusValueJson g block "interest_rate_cycle"
+                , interestCalculationBaseCycle: NoActusValue
+                , assertionCtx: parseFieldActusValueJson g block "interest_rate_ctr"
+                , assertion: parseFieldActusValueJson g block "payoff_ctr"
+                }
+    LAM -> Either.Right
+            $ ActusContract
+                { contractType: parseActusContractType block
+                , startDate: parseFieldActusValueJson g block "start_date"
+                , initialExchangeDate: parseFieldActusValueJson g block "initial_exchange_date"
+                , maturityDate: parseFieldActusValueJson g block "maturity_date"
+                , terminationDate: parseFieldActusValueJson g block "termination_date"
+                , purchaseDate: parseFieldActusValueJson g block "purchase_date"
+                , dayCountConvention: parseFieldActusValueJson g block "day_count_convention"
+                , endOfMonthConvention: parseFieldActusValueJson g block "end_of_month_convention"
+                , rateReset: parseFieldActusValueJson g block "rate_reset_cycle"
+                , notional: parseFieldActusValueJson g block "notional"
+                , premiumDiscount: parseFieldActusValueJson g block "premium_discount"
+                , interestRate: parseFieldActusValueJson g block "interest_rate"
+                , interestRateCycle: parseFieldActusValueJson g block "interest_rate_cycle"
+                , interestCalculationBaseCycle: parseFieldActusValueJson g block "interest_calculation_base_cycle"
+                , assertionCtx: parseFieldActusValueJson g block "interest_rate_ctr"
+                , assertion: parseFieldActusValueJson g block "payoff_ctr"
+                }
 
 instance hasBlockDefinitionValue :: HasBlockDefinition ActusValueType ActusValue where
   blockDefinition ActusDate g block = do
@@ -720,6 +743,7 @@ actusContractToTerms raw = do --todo use monad transformers?
   premium <- fromMaybe 0.0 <$> actusDecimalToNumber c.premiumDiscount
   interestRateCycle <- blocklyCycleToCycle c.interestRateCycle
   interestRateAnchorValue <- blocklyCycleToAnchor c.interestRateCycle
+  interestCalculationBaseCycle <- blocklyCycleToCycle c.interestCalculationBaseCycle
   interestRateAnchor <- sequence $ actusDateToDay <$> interestRateAnchorValue
   interestRateUnchecked <- actusDecimalToNumber c.interestRate
   interestRate <-
@@ -787,6 +811,7 @@ actusContractToTerms raw = do --todo use monad transformers?
         , ct_IPANX: interestRateAnchor >>= identity
         , ct_IPNR: interestRate
         , ct_IPAC: Nothing
+        , ct_IPCBCL: interestCalculationBaseCycle
         , ct_FECL: Nothing
         , ct_FEANX: Nothing
         , ct_FEAC: Nothing

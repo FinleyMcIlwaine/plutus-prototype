@@ -178,6 +178,7 @@ data ContractTerms = ContractTerms {
   , ct_IPANX     :: Maybe Day
   , ct_IPNR      :: Maybe Double
   , ct_IPAC      :: Maybe Double
+  , ct_IPCBCL    :: Maybe Cycle
   -- Fee
   , ct_FECL      :: Maybe Cycle
   , ct_FEANX     :: Maybe Day
