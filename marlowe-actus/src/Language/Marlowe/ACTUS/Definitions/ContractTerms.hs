@@ -139,6 +139,7 @@ data ContractTerms = ContractTerms {
   , ct_SD        :: Day -- start date
   , ct_MD        :: Day -- maturity date
   , ct_TD        :: Day -- termination date
+  , ct_PRNXT     :: Maybe Double -- periodic payment amount
   , ct_PRD       :: Day -- purchase date
   , ct_CNTRL     :: ContractRole
   , ct_PDIED     :: Double -- Premium / Discount At IED
@@ -178,7 +179,10 @@ data ContractTerms = ContractTerms {
   , ct_IPANX     :: Maybe Day
   , ct_IPNR      :: Maybe Double
   , ct_IPAC      :: Maybe Double
+  , ct_PRCL      :: Maybe Cycle
+  , ct_PRANX     :: Maybe Day
   , ct_IPCBCL    :: Maybe Cycle
+  , ct_IPCBANX    :: Maybe Day
   -- Fee
   , ct_FECL      :: Maybe Cycle
   , ct_FEANX     :: Maybe Day

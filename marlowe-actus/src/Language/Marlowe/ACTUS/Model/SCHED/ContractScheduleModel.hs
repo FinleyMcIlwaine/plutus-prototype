@@ -95,8 +95,8 @@ _SCHED_SC_PAM scfg _IED _SCEF _SCANX _SCCL _MD =
                 | otherwise                           = tt
     in result
 
--- Linear Amortizer
-
+-- - Linear Amortizer - --
+-- Schedules
 _SCHED_IED_LAM = _SCHED_IED_PAM
 
 _SCHED_PR_LAM scfg _PRCL _IED _PRANX _MD =
@@ -105,7 +105,16 @@ _SCHED_PR_LAM scfg _PRCL _IED _PRANX _MD =
                 | otherwise                          = _PRANX
     in (\s -> _S s (fromJust _PRCL) _MD (scfg { includeEndDay = False })) <$> maybeS
 
-_SCHED_MD_LAM scfg tmd = Just [shift scfg tmd]
+_SCHED_MD_LAM scfg _IED _SD _PRANX _PRNXT _NT _PRCL _MD = 
+    Since MD is a required field in our blocks at the moment, we can't really do this stuff that acts like it isn't required
+    let maybeTMinus | isJust _PRANX && ((fromJust _PRANX) >= _SD) = _PRANX
+                    | (_IED `plusCycle` fromJust _PRCL) >= _SD = Just $ _IED `plusCycle` fromJust _PRCL
+                    | otherwise                           = sup (_SCHED_PR_LAM scfg _PRCL _IED _PRANX _MD) _SD
+
+        result  | isNothing _MD = _MD
+                | isNothing maybeTMinus = _MD
+                | otherwise   = (fromJust maybeTMinus) `plusCycle` ((fromJust _PRCL) { n = ((ceiling ((fromJust _NT) / (fromJust _PRNXT))) * (n (fromJust _PRCL))) })
+    in result
 
 _SCHED_PP_LAM = _SCHED_PP_PAM
 
@@ -122,11 +131,20 @@ _SCHED_IP_LAM = _SCHED_IP_PAM
 
 _SCHED_IPCI_LAM = _SCHED_IPCI_PAM
 
-_SCHED_IPCB_PAM scfg _FER _FECL _IED _FEANX _MD =
-    let maybeS  | isNothing _FEANX && isNothing _FECL = Nothing
-                | isNothing _FEANX                   = Just $ _IED `plusCycle` fromJust _FECL
-                | otherwise                          = _FEANX
+_SCHED_IPCB_LAM scfg _IPCBCL _IED _IPCBANX _MD =
+    let maybeS  | isNothing _IPCBANX && isNothing _IPCBCL = Nothing
+                | isNothing _IPCBANX                   = Just $ _IED `plusCycle` fromJust _IPCBCL
+                | otherwise                          = _IPCBANX
 
-        result  | _FER == 0.0                         = Nothing
-                | otherwise                          = (\s -> _S s (fromJust _FECL) _MD scfg) <$> maybeS
+        result  | isNothing _IPCBCL                  = Nothing -- This means that IPCB != 'NTL', since there is no cycle
+                | otherwise                          = (\s -> _S s (fromJust _IPCBCL) _MD scfg) <$> maybeS
     in result
+
+_SCHED_RR_LAM = _SCHED_RR_PAM
+
+_SCHED_RRF_LAM = _SCHED_RRF_PAM
+
+_SCHED_SC_LAM = _SCHED_SC_PAM
+
+-- State Var Initialization
+
