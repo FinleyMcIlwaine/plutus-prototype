@@ -53,4 +53,20 @@ stateTransition ev RiskFactors{..} terms@ContractTerms{..} st@ContractStatePoly{
                 SC   -> _STF_SC_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL ct_SCEF o_rf_SCMO ct_SCIED
                 CE   -> _STF_CE_PAM st t y_sd_t
                 _    -> st
-        LAM -> undefined
+        LAM -> 
+            case ev of
+                AD   -> _STF_AD_PAM st t y_sd_t
+                IED  -> _STF_IED_PAM st t y_ipanx_t ct_IPNR ct_IPANX ct_CNTRL ct_IPAC ct_NT
+                MD   -> _STF_MD_PAM st t
+                PP   -> _STF_PP_PAM st t pp_payoff y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL
+                PY   -> _STF_PY_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL
+                FP   -> _STF_FP_PAM st t y_sd_t
+                PRD  -> _STF_PRD_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL
+                TD   -> _STF_TD_PAM st t
+                IP   -> _STF_IP_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL
+                IPCI -> _STF_IPCI_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL
+                RR   -> _STF_RR_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL ct_RRLF ct_RRLC ct_RRPC ct_RRPF ct_RRMLT ct_RRSP o_rf_RRMO
+                RRF  -> _STF_RRF_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL ct_RRNXT
+                SC   -> _STF_SC_PAM st t y_sd_t y_tfpminus_t y_tfpminus_tfpplus ct_FEB ct_FER ct_CNTRL ct_SCEF o_rf_SCMO ct_SCIED
+                CE   -> _STF_CE_PAM st t y_sd_t
+                _    -> st

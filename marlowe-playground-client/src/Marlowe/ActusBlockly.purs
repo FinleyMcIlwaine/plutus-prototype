@@ -2,7 +2,7 @@ module Marlowe.ActusBlockly where
 
 import Prelude
 import Blockly (AlignDirection(..), Arg(..), BlockDefinition(..), block, blockType, category, colour, defaultBlockDefinition, name, style, x, xml, y)
-import Blockly.Generator (Generator, getFieldValue, insertGeneratorFunction, mkGenerator, statementToCode)
+import Blockly.Generator (Generator, getFieldValue, getType, insertGeneratorFunction, mkGenerator, statementToCode)
 import Blockly.Types (Block, BlocklyState)
 import Control.Alternative ((<|>))
 import Control.Monad.Except (runExcept)
@@ -43,7 +43,7 @@ rootBlockName :: String
 rootBlockName = "root_contract"
 
 data ActusContractType
-  = PaymentAtMaturity
+  = PaymentAtMaturity | LinearAmortizer
 
 derive instance actusContractType :: Generic ActusContractType _
 
@@ -259,6 +259,45 @@ toDefinition (ActusContractType PaymentAtMaturity) =
         }
         defaultBlockDefinition
 
+toDefinition (ActusContractType LinearAmortizer) =
+  BlockDefinition
+    $ merge
+        { type: show LinearAmortizer
+        , message0:
+          "Linear Amortizer %1"
+            <> "start date * %2"
+            <> "maturity date * %3"
+            <> "notional * %4"
+            <> "premium/discount %5"
+            <> "interest rate %6"
+            <> "purchase date %7"
+            <> "initial exchange date %8"
+            <> "termination date %9"
+            <> "rate reset cycle %10"
+            <> "interest payment cycle %11"
+            <> "observation constraints %12"
+            <> "payoff analysis constraints %13"
+        , args0:
+          [ DummyCentre
+          , Value { name: "start_date", check: "date", align: Right }
+          , Value { name: "maturity_date", check: "date", align: Right }
+          , Value { name: "notional", check: "decimal", align: Right }
+          , Value { name: "premium_discount", check: "decimal", align: Right }
+          , Value { name: "interest_rate", check: "decimal", align: Right }
+          , Value { name: "purchase_date", check: "date", align: Right }
+          , Value { name: "initial_exchange_date", check: "date", align: Right }
+          , Value { name: "termination_date", check: "date", align: Right }
+          , Value { name: "rate_reset_cycle", check: "cycle", align: Right }
+          , Value { name: "interest_rate_cycle", check: "cycle", align: Right }
+          , Value { name: "interest_rate_ctr", check: "assertionCtx", align: Right }
+          , Value { name: "payoff_ctr", check: "assertion", align: Right }
+          ]
+        , colour: blockColour (ActusContractType LinearAmortizer)
+        , previousStatement: Just (show BaseContractType)
+        , inputsInline: Just false
+        }
+        defaultBlockDefinition
+
 toDefinition (ActusValueType ActusDate) =
   BlockDefinition
     $ merge
@@ -431,7 +470,8 @@ baseContractDefinition g block = do
 
 newtype ActusContract
   = ActusContract
-  { startDate :: ActusValue
+  { contractType :: ContractType
+  , startDate :: ActusValue
   , initialExchangeDate :: ActusValue
   , maturityDate :: ActusValue
   , terminationDate :: ActusValue
@@ -503,6 +543,12 @@ parseFieldActusPeriodJson g block name = Either.hush result
       decoded = decode parsed :: F ActusPeriodType
     catch $ runExcept $ decoded
 
+parseActusContractType :: Block -> ContractType
+parseActusContractType b = case getType b of
+  "PaymentAtMaturity" -> PAM
+  "LinearAmortizer" -> LAM
+  _ -> PAM
+
 parseActusJsonCode :: String -> Either String ContractTerms
 parseActusJsonCode str = do
   parsed <- catch $ runExcept $ parseJSON str
@@ -515,7 +561,8 @@ instance hasBlockDefinitionActusContract :: HasBlockDefinition ActusContractType
   blockDefinition _ g block =
     Either.Right
       $ ActusContract
-          { startDate: parseFieldActusValueJson g block "start_date"
+          { contractType: parseActusContractType block
+          , startDate: parseFieldActusValueJson g block "start_date"
           , initialExchangeDate: parseFieldActusValueJson g block "initial_exchange_date"
           , maturityDate: parseFieldActusValueJson g block "maturity_date"
           , terminationDate: parseFieldActusValueJson g block "termination_date"
@@ -660,6 +707,7 @@ actusContractToTerms :: ActusContract -> Either String ContractTerms
 actusContractToTerms raw = do --todo use monad transformers?
   let
     c = (unwrap raw)
+  contractType <- Either.Right c.contractType
   startDate <- Either.note "start date is a mandatory field!" <$> actusDateToDay c.startDate >>= identity
   maturityDate <- Either.note "maturity date is a mandatory field!" <$> actusDateToDay c.maturityDate >>= identity
   initialExchangeDate <- fromMaybe startDate <$> actusDateToDay c.initialExchangeDate
@@ -694,7 +742,7 @@ actusContractToTerms raw = do --todo use monad transformers?
   pure
     $ ContractTerms
         { contractId: "0"
-        , contractType: PAM
+        , contractType: contractType
         , ct_IED: initialExchangeDate
         , ct_SD: startDate
         , ct_MD: maturityDate
