@@ -34,7 +34,7 @@ import Foreign.Generic.Class (Options, defaultOptions, aesonSumEncoding)
 import Foreign.JSON (parseJSON)
 import Halogen.HTML (HTML)
 import Halogen.HTML.Properties (id_)
-import Language.Marlowe.ACTUS.Definitions.ContractTerms (Assertion(..), AssertionContext(..), Assertions(..), BDC(..), ContractRole(..), ContractStatus(..), ContractTerms(..), ContractType(..), Cycle(..), DCC(..), EOMC(..), FEB(..), PREF(..), PYTP(..), Period(..), SCEF(..), ScheduleConfig(..), Stub(..))
+import Language.Marlowe.ACTUS.Definitions.ContractTerms (Assertion(..), AssertionContext(..), Assertions(..), BDC(..), ContractRole(..), ContractStatus(..), ContractTerms(..), ContractType(..), Cycle(..), DCC(..), EOMC(..), FEB(..), PREF(..), PYTP(..), Period(..), SCEF(..), ScheduleConfig(..), Stub(..), IPCB(..))
 import Record (merge)
 import Text.Parsing.StringParser (Parser)
 import Text.Parsing.StringParser.Basic (parens, runParser')
@@ -830,8 +830,10 @@ actusContractToTerms raw = do --todo use monad transformers?
         , ct_IPAC: Nothing
         , ct_PRCL: principalRedemptionCycle
         , ct_PRANX: principalRedemptionAnchor >>= identity
-        , ct_IPCBCL: interestCalculationBaseCycle
-        , ct_IPCBANX: interestCalculationBaseAnchor >>= identity
+        , ct_IPCB: Just IPCB_NT -- Default for now
+        , ct_IPCBA: Just 0.0    -- Default for now
+        , ct_IPCBCL: interestCalculationBaseCycle -- unused due to above defaults for now
+        , ct_IPCBANX: interestCalculationBaseAnchor >>= identity -- also unused
         , ct_FECL: Nothing
         , ct_FEANX: Nothing
         , ct_FEAC: Nothing

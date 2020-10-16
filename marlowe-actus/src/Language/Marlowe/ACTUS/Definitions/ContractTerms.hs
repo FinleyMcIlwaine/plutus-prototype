@@ -11,6 +11,8 @@ data PYTP = PYTP_A | PYTP_N | PYTP_I | PYTP_O deriving (Show, Eq, Generic) deriv
 
 data FEB = FEB_A | FEB_N deriving (Show, Eq, Generic) deriving anyclass (FromJSON, ToJSON)
 
+data IPCB = IPCB_NT | IPCB_NTIED | IPCB_NTL deriving (Show, Eq, Generic) deriving anyclass (FromJSON, ToJSON)
+
 data EOMC = EOMC_EOM
           | EOMC_SD deriving (Show, Eq, Generic) deriving anyclass (FromJSON, ToJSON)
 
@@ -181,8 +183,10 @@ data ContractTerms = ContractTerms {
   , ct_IPAC      :: Maybe Double
   , ct_PRCL      :: Maybe Cycle
   , ct_PRANX     :: Maybe Day
-  , ct_IPCBCL    :: Maybe Cycle
-  , ct_IPCBANX    :: Maybe Day
+  , ct_IPCB      :: Maybe IPCB   -- Interest calc base
+  , ct_IPCBA     :: Maybe Double -- Amount used for interest calculation
+  , ct_IPCBCL    :: Maybe Cycle  -- Cycle of interest calculation base
+  , ct_IPCBANX    :: Maybe Day   -- Anchor of interest calc base cycle
   -- Fee
   , ct_FECL      :: Maybe Cycle
   , ct_FEANX     :: Maybe Day
