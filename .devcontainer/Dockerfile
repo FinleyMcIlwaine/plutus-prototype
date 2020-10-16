@@ -25,7 +25,8 @@ RUN apt update -y \
         libssl-dev \
         libsystemd-dev \
         zlib1g-dev \
-        npm
+        npm \
+        r-base
 
 RUN npm install -g yarn
 RUN npm install -g purescript purescript-spago --unsafe-perm=true
@@ -43,6 +44,7 @@ ENV PATH=root/.cabal/bin:/root/.ghcup/bin:$PATH
 #####################################################################
 RUN ghcup install cabal \
     && ghcup install ghc 8.8.3 \
+    && ghcup install ghc 8.10.1 \
     && ghcup set ghc 8.8.3 \
     && cabal update
 
@@ -61,4 +63,4 @@ ENV JWT_SIGNATURE="fake"
 ENV GITHUB_REDIRECT_URL="fake"
 ENV WEBGHC_URL="fake"
 
-EXPOSE 8080 8009
+EXPOSE 8080 8009 8081

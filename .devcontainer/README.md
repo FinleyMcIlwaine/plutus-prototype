@@ -11,6 +11,12 @@ yarn purs:compile ## THIS COMMAND WILL FAIL BUT THAT'S OKAY KEEP GOING
 yarn run webpack:server
 ```
 
+Then, to run Marlowe Shiny:
+```
+cd marlowe-actus
+cabal run marlowe-shiny --with-compiler=/root/.ghcup/bin/ghc-8.10.1
+```
+
 ## How to get the local Marlowe playground going
 
 From the root of this repo, run:

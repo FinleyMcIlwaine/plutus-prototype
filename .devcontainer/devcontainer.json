@@ -1,8 +1,7 @@
 {
 	"name": "Marlowe Enhancement",
-    "image": "finleymcilwaine/wyohack",
     // Use this dockerfile if the image is taking forever to download or something
-	// "dockerFile": "./Dockerfile",
+	"dockerFile": "./Dockerfile",
 	"settings": {
 		"terminal.integrated.shell.linux": "/bin/bash",
 	},
@@ -10,5 +9,8 @@
 		"nwolverson.language-purescript",
 		"justusadam.language-haskell"
 	],
-    "forwardPorts": [ 8080, 8009 ]
+    "forwardPorts": [ 8080, 8009, 8081 ],
+
+    // Allow nix to access this
+    "postCreateCommand": "chmod 777 /workspaces/plutus-prototype/.git/refs/heads/wyohack"
 }
