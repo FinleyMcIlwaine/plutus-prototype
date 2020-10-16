@@ -219,7 +219,7 @@ runAnalysis :: forall p. HTML p BlocklyAction
 runAnalysis =
   button
     [ onClick $ const $ Just $ RunAnalysis
-    , classes ([ alignedButtonLast, hide ]) --this feature is temporary disabled because shiny is not deployed yet
+    , classes ([ alignedButtonLast ]) --this feature is temporary disabled because shiny is not deployed yet
     ]
     [ text "Run Analysis" ]
 

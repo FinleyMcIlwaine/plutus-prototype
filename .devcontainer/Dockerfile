@@ -26,7 +26,8 @@ RUN apt update -y \
         libsystemd-dev \
         zlib1g-dev \
         npm \
-        r-base
+        r-base \
+        libcurl4-openssl-dev
 
 RUN npm install -g yarn
 RUN npm install -g purescript purescript-spago --unsafe-perm=true
@@ -47,6 +48,17 @@ RUN ghcup install cabal \
     && ghcup install ghc 8.10.1 \
     && ghcup set ghc 8.8.3 \
     && cabal update
+
+
+#####################################################################
+# INSTALL R DEPS FOR SHINY
+#####################################################################
+RUN Rscript -e 'install.packages("shiny", repos="https://cloud.r-project.org")' \
+    && Rscript -e 'install.packages("shinyjs", repos="https://cloud.r-project.org")' \
+    && Rscript -e 'install.packages("curl", repos="https://cloud.r-project.org")' \
+    && Rscript -e 'install.packages("httr", repos="https://cloud.r-project.org")' \
+    && Rscript -e 'install.packages("plotly", repos="https://cloud.r-project.org")' \
+    && Rscript -e 'install.packages("purrr", repos="https://cloud.r-project.org")'
 
 
 COPY nix.conf /etc/nix/nix.conf
