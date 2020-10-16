@@ -10,11 +10,7 @@ import           Data.Maybe                                             (fromJus
 import           Language.Marlowe.ACTUS.Definitions.ContractTerms       (ContractTerms (..), ContractType (LAM, PAM))
 import           Language.Marlowe.ACTUS.Definitions.Schedule            (ShiftedDay (calculationDay))
 import           Language.Marlowe.ACTUS.Model.SCHED.ContractSchedule    (schedule)
-import           Language.Marlowe.ACTUS.Model.STF.StateTransitionModel  (_STF_AD_PAM, _STF_CE_PAM, _STF_FP_PAM,
-                                                                         _STF_IED_PAM, _STF_IPCI_PAM, _STF_IP_PAM,
-                                                                         _STF_MD_PAM, _STF_PP_PAM, _STF_PRD_PAM,
-                                                                         _STF_PY_PAM, _STF_RRF_PAM, _STF_RR_PAM,
-                                                                         _STF_SC_PAM, _STF_TD_PAM)
+import           Language.Marlowe.ACTUS.Model.STF.StateTransitionModel  
 import           Language.Marlowe.ACTUS.Model.Utility.ScheduleGenerator (inf, sup)
 import           Language.Marlowe.ACTUS.Ops                             (YearFractionOps (_y))
 
@@ -33,6 +29,8 @@ stateTransitionFs ev terms@ContractTerms{..} t prevDate curDate continue =
         __NT    = constnt ct_NT
         __FEB   = enum ct_FEB
         __FER   = constnt ct_FER
+        __IPCB  = enum <$> ct_IPCB
+        __IPCBA = constnt <$> ct_IPCBA
         (__RRLF, __RRLC, __RRPC, __RRPF, __RRMLT, __RRSP) =
                 ( constnt ct_RRLF
                 , constnt ct_RRLC
@@ -83,5 +81,24 @@ stateTransitionFs ev terms@ContractTerms{..} t prevDate curDate continue =
                     SC   -> _STF_SC_PAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL ct_SCEF __o_rf_SCMO __SCIED
                     CE   -> _STF_CE_PAM st time y_sd_t
                     _    -> st
-        LAM -> undefined
+        LAM -> 
+            addComment $ stateTransitionMarlowe ev t continue $ \event st ->
+                case event of
+                    AD   -> _STF_AD_LAM st time y_sd_t
+                    IED  -> _STF_IED_LAM st time y_ipanx_t __IPNR __IPANX ct_CNTRL __IPAC __NT __IPCB __IPCBA
+                    PR   -> _STF_PR_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL __IPCB
+                    MD   -> _STF_MD_LAM st time
+                    PP   -> _STF_PP_LAM st time __pp_payoff y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL __IPCB
+                    PY   -> _STF_PY_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL
+                    FP   -> _STF_FP_LAM st time y_sd_t
+                    PRD  -> _STF_PRD_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL
+                    TD   -> _STF_TD_LAM st time
+                    IP   -> _STF_IP_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL
+                    IPCI -> _STF_IPCI_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL __IPCB
+                    IPCB -> _STF_IPCB_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL
+                    RR   -> _STF_RR_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL __RRLF __RRLC __RRPC __RRPF __RRMLT __RRSP __o_rf_RRMO
+                    RRF  -> _STF_RRF_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL __RRNXT
+                    SC   -> _STF_SC_LAM st time y_sd_t y_tfpminus_t y_tfpminus_tfpplus __FEB __FER ct_CNTRL ct_SCEF __o_rf_SCMO __SCIED
+                    CE   -> _STF_CE_LAM st time y_sd_t
+                    _    -> st
 
