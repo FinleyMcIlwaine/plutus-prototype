@@ -36,7 +36,11 @@ import           System.Environment                               (lookupEnv)
 import qualified Web.JWT                                          as JWT
 
 genActusContract :: ContractTerms -> Handler String
-genActusContract terms = pure . show . pretty . genFsContract $ terms
+genActusContract terms =
+    case genFsContract terms of
+        -- Failure errs -> throwError $ err400 { errBody = "Could not validate terms."} -- Figure out how to handle this
+        Failure errs -> pure (unlines . (:) "ACTUS Term Validation Failed:" . map ((++) "    " . show) $ errs)
+        Success c -> pure . show . pretty $ c
 
 genActusContractStatic :: ContractTerms -> Handler String
 genActusContractStatic terms =

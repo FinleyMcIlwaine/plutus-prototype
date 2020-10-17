@@ -15,7 +15,7 @@ import           Prelude                                           hiding (Fract
 
 payoffFs :: EventType -> ContractTerms -> Integer -> Integer -> Day -> Day -> Maybe (Value Observation)
 payoffFs ev ContractTerms{..} t t_minus prevDate curDate =
-    let __NT              = constnt ct_NT
+    let __NT              = constnt (fromJust ct_NT)
         __PDIED           = constnt ct_PDIED
         __PYTP            = enum ct_PYTP
         __FEB             = enum ct_FEB

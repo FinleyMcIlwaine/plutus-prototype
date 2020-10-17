@@ -19,7 +19,7 @@ payoff ev RiskFactors{..} ContractTerms{..} ContractStatePoly {..} t =
     in case fromJust contractType of
         PAM ->
             case ev of
-                IED -> _POF_IED_PAM o_rf_CURS ct_CNTRL ct_NT ct_PDIED
+                IED -> _POF_IED_PAM o_rf_CURS ct_CNTRL (fromJust ct_NT) ct_PDIED
                 MD  -> _POF_MD_PAM o_rf_CURS nsc nt isc ipac feac
                 PP  -> _POF_PP_PAM o_rf_CURS pp_payoff
                 PY  -> _POF_PY_PAM ct_PYTP o_rf_CURS o_rf_RRMO ct_PYRT ct_cPYRT ct_CNTRL nt ipnr y_sd_t
@@ -30,7 +30,7 @@ payoff ev RiskFactors{..} ContractTerms{..} ContractStatePoly {..} t =
                 _   -> 0.0
         LAM -> 
             case ev of
-                IED -> _POF_IED_LAM o_rf_CURS ct_CNTRL ct_NT ct_PDIED
+                IED -> _POF_IED_LAM o_rf_CURS ct_CNTRL (fromJust ct_NT) ct_PDIED
                 PR  -> _POF_PR_LAM o_rf_CURS ct_CNTRL nsc prnxt
                 MD  -> _POF_MD_LAM o_rf_CURS nsc nt isc ipac feac
                 PP  -> _POF_PP_LAM o_rf_CURS pp_payoff

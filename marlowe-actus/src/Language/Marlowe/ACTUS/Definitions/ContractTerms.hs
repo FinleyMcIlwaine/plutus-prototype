@@ -154,7 +154,7 @@ data ContractTerms = ContractTerms {
   , ct_PRD       :: Maybe Day -- purchase date
   , ct_CNTRL     :: ContractRole
   , ct_PDIED     :: Double -- Premium / Discount At IED
-  , ct_NT        :: Double -- Notional
+  , ct_NT        :: Maybe Double -- Notional
   , ct_PPRD      :: Maybe Double -- Price At Purchase Date
   , ct_PTD       :: Maybe Double -- Price At Termination Date
   , ct_DCC       :: DCC -- Date Count Convention

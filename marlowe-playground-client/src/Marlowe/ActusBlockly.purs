@@ -270,10 +270,10 @@ toDefinition (ActusContractType LinearAmortizer) =
         , message0:
           "Linear Amortizer %1"
             <> "start date * %2"
-            <> "maturity date * %3"
+            <> "maturity date %3"
             <> "notional * %4"
             <> "premium/discount %5"
-            <> "interest rate %6"
+            <> "interest rate * %6"
             <> "purchase date %7"
             <> "purchase price %8"
             <> "initial exchange date %9"
@@ -282,7 +282,7 @@ toDefinition (ActusContractType LinearAmortizer) =
             <> "periodic payment amount %12"
             <> "rate reset cycle %13"
             <> "interest payment cycle %14"
-            <> "principal redemption cycle %15"
+            <> "principal redemption cycle * %15"
             <> "interest calculation base cycle %16"
             <> "observation constraints %17"
             <> "payoff analysis constraints %18"
@@ -766,7 +766,7 @@ actusContractToTerms raw = do --todo use monad transformers?
   rateResetCycle <- blocklyCycleToCycle c.rateReset
   rateResetAnchorValue <- blocklyCycleToAnchor c.rateReset
   rateResetAnchor <- sequence $ actusDateToDay <$> rateResetAnchorValue
-  notional <- Either.note "notional is a mandatory field!" <$> actusDecimalToNumber c.notional >>= identity
+  notional <- actusDecimalToNumber c.notional
   premium <- fromMaybe 0.0 <$> actusDecimalToNumber c.premiumDiscount
   interestRateCycle <- blocklyCycleToCycle c.interestRateCycle
   interestRateAnchorValue <- blocklyCycleToAnchor c.interestRateCycle

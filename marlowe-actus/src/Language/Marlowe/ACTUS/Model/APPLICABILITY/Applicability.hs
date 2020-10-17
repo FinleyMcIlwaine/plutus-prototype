@@ -13,9 +13,17 @@ validateTerms t =
             pure t <*
             _X (calendar . scfg) t "calendar" <*
             _X (eomc . scfg) t "end of month convention" <*
+            _NN ct_NT t "notional principal" <*
             _NN_I_1 [isJust $ ct_PRD t, isJust $ ct_PPRD t] t ["purchase date", "price at purchase date"] <*
-            _NN_I_1 [isJust $ ct_TD t, isJust $ ct_PTD t] t ["termination date", "price at termination"]
+            _NN_I_1 [isJust $ ct_TD t, isJust $ ct_PTD t] t ["termination date", "price at termination"] <*
+            _NN ct_MD t "maturity date"
         Just LAM ->
-            pure t
+            pure t <*
+            _X (calendar . scfg) t "calendar" <*
+            _X (eomc . scfg) t "end of month convention" <*
+            _NN ct_NT t "notional principal" <*
+            _NN_I_1 [isJust $ ct_PRD t, isJust $ ct_PPRD t] t ["purchase date", "price at purchase date"] <*
+            _NN_I_1 [isJust $ ct_TD t, isJust $ ct_PTD t] t ["termination date", "price at termination"] <*
+            _NN ct_PRCL t "principal redemption cycle"
         Nothing ->
             Failure [Required $ "Contract term 'contract type' is required."]

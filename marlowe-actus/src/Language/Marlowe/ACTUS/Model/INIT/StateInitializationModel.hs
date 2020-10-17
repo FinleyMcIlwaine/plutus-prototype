@@ -8,6 +8,8 @@ import           Language.Marlowe.ACTUS.Definitions.ContractTerms      (FEB (FEB
 import           Language.Marlowe.ACTUS.Model.Utility.ContractRoleSign (contractRoleSign)
 import           Language.Marlowe.ACTUS.Model.Utility.YearFraction     (yearFraction)
 import           Language.Marlowe.ACTUS.Model.Utility.ScheduleGenerator (plusCycle)
+import           Language.Marlowe.ACTUS.Definitions.Schedule           (ShiftedDay(paymentDay))
+import           Language.Marlowe.ACTUS.Model.SCHED.ContractScheduleModel (_SCHED_MD_LAM)
 
 
 r = contractRoleSign
@@ -57,15 +59,9 @@ _INIT_PAM t0 tminus tfp_minus tfp_plus _MD _IED _IPNR _CNTRL _NT _IPAC _DCC _FER
         sd                                      = t0
     in ContractStatePoly { prnxt = 0.0, ipcb = 0.0, tmd = tmd, nt = nt, ipnr = ipnr, ipac = ipac, fac = fac, feac = feac, nsc = nsc, isc = isc, prf = prf, sd = sd }
 
-_INIT_LAM t0 tminus tpr_minus tfp_minus tfp_plus _MD _IED _IPNR _CNTRL _NT _IPAC _DCC _FER _FEAC _FEB _SCEF _SCIXSD _PRF _PRCL _PRANX _PRNXT _IPCB _IPCBA =
+_INIT_LAM scfg t0 tminus tpr_minus tfp_minus tfp_plus _MD _IED _IPNR _CNTRL _NT _IPAC _DCC _FER _FEAC _FEB _SCEF _SCIXSD _PRF _PRCL _PRANX _PRNXT _IPCB _IPCBA =
     let
-        tmd                                     = _MD
-        -- maybeTMinus | isJust _PRANX && ((fromJust _PRANX) >= _SD) = _PRANX
-        --             | (_IED `plusCycle` fromJust _PRCL) >= _SD = Just $ _IED `plusCycle` fromJust _PRCL
-        --             | otherwise                           = sup (_SCHED_PR_LAM scfg _PRCL _IED _PRANX _MD) _SD
-        -- tmd
-        --         | isJust _MD                    = _MD
-        --         | otherwise                     = (fromJust maybeTMinus) `plusCycle` ((fromJust _PRCL) { n = ((ceiling ((fromJust _NT) / (fromJust _PRNXT))) * (n (fromJust _PRCL))) })
+        tmd = (paymentDay . head . fromJust $ _SCHED_MD_LAM scfg _IED t0 _PRANX _PRNXT _NT _PRCL _MD)
 
         -- Same as PAM
         nt
@@ -79,19 +75,19 @@ _INIT_LAM t0 tminus tpr_minus tfp_minus tfp_plus _MD _IED _IPNR _CNTRL _NT _IPAC
         ipac
                 | isNothing _IPNR               = 0.0
                 | isJust _IPAC                  = fromJust _IPAC
-                | otherwise                     = y _DCC tminus t0 _MD * nt * ipnr
+                | otherwise                     = y _DCC tminus t0 tmd * nt * ipnr
         -- Same as PAM
         fac
                 | isNothing _FER                = 0.0
                 | isJust _FEAC                  = fromJust _FEAC
-                | _FEB == FEB_N                  = y _DCC tfp_minus t0 _MD * nt * fromJust _FER
-                | otherwise                     = (y _DCC tfp_minus t0 _MD / y _DCC tfp_minus tfp_plus _MD) * fromJust _FER
+                | _FEB == FEB_N                  = y _DCC tfp_minus t0 tmd * nt * fromJust _FER
+                | otherwise                     = (y _DCC tfp_minus t0 tmd / y _DCC tfp_minus tfp_plus tmd) * fromJust _FER
         -- Same as PAM
         feac
                 | isNothing _FER                = 0.0
                 | isJust _FEAC                  = fromJust _FEAC
-                | _FEB == FEB_N                  = y _DCC tfp_minus t0 _MD * nt * fromJust _FER
-                | otherwise                     = (y _DCC tfp_minus t0 _MD / y _DCC tfp_minus tfp_plus _MD) * fromJust _FER
+                | _FEB == FEB_N                  = y _DCC tfp_minus t0 tmd * nt * fromJust _FER
+                | otherwise                     = (y _DCC tfp_minus t0 tmd / y _DCC tfp_minus tfp_plus tmd) * fromJust _FER
         -- Same as PAM
         nsc
                 | scef_xNx _SCEF                = _SCIXSD
@@ -112,12 +108,11 @@ _INIT_LAM t0 tminus tpr_minus tfp_minus tfp_plus _MD _IED _IPNR _CNTRL _NT _IPAC
                 | otherwise = tpr_minus
         prnxt
                 | isJust _PRNXT                 = fromJust _PRNXT
-                -- | otherwise                     = _NT * (ceiling (y _DCC s _MD _MD / y _DCC s (s `plusCycle` (fromJust _PRCL)) _MD))
-                | otherwise                     = _NT * (1.0 / (fromIntegral $ ((ceiling (y _DCC s _MD _MD / y _DCC s (s `plusCycle` (fromJust _PRCL)) _MD)) :: Integer)))
+                | otherwise                     = _NT * (1.0 / (fromIntegral $ ((ceiling (y _DCC s tmd tmd / y _DCC s (s `plusCycle` (fromJust _PRCL)) tmd)) :: Integer)))
 
         -- IPCB
         ipcb
-                | _MD < _IED                    = 0.0
+                | t0 < _IED                    = 0.0
                 | (fromJust _IPCB) == IPCB_NT              = r _CNTRL * _NT
                 | otherwise                     = r _CNTRL * (fromJust _IPCBA)
     in ContractStatePoly { prnxt = prnxt, ipcb = ipcb, tmd = tmd, nt = nt, ipnr = ipnr, ipac = ipac, fac = fac, feac = feac, nsc = nsc, isc = isc, prf = prf, sd = sd }

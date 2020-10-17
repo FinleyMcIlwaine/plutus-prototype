@@ -119,33 +119,35 @@ genStaticContract terms =
             in Success $ foldl (flip gen) Close cfs
 
 
-genFsContract :: ContractTerms -> Contract
+genFsContract :: ContractTerms -> Validation [TermValidationError] Contract
 genFsContract terms =
-    let
-        -- Validate here
-        postProcess cont =
-            let ctr = constraints terms
-                toAssert = genZeroRiskAssertions terms <$> (assertions =<< maybeToList ctr)
-                compose = appEndo . mconcat . map Endo
-            in compose toAssert cont
+    case validateTerms terms of
+        Failure errs -> Failure errs
+        Success _ ->
+            let
+                postProcess cont =
+                    let ctr = constraints terms
+                        toAssert = genZeroRiskAssertions terms <$> (assertions =<< maybeToList ctr)
+                        compose = appEndo . mconcat . map Endo
+                    in compose toAssert cont
 
-        payoffAt t = ValueId $ fromString $ "payoff_" ++ show t
-        schedCfs = genProjectedCashflows terms
-        schedEvents = cashEvent <$> schedCfs
-        schedDates = Slot . dayToSlotNumber . cashPaymentDay <$> schedCfs
-        previousDates = ([ct_SD terms] ++ (cashCalculationDay <$> schedCfs))
-        cfsDirections = amount <$> schedCfs
-        ctx = context <$> constraints terms
+                payoffAt t = ValueId $ fromString $ "payoff_" ++ show t
+                schedCfs = genProjectedCashflows terms
+                schedEvents = cashEvent <$> schedCfs
+                schedDates = Slot . dayToSlotNumber . cashPaymentDay <$> schedCfs
+                previousDates = ([ct_SD terms] ++ (cashCalculationDay <$> schedCfs))
+                cfsDirections = amount <$> schedCfs
+                ctx = context <$> constraints terms
 
-        gen :: (CashFlow, Day, EventType, Slot, Double, Integer) -> Contract -> Contract
-        gen (cf, prevDate, ev, date, r, t) cont =
-            inquiryFs ev terms ("_" ++ show t) date "oracle" ctx
-            $ stateTransitionFs ev terms t prevDate (cashCalculationDay cf)
-            $ Let (payoffAt t) (fromMaybe (constnt 0.0) pof)
-            $ if (isNothing pof) then cont
-              else if  r > 0.0   then invoice "party" "counterparty" (UseValue $ payoffAt t) date cont
-              else                    invoice "counterparty" "party" (NegValue $ UseValue $ payoffAt t) date cont
-            where pof = (payoffFs ev terms t (t - 1) prevDate (cashCalculationDay cf))
-        scheduleAcc = foldr gen (postProcess Close) $
-            L.zip6 schedCfs previousDates schedEvents schedDates cfsDirections [1..]
-    in inititializeStateFs terms scheduleAcc
+                gen :: (CashFlow, Day, EventType, Slot, Double, Integer) -> Contract -> Contract
+                gen (cf, prevDate, ev, date, r, t) cont =
+                    inquiryFs ev terms ("_" ++ show t) date "oracle" ctx
+                    $ stateTransitionFs ev terms t prevDate (cashCalculationDay cf)
+                    $ Let (payoffAt t) (fromMaybe (constnt 0.0) pof)
+                    $ if (isNothing pof) then cont
+                    else if  r > 0.0   then invoice "party" "counterparty" (UseValue $ payoffAt t) date cont
+                    else                    invoice "counterparty" "party" (NegValue $ UseValue $ payoffAt t) date cont
+                    where pof = (payoffFs ev terms t (t - 1) prevDate (cashCalculationDay cf))
+                scheduleAcc = foldr gen (postProcess Close) $
+                    L.zip6 schedCfs previousDates schedEvents schedDates cfsDirections [1..]
+            in Success $ inititializeStateFs terms scheduleAcc
