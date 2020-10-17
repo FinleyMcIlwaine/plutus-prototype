@@ -1,7 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module Language.Marlowe.ACTUS.Model.INIT.StateInitializationFs where
 
-import           Data.Maybe                                                 (fromMaybe)
+import           Data.Maybe                                                 (fromMaybe, fromJust)
 import           Language.Marlowe
 import           Language.Marlowe.ACTUS.Definitions.BusinessEvents          (EventType (FP, IP, PR))
 import           Language.Marlowe.ACTUS.Definitions.ContractTerms           (ContractTerms (..),
@@ -23,7 +23,7 @@ inititializeStateFs terms@ContractTerms {..} continue =
         -- LAM
         prSchedule         = schedule PR terms
         tpr_minus          = fromMaybe t0 $ calculationDay <$> ((\sc -> sup sc t0) =<< prSchedule)
-        initialState =  case contractType of
-            PAM -> _INIT_PAM t0 tminus tfp_minus tfp_plus ct_MD ct_IED ct_IPNR ct_CNTRL ct_NT ct_IPAC ct_DCC (Just ct_FER) ct_FEAC ct_FEB ct_SCEF ct_SCIXSD ct_PRF
-            LAM -> _INIT_LAM t0 tminus tpr_minus tfp_minus tfp_plus ct_MD ct_IED ct_IPNR ct_CNTRL ct_NT ct_IPAC ct_DCC (Just ct_FER) ct_FEAC ct_FEB ct_SCEF ct_SCIXSD ct_PRF ct_PRCL ct_PRANX ct_PRNXT ct_IPCB ct_IPCBA
+        initialState =  case fromJust contractType of
+            PAM -> _INIT_PAM t0 tminus tfp_minus tfp_plus (fromJust ct_MD) ct_IED ct_IPNR ct_CNTRL ct_NT ct_IPAC ct_DCC (Just ct_FER) ct_FEAC ct_FEB ct_SCEF ct_SCIXSD ct_PRF
+            LAM -> _INIT_LAM t0 tminus tpr_minus tfp_minus tfp_plus (fromJust ct_MD) ct_IED ct_IPNR ct_CNTRL ct_NT ct_IPAC ct_DCC (Just ct_FER) ct_FEAC ct_FEB ct_SCEF ct_SCIXSD ct_PRF ct_PRCL ct_PRANX ct_PRNXT ct_IPCB ct_IPCBA
     in stateInitialisation initialState continue

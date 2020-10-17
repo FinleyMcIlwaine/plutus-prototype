@@ -2,6 +2,7 @@
 
 module Language.Marlowe.ACTUS.Model.POF.PayoffFs where
 
+import           Data.Maybe                                        (fromJust)
 import           Data.Time                                         (Day)
 import           Language.Marlowe                                  (Observation, Value)
 import           Language.Marlowe.ACTUS.Definitions.BusinessEvents (EventType (FP, IED, IP, MD, PP, PRD, PY, TD, PR))
@@ -19,7 +20,7 @@ payoffFs ev ContractTerms{..} t t_minus prevDate curDate =
         __PYTP            = enum ct_PYTP
         __FEB             = enum ct_FEB
         __FER             = constnt ct_FER
-        (__PPRD, __PTD  ) = (constnt ct_PPRD, constnt ct_PTD)
+        (__PPRD, __PTD  ) = (constnt (fromJust ct_PPRD), constnt (fromJust ct_PTD))
         (__PYRT, __cPYRT) = (constnt ct_PYRT, constnt ct_cPYRT)
 
 
@@ -36,9 +37,9 @@ payoffFs ev ContractTerms{..} t t_minus prevDate curDate =
         __ipcb            = useval "ipcb" t_minus
         __prnxt           = useval "prnxt" t_minus
 
-        y_sd_t            = constnt $ _y ct_DCC prevDate curDate ct_MD
+        y_sd_t            = constnt $ _y ct_DCC prevDate curDate (fromJust ct_MD)
 
-        pof = case contractType of
+        pof = case fromJust contractType of
             PAM -> case ev of
                 IED -> Just $ _POF_IED_PAM __o_rf_CURS ct_CNTRL __NT __PDIED
                 MD  -> Just $ _POF_MD_PAM __o_rf_CURS __nsc __nt __isc __ipac __feac

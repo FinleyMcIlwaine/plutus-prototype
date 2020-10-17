@@ -99,6 +99,15 @@ data Cycle = Cycle
   } deriving (Show, Eq, Ord, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
+-- Could do this better, but strings for now
+data TermValidationError =
+    Required String
+    | NotApplicable String
+    deriving (Eq)
+instance Show TermValidationError where
+    show (Required s) = "Missing required term: " ++ s
+    show (NotApplicable s) = "Term not applicable to contract: " ++ s
+
 data ScheduleConfig = ScheduleConfig
   {
     calendar      :: [Day]
@@ -108,7 +117,7 @@ data ScheduleConfig = ScheduleConfig
   }   deriving stock (Show, Generic)
   deriving anyclass (FromJSON, ToJSON)
 
-data ContractType = PAM | LAM   deriving stock (Show, Generic) deriving anyclass (FromJSON, ToJSON)
+data ContractType = PAM | LAM   deriving stock (Show, Eq, Generic) deriving anyclass (FromJSON, ToJSON)
 
 
 data Assertions = Assertions
@@ -136,18 +145,18 @@ data Assertion = NpvAssertionAgainstZeroRiskBond
 
 data ContractTerms = ContractTerms {
   contractId     :: String
-  , contractType :: ContractType
+  , contractType :: Maybe ContractType
   , ct_IED       :: Day -- Initial Exchange Date
   , ct_SD        :: Day -- start date
-  , ct_MD        :: Day -- maturity date
-  , ct_TD        :: Day -- termination date
+  , ct_MD        :: Maybe Day -- maturity date
+  , ct_TD        :: Maybe Day -- termination date
   , ct_PRNXT     :: Maybe Double -- periodic payment amount
-  , ct_PRD       :: Day -- purchase date
+  , ct_PRD       :: Maybe Day -- purchase date
   , ct_CNTRL     :: ContractRole
   , ct_PDIED     :: Double -- Premium / Discount At IED
   , ct_NT        :: Double -- Notional
-  , ct_PPRD      :: Double -- Price At Purchase Date
-  , ct_PTD       :: Double -- Price At Termination Date
+  , ct_PPRD      :: Maybe Double -- Price At Purchase Date
+  , ct_PTD       :: Maybe Double -- Price At Termination Date
   , ct_DCC       :: DCC -- Date Count Convention
   , ct_PREF      :: PREF -- allow PP
   , ct_PRF       :: ContractStatus

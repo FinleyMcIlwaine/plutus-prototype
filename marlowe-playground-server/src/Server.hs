@@ -23,21 +23,27 @@ import           Data.Aeson                                       (ToJSON, eithe
 import           Data.Proxy                                       (Proxy (Proxy))
 import           Data.Text                                        (Text)
 import qualified Data.Text                                        as Text
+import           Data.Validation                                  (Validation(..))
 import           Language.Marlowe.ACTUS.Definitions.ContractTerms (ContractTerms)
 import           Language.Marlowe.ACTUS.Generator                 (genFsContract, genStaticContract)
 import           Language.Marlowe.Pretty                          (pretty)
 import           Network.Wai.Middleware.Cors                      (cors, corsRequestHeaders, simpleCorsResourcePolicy)
 import           Servant                                          ((:<|>) ((:<|>)), (:>), Application,
                                                                    Handler (Handler), Server, ServerError, hoistServer,
-                                                                   serve)
+                                                                   serve, throwError)
+import           Servant.Server.Internal.ServerError              (ServerError(..), err400)
 import           System.Environment                               (lookupEnv)
 import qualified Web.JWT                                          as JWT
 
 genActusContract :: ContractTerms -> Handler String
-genActusContract = pure . show . pretty . genFsContract
+genActusContract terms = pure . show . pretty . genFsContract $ terms
 
 genActusContractStatic :: ContractTerms -> Handler String
-genActusContractStatic = pure . show . pretty . genStaticContract
+genActusContractStatic terms =
+    case genStaticContract terms of
+        -- Failure errs -> throwError $ err400 { errBody = "Could not validate terms."} -- Figure out how to handle this
+        Failure errs -> pure (unlines . (:) "ACTUS Term Validation Failed:" . map ((++) "    " . show) $ errs)
+        Success c -> pure . show . pretty $ c
 
 liftedAuthServer :: Auth.GithubEndpoints -> Auth.Config -> Server Auth.API
 liftedAuthServer githubEndpoints config =

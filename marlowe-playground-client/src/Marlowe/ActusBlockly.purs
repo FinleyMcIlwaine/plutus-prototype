@@ -232,12 +232,14 @@ toDefinition (ActusContractType PaymentAtMaturity) =
             <> "premium/discount %5"
             <> "interest rate %6"
             <> "purchase date %7"
-            <> "initial exchange date %8"
-            <> "termination date %9"
-            <> "rate reset cycle %10"
-            <> "interest payment cycle %11"
-            <> "observation constraints %12"
-            <> "payoff analysis constraints %13"
+            <> "purchase price %8"
+            <> "initial exchange date %9"
+            <> "termination date %10"
+            <> "termination price %11"
+            <> "rate reset cycle %12"
+            <> "interest payment cycle %13"
+            <> "observation constraints %14"
+            <> "payoff analysis constraints %15"
         , args0:
           [ DummyCentre
           , Value { name: "start_date", check: "date", align: Right }
@@ -246,8 +248,10 @@ toDefinition (ActusContractType PaymentAtMaturity) =
           , Value { name: "premium_discount", check: "decimal", align: Right }
           , Value { name: "interest_rate", check: "decimal", align: Right }
           , Value { name: "purchase_date", check: "date", align: Right }
+          , Value { name: "purchase_price", check: "decimal", align: Right }
           , Value { name: "initial_exchange_date", check: "date", align: Right }
           , Value { name: "termination_date", check: "date", align: Right }
+          , Value { name: "termination_price", check: "decimal", align: Right }
           , Value { name: "rate_reset_cycle", check: "cycle", align: Right }
           , Value { name: "interest_rate_cycle", check: "cycle", align: Right }
           , Value { name: "interest_rate_ctr", check: "assertionCtx", align: Right }
@@ -271,15 +275,17 @@ toDefinition (ActusContractType LinearAmortizer) =
             <> "premium/discount %5"
             <> "interest rate %6"
             <> "purchase date %7"
-            <> "initial exchange date %8"
-            <> "termination date %9"
-            <> "periodic payment amount %10"
-            <> "rate reset cycle %11"
-            <> "interest payment cycle %12"
-            <> "principal redemption cycle %13"
-            <> "interest calculation base cycle %14"
-            <> "observation constraints %15"
-            <> "payoff analysis constraints %16"
+            <> "purchase price %8"
+            <> "initial exchange date %9"
+            <> "termination date %10"
+            <> "termination price %11"
+            <> "periodic payment amount %12"
+            <> "rate reset cycle %13"
+            <> "interest payment cycle %14"
+            <> "principal redemption cycle %15"
+            <> "interest calculation base cycle %16"
+            <> "observation constraints %17"
+            <> "payoff analysis constraints %18"
         , args0:
           [ DummyCentre
           , Value { name: "start_date", check: "date", align: Right }
@@ -288,8 +294,10 @@ toDefinition (ActusContractType LinearAmortizer) =
           , Value { name: "premium_discount", check: "decimal", align: Right }
           , Value { name: "interest_rate", check: "decimal", align: Right }
           , Value { name: "purchase_date", check: "date", align: Right }
+          , Value { name: "purchase_price", check: "decimal", align: Right }
           , Value { name: "initial_exchange_date", check: "date", align: Right }
           , Value { name: "termination_date", check: "date", align: Right }
+          , Value { name: "termination_price", check: "decimal", align: Right }
           , Value { name: "periodic_payment_amount", check: "decimal", align: Right }
           , Value { name: "rate_reset_cycle", check: "cycle", align: Right }
           , Value { name: "interest_rate_cycle", check: "cycle", align: Right }
@@ -476,13 +484,15 @@ baseContractDefinition g block = do
 
 newtype ActusContract
   = ActusContract
-  { contractType :: ContractType
+  { contractType :: Maybe ContractType
   , startDate :: ActusValue
   , initialExchangeDate :: ActusValue
   , maturityDate :: ActusValue
   , terminationDate :: ActusValue
+  , terminationPrice :: ActusValue
   , periodicPaymentAmount :: ActusValue
   , purchaseDate :: ActusValue
+  , purchasePrice :: ActusValue
   , dayCountConvention :: ActusValue
   , endOfMonthConvention :: ActusValue
   , rateReset :: ActusValue
@@ -570,13 +580,15 @@ instance hasBlockDefinitionActusContract :: HasBlockDefinition ActusContractType
   blockDefinition _ g block = case parseActusContractType block of
     PAM -> Either.Right
             $ ActusContract
-                { contractType: parseActusContractType block
+                { contractType: Just $ parseActusContractType block
                 , startDate: parseFieldActusValueJson g block "start_date"
                 , initialExchangeDate: parseFieldActusValueJson g block "initial_exchange_date"
                 , maturityDate: parseFieldActusValueJson g block "maturity_date"
                 , terminationDate: parseFieldActusValueJson g block "termination_date"
+                , terminationPrice: parseFieldActusValueJson g block "termination_price"
                 , periodicPaymentAmount: NoActusValue
                 , purchaseDate: parseFieldActusValueJson g block "purchase_date"
+                , purchasePrice: parseFieldActusValueJson g block "purchase_price"
                 , dayCountConvention: parseFieldActusValueJson g block "day_count_convention"
                 , endOfMonthConvention: parseFieldActusValueJson g block "end_of_month_convention"
                 , rateReset: parseFieldActusValueJson g block "rate_reset_cycle"
@@ -591,13 +603,15 @@ instance hasBlockDefinitionActusContract :: HasBlockDefinition ActusContractType
                 }
     LAM -> Either.Right
             $ ActusContract
-                { contractType: parseActusContractType block
+                { contractType: Just $ parseActusContractType block
                 , startDate: parseFieldActusValueJson g block "start_date"
                 , initialExchangeDate: parseFieldActusValueJson g block "initial_exchange_date"
                 , maturityDate: parseFieldActusValueJson g block "maturity_date"
                 , terminationDate: parseFieldActusValueJson g block "termination_date"
+                , terminationPrice: parseFieldActusValueJson g block "termination_price"
                 , periodicPaymentAmount: parseFieldActusValueJson g block "periodic_payment_amount"
                 , purchaseDate: parseFieldActusValueJson g block "purchase_date"
+                , purchasePrice: parseFieldActusValueJson g block "purchase_price"
                 , dayCountConvention: parseFieldActusValueJson g block "day_count_convention"
                 , endOfMonthConvention: parseFieldActusValueJson g block "end_of_month_convention"
                 , rateReset: parseFieldActusValueJson g block "rate_reset_cycle"
@@ -742,11 +756,13 @@ actusContractToTerms raw = do --todo use monad transformers?
     c = (unwrap raw)
   contractType <- Either.Right c.contractType
   startDate <- Either.note "start date is a mandatory field!" <$> actusDateToDay c.startDate >>= identity
-  maturityDate <- Either.note "maturity date is a mandatory field!" <$> actusDateToDay c.maturityDate >>= identity
+  maturityDate <- actusDateToDay c.maturityDate
   initialExchangeDate <- fromMaybe startDate <$> actusDateToDay c.initialExchangeDate
-  terminationDate <- fromMaybe maturityDate <$> actusDateToDay c.terminationDate
+  terminationDate <- actusDateToDay c.terminationDate
+  terminationPrice <- actusDecimalToNumber c.terminationPrice
   periodicPaymentAmount <- actusDecimalToNumber c.periodicPaymentAmount
-  purchaseDate <- fromMaybe maturityDate <$> actusDateToDay c.purchaseDate
+  purchaseDate <- actusDateToDay c.purchaseDate
+  purchasePrice <- actusDecimalToNumber c.purchasePrice
   rateResetCycle <- blocklyCycleToCycle c.rateReset
   rateResetAnchorValue <- blocklyCycleToAnchor c.rateReset
   rateResetAnchor <- sequence $ actusDateToDay <$> rateResetAnchorValue
@@ -792,8 +808,8 @@ actusContractToTerms raw = do --todo use monad transformers?
         , ct_CNTRL: CR_ST
         , ct_PDIED: premium
         , ct_NT: notional
-        , ct_PPRD: 0.0
-        , ct_PTD: 0.0
+        , ct_PPRD: purchasePrice
+        , ct_PTD: terminationPrice
         , ct_DCC: DCC_A_360
         , ct_PREF: PREF_N
         , ct_PRF: CS_PF

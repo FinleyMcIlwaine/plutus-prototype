@@ -13,6 +13,7 @@ import           Data.Maybe                                              (fromMa
 import           Data.Monoid
 import           Data.String                                             (IsString (fromString))
 import           Data.Time                                               (Day)
+import           Data.Validation                                         (Validation(..))
 import           Language.Marlowe                                        (AccountId (AccountId),
                                                                           Action (Choice, Deposit), Bound (Bound),
                                                                           Case (Case), ChoiceId (ChoiceId),
@@ -23,12 +24,13 @@ import           Language.Marlowe                                        (Accoun
 import           Language.Marlowe.ACTUS.Analysis                         (genProjectedCashflows, genZeroRiskAssertions)
 import           Language.Marlowe.ACTUS.Definitions.BusinessEvents       (EventType (..))
 import           Language.Marlowe.ACTUS.Definitions.ContractTerms        (AssertionContext (..), Assertions (..),
-                                                                          ContractTerms (constraints, ct_CURS, ct_SD))
+                                                                          ContractTerms (constraints, ct_CURS, ct_SD), TermValidationError(..))
 import           Language.Marlowe.ACTUS.Definitions.Schedule             (CashFlow (..))
 import           Language.Marlowe.ACTUS.MarloweCompat                    (constnt, dayToSlotNumber, toMarloweFixedPoint)
 import           Language.Marlowe.ACTUS.Model.INIT.StateInitializationFs (inititializeStateFs)
 import           Language.Marlowe.ACTUS.Model.POF.PayoffFs               (payoffFs)
 import           Language.Marlowe.ACTUS.Model.STF.StateTransitionFs      (stateTransitionFs)
+import           Language.Marlowe.ACTUS.Model.APPLICABILITY.Applicability (validateTerms)
 import           Ledger.Value                                            (TokenName (TokenName))
 
 
@@ -103,20 +105,24 @@ inquiryFs ev ct timePosfix date oracle context continue =
 
 
 
-genStaticContract :: ContractTerms -> Contract
+genStaticContract :: ContractTerms -> Validation [TermValidationError] Contract
 genStaticContract terms =
-    let
-        cfs = genProjectedCashflows terms
-        gen CashFlow{..} =
-            if amount > 0.0
-                then invoice "party" "counterparty" (Constant $ round amount) (Slot $ dayToSlotNumber cashPaymentDay)
-                else invoice "counterparty" "party" (Constant $ round $ -amount) (Slot $ dayToSlotNumber cashPaymentDay)
-    in foldl (flip gen) Close cfs
+    case validateTerms terms of
+        Failure errs -> Failure errs
+        Success t ->
+            let
+                cfs = genProjectedCashflows t
+                gen CashFlow{..} =
+                    if amount > 0.0
+                        then invoice "party" "counterparty" (Constant $ round amount) (Slot $ dayToSlotNumber cashPaymentDay)
+                        else invoice "counterparty" "party" (Constant $ round $ -amount) (Slot $ dayToSlotNumber cashPaymentDay)
+            in Success $ foldl (flip gen) Close cfs
 
 
 genFsContract :: ContractTerms -> Contract
 genFsContract terms =
     let
+        -- Validate here
         postProcess cont =
             let ctr = constraints terms
                 toAssert = genZeroRiskAssertions terms <$> (assertions =<< maybeToList ctr)
