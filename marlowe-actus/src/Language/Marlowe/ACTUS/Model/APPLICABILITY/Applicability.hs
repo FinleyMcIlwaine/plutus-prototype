@@ -24,6 +24,7 @@ validateTerms t =
             _NN ct_NT t "notional principal" <*
             _NN_I_1 [isJust $ ct_PRD t, isJust $ ct_PPRD t] t ["purchase date", "price at purchase date"] <*
             _NN_I_1 [isJust $ ct_TD t, isJust $ ct_PTD t] t ["termination date", "price at termination"] <*
-            _NN ct_PRCL t "principal redemption cycle"
+            _NN ct_PRCL t "principal redemption cycle" <*
+            _NN_I_2 [isJust $ ct_PRNXT t, isJust $ ct_MD t] t ["periodic payment amount", "maturity date"]
         Nothing ->
             Failure [Required $ "Contract term 'contract type' is required."]

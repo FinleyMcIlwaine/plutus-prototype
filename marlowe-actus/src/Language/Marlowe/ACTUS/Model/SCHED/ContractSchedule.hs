@@ -28,7 +28,7 @@ schedule ev ContractTerms {..} = case fromJust contractType of
         _    -> Nothing
     LAM -> case ev of
         IED  -> _SCHED_IED_LAM scfg ct_IED
-        PR   -> _SCHED_PR_LAM scfg ct_PRCL ct_IED ct_PRANX ct_MD
+        PR   -> _SCHED_PR_LAM scfg ct_PRCL ct_IED ct_PRANX (Just $ paymentDay . head . fromJust $ _SCHED_MD_LAM scfg ct_IED ct_SD ct_PRANX ct_PRNXT (fromJust ct_NT) ct_PRCL ct_MD)
         MD   -> _SCHED_MD_LAM scfg ct_IED ct_SD ct_PRANX ct_PRNXT (fromJust ct_NT) ct_PRCL ct_MD
         PP   -> _SCHED_PP_LAM scfg ct_PREF ct_OPCL ct_IED ct_OPANX (paymentDay . head . fromJust $ _SCHED_MD_LAM scfg ct_IED ct_SD ct_PRANX ct_PRNXT (fromJust ct_NT) ct_PRCL ct_MD)
         PY   -> _SCHED_PY_LAM scfg ct_PYTP ct_PREF ct_OPCL ct_IED ct_OPANX (paymentDay . head . fromJust $ _SCHED_MD_LAM scfg ct_IED ct_SD ct_PRANX ct_PRNXT (fromJust ct_NT) ct_PRCL ct_MD)

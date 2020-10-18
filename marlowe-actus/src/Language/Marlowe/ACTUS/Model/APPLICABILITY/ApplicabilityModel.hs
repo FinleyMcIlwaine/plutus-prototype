@@ -34,3 +34,8 @@ _NN_I_1 _cts t@ContractTerms{..} termNames =
                     Success t
         True -> Success t
 
+-- NN(I, 2, _) (At least one must be defined)
+_NN_I_2 _cts t@ContractTerms{..} termNames =
+    case any id _cts of
+        False -> Failure [Required $ "At least one contract term in group " ++ show termNames ++ " should be defined for contract type '" ++ show contractType ++ "'"]
+        True -> Success t

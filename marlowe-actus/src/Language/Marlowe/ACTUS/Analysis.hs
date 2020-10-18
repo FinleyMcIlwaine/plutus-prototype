@@ -26,7 +26,7 @@ genProjectedCashflows = sampleCashflows (const $ RiskFactors 1.0 1.0 1.0 0.0)
 sampleCashflows :: (Day -> RiskFactors) -> ContractTerms -> [CashFlow]
 sampleCashflows riskFactors terms =
     let
-        eventTypes   = [IED, MD, RR, IP]
+        eventTypes   = [IED, MD, RR, IP, PR]
         analysisDate = fromGregorian 1970 1 1
         preserveDate e d = (e, d)
 
