@@ -1,0 +1,5 @@
+FROM finleymcilwaine/marlowe-prod:v21
+
+CMD $(/root/.nix-profile/bin/nix-build -A marlowe-playground.server-invoker)/bin/marlowe-playground webserver & \
+    cd ./marlowe-playground-client \
+    && yarn run webpack:server

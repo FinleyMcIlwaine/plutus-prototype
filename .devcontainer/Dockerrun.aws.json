@@ -1,0 +1,12 @@
+{
+    "AWSEBDockerrunVersion": "1",
+    "Image": {
+      "Name": "finleymcilwaine/marlowe-prod:v12",
+      "Update": "true"
+    },
+    "Ports": [
+      {
+        "ContainerPort": "8081"
+      }
+    ]
+}

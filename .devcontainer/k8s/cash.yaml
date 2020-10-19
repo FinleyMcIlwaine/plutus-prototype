@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "cash-deployment"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      component: "cash"
+  template:
+    metadata:
+      labels:
+        component: "cash"
+    spec:
+      containers:
+      - name: "main"
+        image: "finleymcilwaine/marlowe-prod:v12"
+        ports:
+        - containerPort: 8081
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cash-lb
+spec:
+  selector:
+    component: "cash"
+  ports:
+    - port: 8081
+      targetPort: 8081
+  type: LoadBalancer
