@@ -20,7 +20,6 @@ library
         Control.Monad.Trace
         Control.Monad.Web
         Gist
-        Git
         Language.Haskell.Interpreter
         PSGenerator.Common
         Playground.API
@@ -33,8 +32,6 @@ library
         Servant.Extra
         Servant.Prometheus
         System.IO.Extras
-    other-modules:
-        Git.TH
     hs-source-dirs: src
     default-language: Haskell2010
     ghc-options: -Wall -Wcompat
@@ -59,7 +56,6 @@ library
         http-client-tls -any,
         http-types -any,
         http-conduit -any,
-        iots-export -any,
         jwt -any,
         lens -any,
         memory -any,
@@ -74,7 +70,7 @@ library
         prettyprinter -any,
         plutus-tx -any,
         purescript-bridge -any,
-        recursion-schemes -any,
+        recursion-schemes < 5.2,
         safe-exceptions -any,
         servant >= 0.16,
         servant-client -any,
@@ -124,6 +120,6 @@ test-suite playground-common-test
         playground-common -any,
         plutus-ledger -any,
         plutus-contract -any,
-        recursion-schemes -any,
+        recursion-schemes < 5.2,
         text -any,
         wl-pprint-text -any

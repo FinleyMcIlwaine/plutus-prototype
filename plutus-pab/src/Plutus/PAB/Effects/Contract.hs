@@ -1,88 +1,216 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleContexts   #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE NamedFieldPuns     #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE PatternGuards      #-}
-{-# LANGUAGE StrictData         #-}
-{-# LANGUAGE TemplateHaskell    #-}
-{-# LANGUAGE TypeApplications   #-}
-{-# LANGUAGE TypeOperators      #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE FlexibleContexts    #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE PatternGuards       #-}
+{-# LANGUAGE StrictData          #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeFamilies        #-}
+{-# LANGUAGE TypeOperators       #-}
+{-
+
+Effects for running contract instances and for storing and loading their state.
+
+-}
 module Plutus.PAB.Effects.Contract(
-    ContractCommand(..)
+    PABContract(..)
+    , requests
     , ContractEffect(..)
-    , invokeContract
     , exportSchema
-    -- * Input fed to contracts
-    , EventPayload(..)
-    , contractMessageToPayload
-    -- * Experimental / misc.
-    , invokeContractUpdate_
+    , initialState
+    , updateContract
+    -- * Storing and retrieving contract state
+    , ContractStore(..)
+    , putState
+    , getState
+    , getDefinition
+    , getActiveContracts
+    , putStartInstance
+    , putStopInstance
+    -- * Storing and retrieving definitions of contracts
+    , ContractDefinitionStore(..)
+    , addDefinition
+    , getDefinitions
     ) where
 
-import           Control.Monad.Freer
-import           Control.Monad.Freer.TH                          (makeEffect)
-import           Data.Aeson                                      ((.=))
-import qualified Data.Aeson                                      as JSON
-import           Language.Plutus.Contract.Effects.ExposeEndpoint (EndpointDescription (..))
-import           Language.Plutus.Contract.Resumable              (Response (..))
-import           Playground.Types                                (FunctionSchema)
+import           Control.Monad.Freer        (Eff, Member, send)
+import           Data.Aeson                 (Value)
+import           Data.Map                   (Map)
+import qualified Data.Map                   as Map
+import           Data.Proxy                 (Proxy (..))
+import           Playground.Types           (FunctionSchema)
+import           Plutus.Contract.Effects    (PABReq, PABResp)
+import           Plutus.Contract.Resumable  (Request, Response)
+import           Plutus.Contract.State      (ContractResponse)
+import qualified Plutus.Contract.State      as C
+import           Plutus.PAB.Webserver.Types (ContractActivationArgs)
+import           Schema                     (FormSchema)
+import           Wallet.Types               (ContractInstanceId)
 
-import           Language.Plutus.Contract.State                  (ContractRequest (..))
-import           Plutus.PAB.Events.Contract                      (ContractHandlersResponse, ContractPABRequest (..),
-                                                                  ContractResponse (..), PartiallyDecodedResponse (..),
-                                                                  unContractHandlersResponse)
-import           Schema                                          (FormSchema)
+-- | A class of contracts running in the PAB. The purpose of the type
+--   parameter @t@ is to allow for different ways of running
+--   contracts, for example: A compiled executable running in a separate
+--   process, or an "inline" contract that was compiled with the PAB and
+--   runs in the same process.
+--
+--   The associated type families correspond to the type arguments needed
+--   for the 'ContractRequest' and 'ContractResponse' types from
+--   'Plutus.Contract.State'.
+class PABContract contract where
+    -- | Any data needed to identify the contract. For example, the location of the executable.
+    type ContractDef contract
 
--- | Commands to update a contract. 't' identifies the contract.
-data ContractCommand t
-    = InitContract t
-    | UpdateContract t (ContractRequest JSON.Value)
-    deriving (Show, Eq)
+    -- | Contract state type
+    type State contract
 
+    -- | Extract the serialisable state from the contract instance state.
+    serialisableState :: Proxy contract -> State contract -> ContractResponse Value Value Value PABReq
+
+-- | The open requests of the contract instance.
+requests :: forall contract. PABContract contract => State contract -> [Request PABReq]
+requests = C.hooks . serialisableState (Proxy @contract)
+
+-- | An effect for sending updates to contracts that implement @PABContract@
 data ContractEffect t r where
-    ExportSchema :: t -> ContractEffect t [FunctionSchema FormSchema]
-    InvokeContract :: ContractCommand t -> ContractEffect t (PartiallyDecodedResponse ContractHandlersResponse)
-makeEffect ''ContractEffect
+    ExportSchema   :: PABContract t => ContractDef t -> ContractEffect t [FunctionSchema FormSchema] -- ^ The schema of the contract
+    InitialState   :: PABContract t => ContractInstanceId -> ContractDef t -> ContractEffect t (State t) -- ^ The initial state of the contract's instance
+    UpdateContract :: PABContract t => ContractInstanceId -> ContractDef t -> State t -> Response PABResp -> ContractEffect t (State t) -- ^ Send an update to the contract and return the new state.
 
--- TODO: Make a JSON value out of the response
--- in a way that is compatible with the json format expected by the
--- contract.
+-- | Get the schema of a contract given its definition.
+exportSchema ::
+    forall t effs.
+    ( Member (ContractEffect t) effs
+    , PABContract t
+    )
+    => ContractDef t
+    -> Eff effs [FunctionSchema FormSchema]
+exportSchema def =
+    let command :: ContractEffect t [FunctionSchema FormSchema] = ExportSchema def
+    in send command
 
--- | An event sent to the contract
-newtype EventPayload = EventPayload { unEventPayload :: Response JSON.Value }
-    deriving stock Show
+-- | Get the initial state of a contract
+initialState ::
+    forall t effs.
+    ( Member (ContractEffect t) effs
+    , PABContract t
+    )
+    => ContractInstanceId
+    -> ContractDef t
+    -> Eff effs (State t)
+initialState i def =
+    let command :: ContractEffect t (State t) = InitialState i def
+    in send command
 
--- | Given a contract definition 't' and the contract's previous state
---   in form of a 'PartiallyDecodedResponse', apply the next input
---   event ('EventPayload') to the contract and return a
---   'PartiallyDecodedResponse' containing the new state and new hooks.
-invokeContractUpdate_ ::
-       (Member (ContractEffect t) effs)
-    => t
-    -- ^ The contract
-    -> PartiallyDecodedResponse ContractPABRequest
-    -- ^ The last state of the contract
-    -> EventPayload -- TODO: Change JSON.Value in 'UpdateContract' to Payload and move some of invokeContractUpdate_ into there?
-    -- ^ The actual update
-    -> Eff effs (PartiallyDecodedResponse ContractPABRequest)
-invokeContractUpdate_ contract PartiallyDecodedResponse {newState = oldState} (EventPayload payload) =
-    fmap unContractHandlersResponse <$>
-    invokeContract
-        (UpdateContract contract $
-         ContractRequest {oldState = oldState, event = payload})
+-- | Send an update to the contract and return the new state.
+updateContract ::
+    forall t effs.
+    ( Member (ContractEffect t) effs
+    , PABContract t
+    )
+    => ContractInstanceId
+    -> ContractDef t
+    -> State t
+    -> Response PABResp
+    -> Eff effs (State t)
+updateContract i def state request =
+    let command :: ContractEffect t (State t) = UpdateContract i def state request
+    in send command
 
-contractMessageToPayload :: Response ContractResponse -> EventPayload
-contractMessageToPayload = EventPayload . fmap go where
-    go = JSON.object . (\(tag, vl) -> ["tag" .= tag, "value" .= vl]) . \case
-        AwaitSlotResponse slot                         -> ("slot", JSON.toJSON slot)
-        AwaitTxConfirmedResponse txid                  -> ("tx-confirmation", JSON.toJSON txid)
-        OwnPubkeyResponse pk                           -> ("own-pubkey", JSON.toJSON pk)
-        UtxoAtResponse u                               -> ("utxo-at", JSON.toJSON u)
-        NextTxAtResponse tx                            -> ("address", JSON.toJSON tx)
-        WriteTxResponse r                              -> ("tx", JSON.toJSON r)
-        UserEndpointResponse (EndpointDescription n) r -> (n, JSON.toJSON r)
-        OwnInstanceResponse r                          -> ("own-instance-id", JSON.toJSON r)
-        NotificationResponse r                         -> ("notify", JSON.toJSON r)
+-- | Storing and retrieving the state of a contract instance
+data ContractStore t r where
+    PutStartInstance :: ContractActivationArgs (ContractDef t) -> ContractInstanceId -> ContractStore t () -- ^ Record the starting of a new contract instance
+    PutState :: ContractActivationArgs (ContractDef t) -> ContractInstanceId -> State t -> ContractStore t () -- ^ Record the updated state of the contract instance
+    GetState :: ContractInstanceId -> ContractStore t (State t) -- ^ Retrieve the last recorded state of the contract instance
+    PutStopInstance :: ContractInstanceId -> ContractStore t () -- ^ Record the fact that a contract instance has stopped
+    GetActiveContracts :: ContractStore t (Map ContractInstanceId (ContractActivationArgs (ContractDef t))) -- ^ Get all active contracts with their activation args
+
+putStartInstance ::
+    forall t effs.
+    ( Member (ContractStore t) effs
+    )
+    => ContractActivationArgs (ContractDef t)
+    -> ContractInstanceId
+    -> Eff effs ()
+putStartInstance def i =
+    let command :: ContractStore t () = PutStartInstance def i
+    in send command
+
+putStopInstance ::
+    forall t effs.
+    ( Member (ContractStore t) effs
+    )
+    => ContractInstanceId
+    -> Eff effs ()
+putStopInstance i =
+    let command :: ContractStore t () = PutStopInstance i
+    in send command
+
+-- | Store the state of the contract instance
+putState ::
+    forall t effs.
+    ( Member (ContractStore t) effs
+    )
+    => ContractActivationArgs (ContractDef t)
+    -> ContractInstanceId
+    -> State t
+    -> Eff effs ()
+putState def i state =
+    let command :: ContractStore t () = PutState def i state
+    in send command
+
+-- | Load the state of the contract instance
+getState ::
+    forall t effs.
+    ( Member (ContractStore t) effs
+    )
+    => ContractInstanceId
+    -> Eff effs (State t)
+getState i =
+    let command :: ContractStore t (State t) = GetState i
+    in send command
+
+-- | All active contracts with their definitions
+getActiveContracts ::
+    forall t effs.
+    ( Member (ContractStore t) effs
+    )
+    => Eff effs (Map ContractInstanceId (ContractActivationArgs (ContractDef t)))
+getActiveContracts =
+    let command :: ContractStore t (Map ContractInstanceId (ContractActivationArgs (ContractDef t))) = GetActiveContracts
+    in send command
+
+-- | Get the definition of a running contract
+getDefinition ::
+    forall t effs.
+    ( Member (ContractStore t) effs)
+    => ContractInstanceId
+    -> Eff effs (Maybe (ContractActivationArgs (ContractDef t)))
+getDefinition i = Map.lookup i <$> (getActiveContracts @t)
+
+-- | Storing and retrieving definitions of contracts.
+--   (Not all 't's support this)
+data ContractDefinitionStore t r where
+    AddDefinition :: ContractDef t -> ContractDefinitionStore t ()
+    GetDefinitions :: ContractDefinitionStore t [ContractDef t]
+
+addDefinition ::
+    forall t effs.
+    ( Member (ContractDefinitionStore t) effs
+    )
+    => ContractDef t
+    -> Eff effs ()
+addDefinition def =
+    let command :: ContractDefinitionStore t ()
+        command = AddDefinition def
+    in send command
+
+getDefinitions ::
+    forall t effs.
+    ( Member (ContractDefinitionStore t) effs
+    )
+    => Eff effs [ContractDef t]
+getDefinitions = send @(ContractDefinitionStore t) GetDefinitions

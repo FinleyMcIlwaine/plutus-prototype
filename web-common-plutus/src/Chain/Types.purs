@@ -13,6 +13,7 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Plutus.V1.Ledger.Address (Address(..))
+import Plutus.V1.Ledger.Credential (Credential(..))
 import Plutus.V1.Ledger.Crypto (PubKey, Signature)
 import Plutus.V1.Ledger.Interval (Interval)
 import Plutus.V1.Ledger.Slot (Slot)
@@ -93,8 +94,8 @@ _tx = _Newtype <<< prop (SProxy :: SProxy "tx")
 _txFee :: Lens' Tx Value
 _txFee = _Newtype <<< prop (SProxy :: SProxy "txFee")
 
-_txForge :: Lens' Tx Value
-_txForge = _Newtype <<< prop (SProxy :: SProxy "txForge")
+_txMint :: Lens' Tx Value
+_txMint = _Newtype <<< prop (SProxy :: SProxy "txMint")
 
 _txValidRange :: Lens' Tx (Interval Slot)
 _txValidRange = _Newtype <<< prop (SProxy :: SProxy "txValidRange")
@@ -121,9 +122,13 @@ _txKeyTxOutRefIdx :: Lens' TxKey BigInteger
 _txKeyTxOutRefIdx = _TxKey <<< prop (SProxy :: SProxy "_txKeyTxOutRefIdx")
 
 toBeneficialOwner :: TxOut -> BeneficialOwner
-toBeneficialOwner (TxOut { txOutAddress }) = case txOutAddress of
-  PubKeyAddress pkh -> OwnedByPubKey pkh
-  ScriptAddress vh -> OwnedByScript vh
+toBeneficialOwner (TxOut { txOutAddress }) =
+  let
+    Address { addressCredential } = txOutAddress
+  in
+    case addressCredential of
+      PubKeyCredential pkh -> OwnedByPubKey pkh
+      ScriptCredential vh -> OwnedByScript vh
 
 _findTx :: forall m. Monoid m => TxId -> Fold' m AnnotatedBlockchain AnnotatedTx
 _findTx focussedTxId = (_AnnotatedBlocks <<< filtered isAnnotationOf)

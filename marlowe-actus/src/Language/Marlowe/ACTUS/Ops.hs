@@ -7,7 +7,7 @@ import           Data.Time                                             (Day)
 import           Language.Marlowe                                      (Observation (ValueGT, ValueLT),
                                                                         Value (AddValue, Cond, Constant, MulValue, Scale, SubValue),
                                                                         (%))
-import           Language.Marlowe.ACTUS.Definitions.ContractTerms      (ContractRole, DCC)
+import           Language.Marlowe.ACTUS.Definitions.ContractTerms      (CR, DCC)
 import           Language.Marlowe.ACTUS.Model.Utility.ContractRoleSign (contractRoleSign)
 import           Language.Marlowe.ACTUS.Model.Utility.YearFraction     (yearFraction)
 
@@ -27,13 +27,13 @@ class ActusNum a where
     (/) :: a -> a -> a
 
 class YearFractionOps a b where
-    _y :: DCC -> a -> a -> a -> b
+    _y :: DCC -> a -> a -> Maybe a -> b
 
 class DateOps a b where
     _lt :: a -> a -> b --returns pseudo-boolean
 
 class RoleSignOps a where
-    _r :: ContractRole -> a
+    _r :: CR -> a
 
 instance ActusOps Double where
     _min  = min

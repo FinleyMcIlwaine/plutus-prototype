@@ -7,100 +7,71 @@
 , haskell-nix
 , agdaWithStdlib
 , buildPackages
-, nix-gitignore
+, gitignore-nix
 , z3
 , R
 , checkMaterialization
 , compiler-nix-name
+, enableHaskellProfiling
+  # Whether to set the `defer-plugin-errors` flag on those packages that need
+  # it. If set to true, we will also build the haddocks for those packages.
+, deferPluginErrors
 }:
 let
   r-packages = with rPackages; [ R tidyverse dplyr stringr MASS plotly shiny shinyjs purrr ];
-  project = haskell-nix.stackProject' {
+  project = haskell-nix.cabalProject' {
     inherit compiler-nix-name;
     # This is incredibly difficult to get right, almost everything goes wrong, see https://github.com/input-output-hk/haskell.nix/issues/496
     src = let root = ../../../.; in
       haskell-nix.haskellLib.cleanSourceWith {
-        filter = nix-gitignore.gitignoreFilter (nix-gitignore.gitignoreCompileIgnore [ ../../../.gitignore ] root) root;
+        filter = gitignore-nix.gitignoreFilter root;
         src = root;
         # Otherwise this depends on the name in the parent directory, which reduces caching, and is
         # particularly bad on Hercules, see https://github.com/hercules-ci/support/issues/40
         name = "plutus";
       };
-    # These files need to be regenerated when you change the cabal files or stack resolver.
+    # These files need to be regenerated when you change the cabal files.
     # See ../CONTRIBUTING.doc for more information.
-    materialized = ../../stack.materialized;
+    # Unfortuntely, they are *not* constant across all possible systems, so in some circumstances we need different sets of files
+    # At the moment, we only need one but conceivably we might need one for darwin in future.
+    # See https://github.com/input-output-hk/nix-tools/issues/97
+    materialized =
+      if stdenv.hostPlatform.isLinux then ./materialized-linux
+      else if stdenv.hostPlatform.isDarwin then ./materialized-darwin
+      else builtins.error "Don't have materialized files for this platform";
     # If true, we check that the generated files are correct. Set in the CI so we don't make mistakes.
     inherit checkMaterialization;
     sha256map = {
-      "https://github.com/shmish111/purescript-bridge.git"."28c37771ef30b0d751960c061ef95627f05d290e" = "0n6q7g2w1xafngd3dwbbmfxfn018fmq61db7mymplbrww8ld1cp3";
-      "https://github.com/shmish111/servant-purescript.git"."ece5d1dad16a5731ac22040075615803796c7c21" = "1axcbsaym64q67hvjc7b3izd48cgqwi734l7f7m22jpdc80li5f6";
-      "https://github.com/input-output-hk/cardano-crypto.git"."2547ad1e80aeabca2899951601079408becbc92c" = "1p2kg2w02q5w1cvqzhfhqmxviy4xrzada3mmb096j2n6hfr20kri";
-      "https://github.com/michaelpj/unlit.git"."9ca1112093c5ffd356fc99c7dafa080e686dd748" = "145sffn8gbdn6xp9q5b75yd3m46ql5bnc02arzmpfs6wgjslfhff";
-      "https://github.com/input-output-hk/cardano-prelude"."71ea865408f2e03e6d6832359423546699730849" = "02v9bd95vjal7yp96b59dgap2k53c2lrg9vxw6d62cxzw8n635y6";
-      "https://github.com/input-output-hk/cardano-base"."5035c9ed95e9d47f050314a7d96b1b2043288f61" = "103z0009sz586f2mvnmwl2hp9n94qy0n72ik521xhq7zmfwyv3m7";
-      "https://github.com/raduom/cardano-ledger-specs"."2cac85306d8b3e07006e9081f36ce7ebf2d9d0a3" = "0w6z1va6a93f818m9byh49yxkkpd9q3xlxk5irpq3d42vmfpy447";
-      "https://github.com/input-output-hk/iohk-monitoring-framework"."5c9627b6aee487f9b7ec44981aba57a6afc659b1" = "0ndnhff32h37xsc61b181m4vwaj4vm1z04p2rfwffnjjmgz23584";
-      "https://github.com/input-output-hk/ouroboros-network"."75153affa23a0e68e035d7bb19880fe1ae35b1d4" = "0aj6rsqp93k2079bipv2ia7m56h2xwwlcjffr7mr99cz6l9xj96i";
+      "https://github.com/Quid2/flat.git"."95e5d7488451e43062ca84d5376b3adcc465f1cd" = "06l31x3y93rjpryvlxnpsyq2zyxvb0z6lik6yq2fvh36i5zwvwa3";
+      "https://github.com/shmish111/purescript-bridge.git"."6a92d7853ea514be8b70bab5e72077bf5a510596" = "13j64vv116in3c204qsl1v0ajphac9fqvsjp7x3zzfr7n7g61drb";
+      "https://github.com/shmish111/servant-purescript.git"."a76104490499aa72d40c2790d10e9383e0dbde63" = "11nxxmi5bw66va7psvrgrw7b7n85fvqgfp58yva99w3v9q3a50v9";
+      "https://github.com/input-output-hk/cardano-base"."a715c7f420770b70bbe95ca51d3dec83866cb1bd" = "06l06mmb8cd4q37bnvfpgx1c5zgsl4xaf106dqva98738i8asj7j";
+      "https://github.com/input-output-hk/cardano-crypto.git"."ce8f1934e4b6252084710975bd9bbc0a4648ece4" = "1v2laq04piyj511b2m77hxjh9l1yd6k9kc7g6bjala4w3zdwa4ni";
+      "https://github.com/input-output-hk/cardano-ledger-specs"."a3ef848542961079b7cd53d599e5385198a3035c" = "02iwn2lcfcfvrnvcqnx586ncdnma23vdqvicxgr4f39vcacalzpd";
+      "https://github.com/input-output-hk/cardano-prelude"."fd773f7a58412131512b9f694ab95653ac430852" = "02jddik1yw0222wd6q0vv10f7y8rdgrlqaiy83ph002f9kjx7mh6";
+      "https://github.com/input-output-hk/goblins"."cde90a2b27f79187ca8310b6549331e59595e7ba" = "17c88rbva3iw82yg9srlxjv2ia5wjb9cyqw44hik565f5v9svnyg";
+      "https://github.com/input-output-hk/iohk-monitoring-framework"."34abfb7f4f5610cabb45396e0496472446a0b2ca" = "1fdc0a02ipa385dnwa6r6jyc8jlg537i12hflfglkhjs2b7i92gs";
+      "https://github.com/input-output-hk/ouroboros-network"."e50613562d6d4a0f933741fcf590b0f69a1eda67" = "0i192ksa69lpzjhzmhd2h1mramkvvikw04pqws18h5dly55f4z3k";
+      "https://github.com/input-output-hk/cardano-node.git"."b3cabae6b3bf30a0b1b4e78bc4b67282dabad0a6" = "1csmji1bgi45wgrw7kqy19s4bbbpa78kjg3bz7mbiwb8vjgg9kvq";
+      "https://github.com/input-output-hk/Win32-network"."94153b676617f8f33abe8d8182c37377d2784bd1" = "0pb7bg0936fldaa5r08nqbxvi2g8pcy4w3c7kdcg7pdgmimr30ss";
+      "https://github.com/input-output-hk/hedgehog-extras"."8bcd3c9dc22cc44f9fcfe161f4638a384fc7a187" = "12viwpahjdfvlqpnzdgjp40nw31rvyznnab1hml9afpaxd6ixh70";
     };
     modules = [
       {
-        # Borrowed from https://github.com/input-output-hk/haskell.nix/pull/427
-        # This corresponds to the set of packages that comes with GHC. We are
-        # here saying that we must get them from GHC itself, rather than trying
-        # to "re-install" them into the package database.
-        nonReinstallablePkgs =
-          [
-            "rts"
-            "ghc-heap"
-            "ghc-prim"
-            "integer-gmp"
-            "integer-simple"
-            "base"
-            "deepseq"
-            "array"
-            "ghc-boot-th"
-            "pretty"
-            "template-haskell"
-            "ghc-boot"
-            "ghc"
-            "Cabal"
-            "Win32"
-            "array"
-            "binary"
-            "bytestring"
-            "containers"
-            "directory"
-            "filepath"
-            "ghc-boot"
-            "ghc-compact"
-            "ghc-prim"
-            "ghci"
-            "haskeline"
-            "hpc"
-            "mtl"
-            "parsec"
-            "process"
-            "text"
-            "time"
-            "transformers"
-            "unix"
-            "xhtml"
-            "stm"
-            "terminfo"
-          ];
-
+        reinstallableLibGhc = false;
         packages = {
-          # Using https connections ultimately requires x509. But on
-          # OSX, a pure build can't find the package. This is the
-          # solution used by the wallet build, and we reuse it here.
-          x509-system.components.library.preBuild = lib.optionalString (stdenv.isDarwin) ''
-            substituteInPlace System/X509/MacOS.hs --replace security /usr/bin/security
-          '';
-          inline-r.package.ghcOptions = "-XStandaloneKindSignatures";
-          # See https://github.com/input-output-hk/plutus/issues/1213
-          marlowe.doHaddock = false;
-          plutus-use-cases.doHaddock = false;
-          plutus-ledger.doHaddock = false;
+          # See https://github.com/input-output-hk/plutus/issues/1213 and
+          # https://github.com/input-output-hk/plutus/pull/2865.
+          marlowe.doHaddock = deferPluginErrors;
+          marlowe.flags.defer-plugin-errors = deferPluginErrors;
+
+          plutus-use-cases.doHaddock = deferPluginErrors;
+          plutus-use-cases.flags.defer-plugin-errors = deferPluginErrors;
+
+          plutus-ledger.doHaddock = deferPluginErrors;
+          plutus-ledger.flags.defer-plugin-errors = deferPluginErrors;
+
+          # Packages we just don't want docs for
           plutus-benchmark.doHaddock = false;
           # FIXME: Haddock mysteriously gives a spurious missing-home-modules warning
           plutus-tx-plugin.doHaddock = false;
@@ -129,13 +100,13 @@ let
           # Relies on cabal-doctest, just turn it off in the Nix build
           prettyprinter-configurable.components.tests.prettyprinter-configurable-doctest.buildable = lib.mkForce false;
 
-          plutus-core.components.tests.plutus-core-test-cost-model = {
+          plutus-core.components.benchmarks.update-cost-model = {
             build-tools = r-packages;
             # Seems to be broken on darwin for some reason
             platforms = lib.platforms.linux;
           };
 
-          plutus-core.components.benchmarks.plutus-core-create-cost-model = {
+          plutus-core.components.benchmarks.cost-model-test = {
             build-tools = r-packages;
             # Seems to be broken on darwin for some reason
             platforms = lib.platforms.linux;
@@ -151,29 +122,44 @@ let
           iohk-monitoring.doHaddock = false;
 
           # Werror everything. This is a pain, see https://github.com/input-output-hk/haskell.nix/issues/519
-          deployment-server.package.ghcOptions = "-Werror";
-          iots-export.package.ghcOptions = "-Werror";
-          plutus-core.package.ghcOptions = "-Werror";
-          marlowe.package.ghcOptions = "-Werror";
-          marlowe-symbolic.package.ghcOptions = "-Werror";
-          marlowe-actus.package.ghcOptions = "-Werror";
-          marlowe-playground-server.package.ghcOptions = "-Werror";
-          marlowe-dashboard-server.package.ghcOptions = "-Werror";
-          playground-common.package.ghcOptions = "-Werror";
+          plutus-core.ghcOptions = [ "-Werror" ];
+          marlowe.ghcOptions = [ "-Werror" ];
+          marlowe-symbolic.ghcOptions = [ "-Werror" ];
+          marlowe-actus.ghcOptions = [ "-Werror" ];
+          marlowe-playground-server.ghcOptions = [ "-Werror" ];
+          marlowe-dashboard-server.ghcOptions = [ "-Werror" ];
+          fake-pab.ghcOptions = [ "-Werror" ];
+          playground-common.ghcOptions = [ "-Werror" ];
           # FIXME: has warnings
           #plutus-metatheory.package.ghcOptions = "-Werror";
-          plutus-contract.package.ghcOptions = "-Werror";
-          plutus-ledger.package.ghcOptions = "-Werror";
-          plutus-ledger-api.package.ghcOptions = "-Werror";
-          plutus-playground-server.package.ghcOptions = "-Werror";
-          plutus-pab.package.ghcOptions = "-Werror";
-          plutus-tx.package.ghcOptions = "-Werror";
-          plutus-tx-plugin.package.ghcOptions = "-Werror";
-          plutus-doc.package.ghcOptions = "-Werror";
-          plutus-use-cases.package.ghcOptions = "-Werror";
+          plutus-contract.ghcOptions = [ "-Werror" ];
+          plutus-ledger.ghcOptions = [ "-Werror" ];
+          plutus-ledger-api.ghcOptions = [ "-Werror" ];
+          plutus-playground-server.ghcOptions = [ "-Werror" ];
+          plutus-pab.ghcOptions = [ "-Werror" ];
+          plutus-tx.ghcOptions = [ "-Werror" ];
+          plutus-tx-plugin.ghcOptions = [ "-Werror" ];
+          plutus-doc.ghcOptions = [ "-Werror" ];
+          plutus-use-cases.ghcOptions = [ "-Werror" ];
+
+          # External package settings
+
+          inline-r.ghcOptions = [ "-XStandaloneKindSignatures" ];
+
+          # Haddock doesn't work for some reason
+          eventful-sql-common.doHaddock = false;
+          # Needs some extra options to work with newer persistent
+          eventful-sql-common.ghcOptions = [ "-XDerivingStrategies -XStandaloneDeriving -XUndecidableInstances -XDataKinds -XFlexibleInstances -XMultiParamTypeClasses" ];
+
+          # Honestly not sure why we need this, it has a mysterious unused dependency on "m"
+          # This will go away when we upgrade nixpkgs and things use ieee754 anyway.
+          ieee.components.library.libs = lib.mkForce [ ];
         };
       }
-    ];
+    ] ++ lib.optional enableHaskellProfiling {
+      enableLibraryProfiling = true;
+      enableExecutableProfiling = true;
+    };
   };
 
 in

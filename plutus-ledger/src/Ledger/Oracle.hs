@@ -33,18 +33,18 @@ module Ledger.Oracle(
 import           Data.Aeson                (FromJSON, ToJSON)
 import           GHC.Generics              (Generic)
 
-import           Language.PlutusTx
-import           Language.PlutusTx.Prelude
+import           PlutusTx
+import           PlutusTx.Prelude
 
 import           Ledger.Constraints        (TxConstraints)
 import qualified Ledger.Constraints        as Constraints
 import           Plutus.V1.Ledger.Bytes
-import           Plutus.V1.Ledger.Contexts (ValidatorCtx)
+import           Plutus.V1.Ledger.Contexts (ScriptContext)
 import           Plutus.V1.Ledger.Crypto   (PrivateKey, PubKey (..), Signature (..))
 import qualified Plutus.V1.Ledger.Crypto   as Crypto
 import           Plutus.V1.Ledger.Scripts  (Datum (..), DatumHash (..))
 import qualified Plutus.V1.Ledger.Scripts  as Scripts
-import           Plutus.V1.Ledger.Slot     (Slot)
+import           Plutus.V1.Ledger.Time     (POSIXTime)
 
 import qualified Prelude                   as Haskell
 
@@ -71,14 +71,14 @@ import qualified Prelude                   as Haskell
 data Observation a = Observation
     { obsValue :: a
     -- ^ The value
-    , obsSlot  :: Slot
+    , obsTime  :: POSIXTime
     -- ^ The time at which the value was observed
     } deriving (Generic, Haskell.Show)
 
 instance Eq a => Eq (Observation a) where
     l == r =
         obsValue l == obsValue r
-        && obsSlot l == obsSlot r
+        && obsTime l == obsTime r
 
 -- | @SignedMessage a@ contains the signature of a hash of a 'Datum'.
 --   The 'Datum' can be decoded to a value of type @a@.
@@ -153,22 +153,22 @@ verifySignedMessageConstraints pk s@SignedMessage{osmSignature, osmMessageHash} 
 -- | Check the signature on a 'SignedMessage' and extract the contents of the
 --   message, using the pending transaction in lieu of a hash function. See
 --   'verifySignedMessageConstraints' for a version that does not require a
---   'ValidatorCtx' value.
+--   'ScriptContext' value.
 verifySignedMessageOnChain ::
     ( IsData a)
-    => ValidatorCtx
+    => ScriptContext
     -> PubKey
     -> SignedMessage a
     -> Either SignedMessageCheckError a
 verifySignedMessageOnChain ptx pk s@SignedMessage{osmSignature, osmMessageHash} = do
     checkSignature osmMessageHash pk osmSignature
     (a, constraints) <- checkHashConstraints s
-    unless (Constraints.checkValidatorCtx @() @() constraints ptx)
+    unless (Constraints.checkScriptContext @() @() constraints ptx)
         (Left $ DatumMissing osmMessageHash)
     pure a
 
 -- | The off-chain version of 'checkHashConstraints', using the hash function
---   directly instead of obtaining the hash from a 'ValidatorCtx' value
+--   directly instead of obtaining the hash from a 'ScriptContext' value
 checkHashOffChain ::
     ( IsData a )
     => SignedMessage a
@@ -202,12 +202,12 @@ signMessage msg pk =
         , osmDatum = dt
         }
 
--- | Encode an observation of a value of type @a@ that was made at the given slot
-signObservation :: IsData a => Slot -> a -> PrivateKey -> SignedMessage (Observation a)
-signObservation sl vl = signMessage Observation{obsValue=vl, obsSlot=sl}
+-- | Encode an observation of a value of type @a@ that was made at the given time
+signObservation :: IsData a => POSIXTime -> a -> PrivateKey -> SignedMessage (Observation a)
+signObservation time vl = signMessage Observation{obsValue=vl, obsTime=time}
 
 makeLift ''SignedMessage
-makeIsData ''SignedMessage
+makeIsDataIndexed ''SignedMessage [('SignedMessage,0)]
 
 makeLift ''Observation
-makeIsData ''Observation
+makeIsDataIndexed ''Observation [('Observation,0)]

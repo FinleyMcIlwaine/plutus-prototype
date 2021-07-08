@@ -1,31 +1,71 @@
-module StaticAnalysis.StaticTools (closeZipperContract, countSubproblems, getNextSubproblem, initSubproblems, startMultiStageAnalysis, zipperToContractPath) where
+module StaticAnalysis.StaticTools
+  ( analyseContract
+  , closeZipperContract
+  , countSubproblems
+  , getNextSubproblem
+  , initSubproblems
+  , startMultiStageAnalysis
+  , zipperToContractPath
+  ) where
 
 import Prelude hiding (div)
+import Analytics (class IsEvent, analyticsTracking)
 import Control.Monad.Except (ExceptT, runExceptT)
-import Control.Monad.Reader (runReaderT)
-import Data.Foldable (for_)
-import Data.Lens (assign)
+import Control.Monad.Reader (class MonadAsk, asks, runReaderT)
+import Data.Bifunctor (lmap)
+import Data.BigInteger (BigInteger, toNumber)
+import Data.Lens (assign, use)
 import Data.List (List(..), foldl, fromFoldable, length, snoc, toUnfoldable)
 import Data.List.Types (NonEmptyList(..))
 import Data.Maybe (Maybe(..))
 import Data.NonEmpty ((:|))
+import Data.Traversable (traverse)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff.Class (class MonadAff)
-import Halogen (HalogenM, query)
-import Halogen.Monaco as Monaco
-import MainFrame.Types (ChildSlots, _simulatorEditorSlot)
-import Marlowe (SPParams_)
+import Env (Env)
+import Halogen (HalogenM, liftEffect)
 import Marlowe as Server
-import Marlowe.Semantics (Case(..), Contract(..), Observation(..))
+import Marlowe.Extended (toCore)
+import Marlowe.Extended as EM
+import Marlowe.Template (fillTemplate)
+import Marlowe.Semantics (Case(..), Contract(..), Observation(..), emptyState)
 import Marlowe.Semantics as S
 import Marlowe.Symbolic.Types.Request as MSReq
-import Marlowe.Symbolic.Types.Response (Result(..))
-import MarloweEditor.Types (Action, AnalysisInProgressRecord, ContractPath, ContractPathStep(..), ContractZipper(..), MultiStageAnalysisData(..), MultiStageAnalysisProblemDef, RemainingSubProblemInfo, State, _analysisState)
+import Marlowe.Symbolic.Types.Response (Response(..), Result(..))
 import Network.RemoteData (RemoteData(..))
 import Network.RemoteData as RemoteData
 import Servant.PureScript.Ajax (AjaxError(..))
-import Servant.PureScript.Settings (SPSettings_)
-import Types (WebData)
+import StaticAnalysis.Types (AnalysisExecutionState(..), AnalysisInProgressRecord, AnalysisState, ContractPath, ContractPathStep(..), ContractZipper(..), MultiStageAnalysisData(..), MultiStageAnalysisProblemDef, RemainingSubProblemInfo, _analysisExecutionState, _analysisState, _templateContent)
+import Types (WarningAnalysisError(..), WebData)
+
+runAjax ::
+  forall m a state action slots.
+  ExceptT AjaxError (HalogenM state action slots Void m) a ->
+  HalogenM state action slots Void m (WebData a)
+runAjax action = RemoteData.fromEither <$> runExceptT action
+
+analyseContract ::
+  forall m state action slots.
+  MonadAff m =>
+  MonadAsk Env m =>
+  EM.Contract ->
+  HalogenM { analysisState :: AnalysisState | state } action slots Void m Unit
+analyseContract extendedContract = do
+  templateContent <- use (_analysisState <<< _templateContent)
+  case toCore $ fillTemplate templateContent extendedContract of
+    Just contract -> do
+      assign (_analysisState <<< _analysisExecutionState) (WarningAnalysis Loading)
+      -- when editor and simulator were together the analyse contract could be made
+      -- at any step of the simulator. Now that they are separate, it can only be done
+      -- with initial state
+      settings <- asks _.ajaxSettings
+      response <- checkContractForWarnings settings emptySemanticState contract
+      assign (_analysisState <<< _analysisExecutionState) $ WarningAnalysis $ lmap WarningAnalysisAjaxError $ response
+    Nothing -> assign (_analysisState <<< _analysisExecutionState) $ WarningAnalysis $ Failure WarningAnalysisIsExtendedMarloweError
+  where
+  emptySemanticState = emptyState zero
+
+  checkContractForWarnings settings state contract = traverse logAndStripDuration =<< (runAjax $ (flip runReaderT) settings (Server.postMarloweanalysis (MSReq.Request { onlyAssertions: false, contract, state })))
 
 splitArray :: forall a. List a -> List (List a /\ a /\ List a)
 splitArray x = splitArrayAux Nil x
@@ -152,29 +192,46 @@ getNextSubproblem f (Cons (zipper /\ contract) rest) Nil =
 
 getNextSubproblem f acc newChildren = getNextSubproblem f (acc <> newChildren) Nil
 
-runAjax ::
-  forall m a.
-  ExceptT AjaxError (HalogenM State Action ChildSlots Void m) a ->
-  HalogenM State Action ChildSlots Void m (WebData a)
-runAjax action = RemoteData.fromEither <$> runExceptT action
+data StaticAnalysisEvent
+  = StaticAnalysisTimingEvent BigInteger
+
+instance isEventStaticAnalysisEvent :: IsEvent StaticAnalysisEvent where
+  toEvent (StaticAnalysisTimingEvent durationMs) =
+    Just
+      ( { action: "timing_complete"
+        , category: Just "Static Analysis"
+        , label: Just "Duration of analysis"
+        , value: Just $ toNumber durationMs
+        }
+      )
+
+logAndStripDuration ::
+  forall m state action slots.
+  MonadAff m => Response -> HalogenM state action slots Void m Result
+logAndStripDuration (Response { result, durationMs }) = do
+  liftEffect $ analyticsTracking (StaticAnalysisTimingEvent durationMs)
+  pure result
 
 checkContractForFailedAssertions ::
-  forall m.
+  forall m state action slots.
   MonadAff m =>
-  SPSettings_ SPParams_ ->
+  MonadAsk Env m =>
   Contract ->
   S.State ->
-  HalogenM State Action ChildSlots Void m (WebData Result)
-checkContractForFailedAssertions settings contract state = runAjax $ (flip runReaderT) settings (Server.postMarloweanalysis (MSReq.Request { onlyAssertions: true, contract: contract, state: state }))
+  HalogenM state action slots Void m (WebData Result)
+checkContractForFailedAssertions contract state = do
+  settings <- asks _.ajaxSettings
+  traverse logAndStripDuration =<< (runAjax $ (flip runReaderT) settings (Server.postMarloweanalysis (MSReq.Request { onlyAssertions: true, contract: contract, state: state })))
 
 startMultiStageAnalysis ::
-  forall m.
+  forall m state action slots.
   MonadAff m =>
   MultiStageAnalysisProblemDef ->
-  SPSettings_ SPParams_ ->
+  MonadAsk Env m =>
   Contract ->
-  S.State -> HalogenM State Action ChildSlots Void m MultiStageAnalysisData
-startMultiStageAnalysis problemDef settings contract state = do
+  S.State ->
+  HalogenM { analysisState :: AnalysisState | state } action slots Void m MultiStageAnalysisData
+startMultiStageAnalysis problemDef contract state = do
   case getNextSubproblem (problemDef.isValidSubproblemImpl) initialSubproblems Nil of
     Nothing -> pure AnalysisFinishedAndPassed
     Just ((contractZipper /\ subContract /\ newChildren) /\ newSubproblems) -> do
@@ -196,9 +253,9 @@ startMultiStageAnalysis problemDef settings contract state = do
               , counterExampleSubcontracts: Nil
               }
           )
-      assign _analysisState (problemDef.analysisDataSetter progress)
-      response <- checkContractForFailedAssertions settings newContract state
-      result <- updateWithResponse problemDef settings progress response
+      assign (_analysisState <<< _analysisExecutionState) (problemDef.analysisDataSetter progress)
+      response <- checkContractForFailedAssertions newContract state
+      result <- updateWithResponse problemDef progress response
       pure result
   where
   initialSubproblems = initSubproblems contract
@@ -249,46 +306,45 @@ stepSubproblem problemDef isCounterExample ( rad@{ currPath: oldPath
   newResults = results <> (if isProblemCounterExample then Nil else Cons oldPath Nil)
 
 updateWithResponse ::
-  forall m.
+  forall m state action slots.
   MonadAff m =>
+  MonadAsk Env m =>
   MultiStageAnalysisProblemDef ->
-  SPSettings_ SPParams_ ->
   MultiStageAnalysisData ->
-  WebData Result -> HalogenM State Action ChildSlots Void m MultiStageAnalysisData
-updateWithResponse _ _ (AnalysisInProgress _) (Failure (AjaxError err)) = pure (AnalyisisFailure "connection error")
+  WebData Result -> HalogenM { analysisState :: AnalysisState | state } action slots Void m MultiStageAnalysisData
+updateWithResponse _ (AnalysisInProgress _) (Failure (AjaxError err)) = pure (AnalysisFailure "connection error")
 
-updateWithResponse _ _ (AnalysisInProgress { currPath: path }) (Success (Error err)) = pure (AnalyisisFailure err)
+updateWithResponse _ (AnalysisInProgress { currPath: path }) (Success (Error err)) = pure (AnalysisFailure err)
 
-updateWithResponse problemDef settings (AnalysisInProgress rad) (Success Valid) = stepAnalysis problemDef settings false rad
+updateWithResponse problemDef (AnalysisInProgress rad) (Success Valid) = stepAnalysis problemDef false rad
 
-updateWithResponse problemDef settings (AnalysisInProgress rad) (Success (CounterExample _)) = stepAnalysis problemDef settings true rad
+updateWithResponse problemDef (AnalysisInProgress rad) (Success (CounterExample _)) = stepAnalysis problemDef true rad
 
-updateWithResponse _ _ rad _ = pure rad
+updateWithResponse _ rad _ = pure rad
 
 finishAnalysis :: AnalysisInProgressRecord -> MultiStageAnalysisData
 finishAnalysis { originalState, originalContract, counterExampleSubcontracts: Cons h t } = AnalysisFoundCounterExamples { originalState, originalContract, counterExampleSubcontracts: NonEmptyList (h :| t) }
 
 finishAnalysis { counterExampleSubcontracts: Nil } = AnalysisFinishedAndPassed
 
-stepAnalysis :: forall m. MonadAff m => MultiStageAnalysisProblemDef -> SPSettings_ SPParams_ -> Boolean -> AnalysisInProgressRecord -> HalogenM State Action ChildSlots Void m MultiStageAnalysisData
-stepAnalysis problemDef settings isCounterExample rad =
+stepAnalysis ::
+  forall m state action slots.
+  MonadAff m =>
+  MultiStageAnalysisProblemDef ->
+  MonadAsk Env m =>
+  Boolean ->
+  AnalysisInProgressRecord ->
+  HalogenM { analysisState :: AnalysisState | state } action slots Void m MultiStageAnalysisData
+stepAnalysis problemDef isCounterExample rad =
   let
     thereAreMore /\ newRad = stepSubproblem problemDef isCounterExample rad
-
-    thereAreNewCounterExamples = length newRad.counterExampleSubcontracts > length rad.counterExampleSubcontracts
   in
     if thereAreMore then do
-      assign _analysisState (problemDef.analysisDataSetter (AnalysisInProgress newRad))
-      when thereAreNewCounterExamples refreshEditor
-      response <- checkContractForFailedAssertions settings (newRad.currContract) (newRad.originalState)
-      updateWithResponse problemDef settings (AnalysisInProgress newRad) response
+      assign (_analysisState <<< _analysisExecutionState) (problemDef.analysisDataSetter (AnalysisInProgress newRad))
+      response <- checkContractForFailedAssertions (newRad.currContract) (newRad.originalState)
+      updateWithResponse problemDef (AnalysisInProgress newRad) response
     else do
       let
         result = finishAnalysis newRad
-      assign _analysisState (problemDef.analysisDataSetter result)
-      when thereAreNewCounterExamples refreshEditor
+      assign (_analysisState <<< _analysisExecutionState) (problemDef.analysisDataSetter result)
       pure result
-  where
-  refreshEditor = do
-    mContent <- query _simulatorEditorSlot unit (Monaco.GetText identity)
-    for_ mContent (\content -> void $ query _simulatorEditorSlot unit $ Monaco.SetText content unit)

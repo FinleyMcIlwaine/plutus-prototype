@@ -1,53 +1,84 @@
 module SimulationPage.View where
 
 import Prelude hiding (div)
+import BottomPanel.Types as BottomPanelTypes
+import BottomPanel.View as BottomPanel
 import Data.Array (concatMap, intercalate, reverse, sortWith)
 import Data.Array as Array
-import Data.BigInteger (BigInteger, fromString, fromInt)
-import Data.Lens (to, view, (^.))
+import Data.BigInteger (BigInteger)
+import Data.Lens (has, only, previewOn, to, view, (^.))
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.NonEmptyList (_Head)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe, isJust, maybe)
 import Data.Newtype (unwrap, wrap)
+import Data.String (trim)
 import Data.Tuple (Tuple(..), snd)
+import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (liftEffect)
-import Halogen (RefLabel(..))
-import Halogen.Classes (aHorizontal, bold, btn, codeEditor, expanded, flex, fullHeight, group, justifyBetween, justifyCenter, noMargins, plusBtn, scroll, sidebarComposer, smallBtn, smallSpaceBottom, spaceBottom, spaceRight, spanText, textSecondaryColor, textXs, uppercase)
-import Halogen.Classes as Classes
-import Halogen.HTML (ClassName(..), ComponentHTML, HTML, aside, b_, br_, button, div, div_, em_, h6, h6_, input, li, p, p_, section, slot, span, span_, strong_, text, ul)
-import Halogen.HTML.Events (onClick, onValueChange)
-import Halogen.HTML.Properties (InputType(..), class_, classes, disabled, enabled, placeholder, type_, value)
-import Halogen.Monaco (Settings, monacoComponent)
+import Halogen.Classes (aHorizontal, bold, btn, flex, flexCol, flexGrow, flexShrink0, fontBold, fullHeight, fullWidth, grid, gridColsDescriptionLocation, group, justifyBetween, justifyCenter, justifyEnd, maxH70p, minH0, noMargins, overflowHidden, overflowScroll, paddingX, plusBtn, smallBtn, smallSpaceBottom, spaceBottom, spaceLeft, spaceRight, spanText, spanTextBreakWord, textSecondaryColor, textXs, uppercase, w30p)
+import Halogen.Css (classNames)
+import Halogen.CurrencyInput (currencyInput)
+import Halogen.Extra (renderSubmodule)
+import Halogen.HTML (ClassName(..), ComponentHTML, HTML, PlainHTML, aside, b_, button, div, div_, em, em_, h4, h6, h6_, li, li_, p, p_, section, slot, span, span_, strong_, text, ul)
+import Halogen.HTML.Events (onClick)
+import Halogen.HTML.Properties (class_, classes, disabled)
+import Halogen.Monaco (monacoComponent)
+import Hint.State (hint)
 import MainFrame.Types (ChildSlots, _simulatorEditorSlot)
-import Marlowe.Monaco (daylightTheme, languageExtensionPoint)
+import Marlowe.Extended.Metadata (MetaData, NumberFormat(..), getChoiceFormat)
 import Marlowe.Monaco as MM
-import Marlowe.Semantics (AccountId, Assets(..), Bound(..), ChoiceId(..), Input(..), Party(..), Payment(..), PubKey, Slot, SlotInterval(..), Token(..), TransactionInput(..), inBounds, timeouts)
-import Monaco (Editor)
+import Marlowe.Semantics (AccountId, Assets(..), Bound(..), ChoiceId(..), Input(..), Party(..), Payee(..), Payment(..), PubKey, Slot, SlotInterval(..), Token(..), TransactionInput(..), inBounds, timeouts)
+import Marlowe.Template (IntegerTemplateType(..))
+import Material.Icons as Icon
 import Monaco as Monaco
-import Pretty (renderPrettyParty, renderPrettyToken, showPrettyMoney)
-import SimulationPage.BottomPanel (bottomPanel)
-import SimulationPage.Types (Action(..), ActionInput(..), ActionInputId, ExecutionState(..), MarloweEvent(..), State, _SimulationRunning, _contract, _currentMarloweState, _executionState, _log, _marloweState, _possibleActions, _showBottomPanel, _showRightPanel, _slot, otherActionsParty)
-import Simulator (hasHistory, inFuture)
+import Popper (Placement(..))
+import Pretty (renderPrettyParty, renderPrettyPayee, renderPrettyToken, showPrettyChoice, showPrettyMoney)
+import SimulationPage.BottomPanel (panelContents)
+import SimulationPage.Lenses (_bottomPanelState)
+import SimulationPage.Types (Action(..), BottomPanelView(..), State)
+import Simulator.Lenses (_SimulationRunning, _currentContract, _currentMarloweState, _executionState, _log, _marloweState, _possibleActions, _slot, _transactionError, _transactionWarnings)
+import Simulator.State (hasHistory, inFuture)
+import Simulator.Types (ActionInput(..), ActionInputId, ExecutionState(..), InitialConditionsRecord, LogEntry(..), otherActionsParty)
+import Text.Markdown.TrimmedInline (markdownToHTML)
 
 render ::
   forall m.
   MonadAff m =>
+  MetaData ->
   State ->
   ComponentHTML Action ChildSlots m
-render state =
-  div [ classes [ fullHeight, scroll, ClassName "simulation-panel" ] ]
-    [ section [ class_ (ClassName "code-panel") ]
-        [ div [ classes (codeEditor $ state ^. _showBottomPanel) ]
+render metadata state =
+  div [ classes [ fullHeight, paddingX, flex ] ]
+    [ div [ classes [ flex, flexCol, fullHeight, flexGrow ] ]
+        [ section [ classes [ minH0, flexGrow, overflowHidden ] ]
             [ marloweEditor state ]
-        , sidebar state
+        , section [ classes [ maxH70p ] ]
+            [ renderSubmodule
+                _bottomPanelState
+                BottomPanelAction
+                (BottomPanel.render panelTitles wrapBottomPanelContents)
+                state
+            ]
         ]
-    , bottomPanel state
+    , aside [ classes [ flexShrink0, spaceLeft, overflowScroll, w30p ] ]
+        (sidebar metadata state)
     ]
   where
-  showRightPanel = state ^. _showRightPanel
+  panelTitles =
+    [ { title: "Current State", view: CurrentStateView, classes: [] }
+    ]
+
+  currentStateClasses = if hasRuntimeWarnings || hasRuntimeError then [ ClassName "error-tab" ] else []
+
+  -- QUESTION: what are runtimeWarnings and runtimeError? how can I reach that state?
+  hasRuntimeWarnings = has (_marloweState <<< _Head <<< _executionState <<< _SimulationRunning <<< _transactionWarnings <<< to Array.null <<< only false) state
+
+  hasRuntimeError = has (_marloweState <<< _Head <<< _executionState <<< _SimulationRunning <<< _transactionError <<< to isJust <<< only true) state
+
+  wrapBottomPanelContents panelView = BottomPanelTypes.PanelAction <$> panelContents metadata state panelView
 
 otherActions :: forall p. State -> HTML p Action
 otherActions state =
@@ -131,6 +162,7 @@ editSourceButton :: forall p. HTML p Action
 editSourceButton =
   button
     [ onClick $ const $ Just $ EditSource
+    , classNames [ "btn" ]
     ]
     [ text "Edit source" ]
 
@@ -139,79 +171,54 @@ marloweEditor ::
   MonadAff m =>
   State ->
   ComponentHTML Action ChildSlots m
-marloweEditor state = slot _simulatorEditorSlot unit component unit (const Nothing)
+marloweEditor state = slot _simulatorEditorSlot unit component unit (Just <<< HandleEditorMessage)
   where
-  setup editor = do
-    model <- liftEffect $ Monaco.getModel editor
-    liftEffect do
-      -- Since the Simulation Tab is viewed before the Haskell tab we need to set the correct editor theme when things have been loaded
-      monaco <- Monaco.getMonaco
-      Monaco.setTheme monaco MM.daylightTheme.name
-      Monaco.setReadOnly editor true
+  setup editor = liftEffect $ Monaco.setReadOnly editor true
 
-  component = monacoComponent $ settings setup
-
-refLabel :: RefLabel
-refLabel = RefLabel "simulatorEditor"
-
-settings :: forall m. (Editor -> m Unit) -> Settings m
-settings setup =
-  { languageExtensionPoint
-  , theme: Just daylightTheme
-  , monarchTokensProvider: Nothing
-  , tokensProvider: Nothing
-  , hoverProvider: Nothing
-  , completionItemProvider: Nothing
-  , codeActionProvider: Nothing
-  , documentFormattingEditProvider: Nothing
-  , refLabel
-  , owner: "marloweEditor"
-  , setup
-  }
+  component = monacoComponent $ MM.settings setup
 
 ------------------------------------------------------------
 sidebar ::
-  forall p.
+  forall m.
+  MonadAff m =>
+  MetaData ->
   State ->
-  HTML p Action
-sidebar state =
-  let
-    showRightPanel = state ^. _showRightPanel
+  Array (ComponentHTML Action ChildSlots m)
+sidebar metadata state = case view (_marloweState <<< _Head <<< _executionState) state of
+  SimulationNotStarted notStartedRecord -> [ startSimulationWidget metadata notStartedRecord ]
+  SimulationRunning _ ->
+    [ div [ class_ smallSpaceBottom ] [ simulationStateWidget state ]
+    , div [ class_ spaceBottom ] [ actionWidget metadata state ]
+    , logWidget metadata state
+    ]
 
-    contents = case view (_marloweState <<< _Head <<< _executionState) state of
-      SimulationNotStarted { initialSlot } -> [ startSimulationWidget initialSlot ]
-      SimulationRunning _ ->
-        [ div [ class_ smallSpaceBottom ] [ simulationStateWidget state ]
-        , div [ class_ spaceBottom ] [ actionWidget state ]
-        , logWidget state
-        ]
-  in
-    aside [ classes [ sidebarComposer, expanded showRightPanel ] ]
-      {- FIXME the drawer icon to show/hide the right panel is currently not shown and is not present in the
-                 designs. Check if we need to remove that functionality and if so, remove the action and state
-                 that goes with it.
-       div [ classes [ panelSubHeaderSide, expanded (state ^. _showRightPanel), ClassName "drawer-icon-container" ] ]
-          [ a [ classes [ (ClassName "drawer-icon-click") ], onClick $ const $ Just $ ShowRightPanel (not showRightPanel) ]
-              [ img [ src closeDrawerIcon, class_ (ClassName "drawer-icon") ] ]
-          ]
-        -}
-      contents
-
-{-
-        FIXME The new designs of the simulator does not have contextual help, and there is a lot
-        of code related to this. Confirm if we really don't want this before deleting, or if it may
-        come back later on.
-      , article [ class_ (ClassName "documentation-panel") ]
-          (toHTML (state ^. _helpContext))
-      -}
 ------------------------------------------------------------
-startSimulationWidget :: forall p. Slot -> HTML p Action
-startSimulationWidget initialSlot =
+type TemplateFormDisplayInfo a action
+  = { lookupFormat :: String -> Maybe (String /\ Int) -- Gets the format for a given key
+    , lookupDefinition :: String -> Maybe String -- Gets the definition for a given key
+    , typeName :: IntegerTemplateType -- Identifier for the type of template we are displaying
+    , title :: String -- Title of the section of the template type
+    , prefix :: String -- Prefix for the explanation of the template
+    }
+
+startSimulationWidget ::
+  forall m.
+  MonadAff m =>
+  MetaData ->
+  InitialConditionsRecord ->
+  ComponentHTML Action ChildSlots m
+startSimulationWidget metadata { initialSlot, templateContent } =
   cardWidget "Simulation has not started yet"
-    $ div [ classes [] ]
+    $ div_
         [ div [ classes [ ClassName "slot-input", ClassName "initial-slot-input" ] ]
             [ spanText "Initial slot:"
-            , marloweActionInput (SetInitialSlot <<< wrap) initialSlot
+            , marloweActionInput [ "mx-2", "flex-grow", "flex-shrink-0" ] (SetInitialSlot <<< wrap) (unwrap initialSlot)
+            ]
+        , div_
+            [ ul [ class_ (ClassName "templates") ]
+                ( integerTemplateParameters SetIntegerTemplateParam slotParameterDisplayInfo (unwrap templateContent).slotContent
+                    <> integerTemplateParameters SetIntegerTemplateParam valueParameterDisplayInfo (unwrap templateContent).valueContent
+                )
             ]
         , div [ classes [ ClassName "transaction-btns", flex, justifyCenter ] ]
             [ button
@@ -221,6 +228,81 @@ startSimulationWidget initialSlot =
                 [ text "Start simulation" ]
             ]
         ]
+  where
+  slotParameterDisplayInfo =
+    { lookupFormat: const Nothing
+    , lookupDefinition: (flip Map.lookup) metadata.slotParameterDescriptions
+    , typeName: SlotContent
+    , title: "Timeout template parameters"
+    , prefix: "Slot for"
+    }
+
+  valueParameterDisplayInfo =
+    { lookupFormat: extractValueParameterNuberFormat
+    , lookupDefinition: (flip lookupDescription) metadata.valueParameterInfo
+    , typeName: ValueContent
+    , title: "Value template parameters"
+    , prefix: "Constant for"
+    }
+
+  extractValueParameterNuberFormat valueParameter = case Map.lookup valueParameter metadata.valueParameterInfo of
+    Just { valueParameterFormat: DecimalFormat numDecimals currencyLabel } -> Just (currencyLabel /\ numDecimals)
+    _ -> Nothing
+
+  lookupDescription k m =
+    ( case Map.lookup k m of
+        Just { valueParameterDescription: description }
+          | trim description /= "" -> Just description
+        _ -> Nothing
+    )
+
+integerTemplateParameters ::
+  forall a action m.
+  MonadAff m =>
+  (IntegerTemplateType -> String -> BigInteger -> action) ->
+  TemplateFormDisplayInfo a action ->
+  Map String BigInteger ->
+  Array (ComponentHTML action ChildSlots m)
+integerTemplateParameters actionGen { lookupFormat, lookupDefinition, typeName, title, prefix } content =
+  let
+    parameterHint key =
+      maybe []
+        ( \explanation ->
+            [ hint
+                [ "leading-none" ]
+                ("template-parameter-" <> key)
+                Auto
+                (markdownHintWithTitle key explanation)
+            ]
+        )
+        $ lookupDefinition key
+  in
+    [ li_
+        if Map.isEmpty content then
+          []
+        else
+          ([ h6_ [ em_ [ text title ] ] ])
+            <> ( map
+                  ( \(key /\ value) ->
+                      ( ( div [ class_ (ClassName "template-fields") ]
+                            ( [ div_
+                                  [ text (prefix <> " ")
+                                  , strong_ [ text key ]
+                                  , text ":"
+                                  ]
+                              ]
+                                <> parameterHint key
+                                <> [ case lookupFormat key of
+                                      Just (currencyLabel /\ numDecimals) -> marloweCurrencyInput [ "mx-2", "flex-grow", "flex-shrink-0" ] (actionGen typeName key) currencyLabel numDecimals value
+                                      Nothing -> marloweActionInput [ "mx-2", "flex-grow", "flex-shrink-0" ] (actionGen typeName key) value
+                                  ]
+                            )
+                        )
+                      )
+                  )
+                  (Map.toUnfoldable content)
+              )
+    ]
 
 ------------------------------------------------------------
 simulationStateWidget ::
@@ -231,7 +313,7 @@ simulationStateWidget state =
   let
     currentSlot = state ^. (_currentMarloweState <<< _executionState <<< _SimulationRunning <<< _slot <<< to show)
 
-    expirationSlot = state ^. (_marloweState <<< _Head <<< _contract <<< to contractMaxTime)
+    expirationSlot = contractMaxTime (previewOn state _currentContract)
 
     contractMaxTime = case _ of
       Nothing -> "Closed"
@@ -257,10 +339,12 @@ simulationStateWidget state =
 
 ------------------------------------------------------------
 actionWidget ::
-  forall p.
+  forall m.
+  MonadAff m =>
+  MetaData ->
   State ->
-  HTML p Action
-actionWidget state =
+  ComponentHTML Action ChildSlots m
+actionWidget metadata state =
   cardWidget "Actions"
     $ div [ classes [] ]
         [ ul [ class_ (ClassName "participants") ]
@@ -297,44 +381,71 @@ actionWidget state =
   sortParties :: forall v. Array (Tuple Party v) -> Array (Tuple Party v)
   sortParties = sortWith (\(Tuple party _) -> party == otherActionsParty)
 
-  actionsForParties :: Map Party (Map ActionInputId ActionInput) -> Array (HTML p Action)
-  actionsForParties m = map (\(Tuple k v) -> participant state k (vs v)) (sortParties (kvs m))
+  actionsForParties :: Map Party (Map ActionInputId ActionInput) -> Array (ComponentHTML Action ChildSlots m)
+  actionsForParties m = map (\(Tuple k v) -> participant metadata state k (vs v)) (sortParties (kvs m))
 
 participant ::
-  forall p.
+  forall m.
+  MonadAff m =>
+  MetaData ->
   State ->
   Party ->
   Array ActionInput ->
-  HTML p Action
-participant state party actionInputs =
-  li [ classes [ ClassName "participant-a", noMargins ] ]
-    ( [ h6_ [ em_ title ] ]
-        <> (map (inputItem state partyName) actionInputs)
+  ComponentHTML Action ChildSlots m
+participant metadata state party actionInputs =
+  li [ classes [ noMargins ] ]
+    ( [ title ]
+        <> (map (inputItem metadata state partyName) actionInputs)
     )
   where
+  emptyDiv = div_ []
+
+  partyHint = case party of
+    Role roleName ->
+      maybe emptyDiv
+        ( \explanation ->
+            hint
+              [ "relative", "-top-1" ]
+              ("participant-hint-" <> roleName)
+              Auto
+              (markdownHintWithTitle roleName explanation)
+        )
+        $ Map.lookup roleName metadata.roleDescriptions
+    _ -> emptyDiv
+
   title =
-    if party == otherActionsParty then
-      -- QUESTION: if we only have "move to slot", could we rename this to "Slot Actions"?
-      [ text "Other Actions" ]
-    else
-      [ text "Participant ", strong_ [ text partyName ] ]
+    div [ classes [ ClassName "action-group" ] ]
+      if party == otherActionsParty then
+        -- QUESTION: if we only have "move to slot", could we rename this to "Slot Actions"?
+        [ h6_ [ em_ [ text "Other Actions" ] ] ]
+      else
+        [ h6_
+            [ em [ classNames [ "mr-1" ] ]
+                [ text "Participant "
+                , strong_ [ text partyName ]
+                ]
+            , partyHint
+            ]
+        ]
 
   partyName = case party of
     (PK name) -> name
     (Role name) -> name
 
 inputItem ::
-  forall p.
+  forall m.
+  MonadAff m =>
+  MetaData ->
   State ->
   PubKey ->
   ActionInput ->
-  HTML p Action
-inputItem _ person (DepositInput accountId party token value) =
-  div [ classes [ aHorizontal ] ]
-    [ p_ (renderDeposit accountId party token value)
+  ComponentHTML Action ChildSlots m
+inputItem metadata _ person (DepositInput accountId party token value) =
+  div [ classes [ ClassName "action", aHorizontal ] ]
+    [ renderDeposit metadata accountId party token value
     , div [ class_ (ClassName "align-top") ]
         [ button
-            [ classes [ plusBtn, smallBtn ]
+            [ classes [ plusBtn, smallBtn, btn ]
             , onClick $ const $ Just
                 $ AddInput (IDeposit accountId party token value) []
             ]
@@ -342,27 +453,49 @@ inputItem _ person (DepositInput accountId party token value) =
         ]
     ]
 
-inputItem _ person (ChoiceInput choiceId@(ChoiceId choiceName choiceOwner) bounds chosenNum) =
-  div
-    [ classes [ aHorizontal, ClassName "flex-wrap" ] ]
-    ( [ div []
-          [ p [ class_ (ClassName "choice-input") ]
-              [ spanText "Choice "
-              , b_ [ spanText (show choiceName <> ":") ]
-              , br_
-              , spanText "Choose value "
-              , marloweActionInput (SetChoice choiceId) chosenNum
-              ]
-          , p [ class_ (ClassName "choice-error") ] error
-          ]
-      ]
-        <> addButton
-    )
+inputItem metadata _ person (ChoiceInput choiceId@(ChoiceId choiceName choiceOwner) bounds chosenNum) =
+  let
+    choiceHint =
+      maybe (div_ [])
+        ( \explanation ->
+            hint
+              [ "relative", "-top-1" ]
+              ("choice-hint-" <> choiceName)
+              Auto
+              (markdownHintWithTitle choiceName explanation)
+        )
+        (mChoiceInfo >>= mExtractDescription)
+  in
+    div
+      [ classes [ ClassName "action", aHorizontal, ClassName "flex-nowrap" ] ]
+      ( [ div [ classes [ ClassName "action-label" ] ]
+            [ div [ class_ (ClassName "choice-input") ]
+                [ span [ class_ (ClassName "break-word-span") ]
+                    [ text "Choice "
+                    , b_ [ text (show choiceName <> ": ") ]
+                    , choiceHint
+                    ]
+                , case mChoiceInfo of
+                    Just { choiceFormat: DecimalFormat numDecimals currencyLabel } -> marloweCurrencyInput [ "mx-2", "flex-grow", "flex-shrink-0" ] (SetChoice choiceId) currencyLabel numDecimals chosenNum
+                    _ -> marloweActionInput [ "mx-2", "flex-grow", "flex-shrink-0" ] (SetChoice choiceId) chosenNum
+                ]
+            , div [ class_ (ClassName "choice-error") ] error
+            ]
+        ]
+          <> addButton
+      )
   where
+  mChoiceInfo = Map.lookup choiceName metadata.choiceInfo
+
+  mExtractDescription { choiceDescription }
+    | trim choiceDescription /= "" = Just choiceDescription
+
+  mExtractDescription _ = Nothing
+
   addButton =
     if inBounds chosenNum bounds then
       [ button
-          [ classes [ plusBtn, smallBtn, ClassName "align-top" ]
+          [ classes [ btn, plusBtn, smallBtn, ClassName "align-top", ClassName "flex-noshrink" ]
           , onClick $ const $ Just
               $ AddInput (IChoice (ChoiceId choiceName choiceOwner) chosenNum) bounds
           ]
@@ -379,27 +512,30 @@ inputItem _ person (ChoiceInput choiceId@(ChoiceId choiceName choiceOwner) bound
     else
       "Choice must be between " <> intercalate " or " (map boundError bounds)
 
-  boundError (Bound from to) = show from <> " and " <> show to
+  boundError (Bound from to) = showPretty from <> " and " <> showPretty to
 
-inputItem _ person NotifyInput =
+  showPretty :: BigInteger -> String
+  showPretty = showPrettyChoice (getChoiceFormat metadata choiceName)
+
+inputItem _ _ person NotifyInput =
   li
-    [ classes [ ClassName "choice-a", aHorizontal ] ]
+    [ classes [ ClassName "action", ClassName "choice-a", aHorizontal ] ]
     [ p_ [ text "Notify Contract" ]
     , button
-        [ classes [ plusBtn, smallBtn, ClassName "align-top" ]
+        [ classes [ btn, plusBtn, smallBtn, ClassName "align-top" ]
         , onClick $ const $ Just
             $ AddInput INotify []
         ]
         [ text "+" ]
     ]
 
-inputItem state person (MoveToSlot slot) =
+inputItem _ state person (MoveToSlot slot) =
   div
-    [ classes [ aHorizontal, ClassName "flex-wrap" ] ]
-    ( [ div []
+    [ classes [ aHorizontal, ClassName "flex-nowrap" ] ]
+    ( [ div [ classes [ ClassName "action" ] ]
           [ p [ class_ (ClassName "slot-input") ]
-              [ spanText "Move to slot "
-              , marloweActionInput (SetSlot <<< wrap) slot
+              [ spanTextBreakWord "Move to slot "
+              , marloweActionInput [ "mx-2", "flex-grow", "flex-shrink-0" ] (SetSlot <<< wrap) (unwrap slot)
               ]
           , p [ class_ (ClassName "choice-error") ] error
           ]
@@ -410,7 +546,7 @@ inputItem state person (MoveToSlot slot) =
   addButton =
     if inFuture state slot then
       [ button
-          [ classes [ plusBtn, smallBtn, ClassName "align-top" ]
+          [ classes [ plusBtn, smallBtn, ClassName "align-top", ClassName "flex-noshrink", btn ]
           , onClick $ const $ Just $ MoveSlot slot
           ]
           [ text "+" ]
@@ -422,110 +558,106 @@ inputItem state person (MoveToSlot slot) =
 
   boundsError = "The slot must be more than the current slot " <> (state ^. (_currentMarloweState <<< _executionState <<< _SimulationRunning <<< _slot <<< to show))
 
-marloweActionInput :: forall p a. Show a => (BigInteger -> Action) -> a -> HTML p Action
-marloweActionInput f current =
-  input
-    [ type_ InputNumber
-    , placeholder "BigInteger"
-    , class_ $ ClassName "action-input"
-    , value $ show current
-    , onValueChange
-        $ ( \x ->
-              Just
-                $ f
-                    ( case fromString x of
-                        Just y -> y
-                        Nothing -> fromInt 0
-                    )
-          )
-    ]
+marloweCurrencyInput :: forall p action. Array String -> (BigInteger -> action) -> String -> Int -> BigInteger -> HTML p action
+marloweCurrencyInput classes f currencyLabel numDecimals current = currencyInput classes current currencyLabel numDecimals (Just <<< f <<< fromMaybe zero)
 
-renderDeposit :: forall p. AccountId -> Party -> Token -> BigInteger -> Array (HTML p Action)
-renderDeposit accountOwner party tok money =
-  [ spanText "Deposit "
-  , b_ [ spanText (showPrettyMoney money) ]
-  , spanText " units of "
-  , b_ [ renderPrettyToken tok ]
-  , spanText " into account of "
-  , b_ [ renderPrettyParty accountOwner ]
-  , spanText " as "
-  , b_ [ renderPrettyParty party ]
-  ]
+marloweActionInput :: forall p action. Array String -> (BigInteger -> action) -> BigInteger -> HTML p action
+marloweActionInput classes f current = marloweCurrencyInput classes f "" 0 current
+
+renderDeposit :: forall p. MetaData -> AccountId -> Party -> Token -> BigInteger -> HTML p Action
+renderDeposit metadata accountOwner party tok money =
+  span [ classes [ ClassName "break-word-span" ] ]
+    [ text "Deposit "
+    , strong_ [ text (showPrettyMoney money) ]
+    , text " units of "
+    , strong_ [ renderPrettyToken tok ]
+    , text " into account of "
+    , strong_ [ renderPrettyParty metadata accountOwner ]
+    , text " as "
+    , strong_ [ renderPrettyParty metadata party ]
+    ]
 
 ------------------------------------------------------------
 logWidget ::
   forall p.
+  MetaData ->
   State ->
   HTML p Action
-logWidget state =
+logWidget metadata state =
   cardWidget "Transaction log"
-    $ div []
-        [ div
-            [ classes [ ClassName "error-headers", ClassName "error-row" ] ]
-            [ div [] [ text "Action" ]
-            , div [] [ text "Slot" ]
-            ]
-        , ul [] (reverse inputLines)
-        ]
+    $ div [ classes [ grid, gridColsDescriptionLocation, fullWidth ] ]
+        ( [ div [ class_ fontBold ] [ text "Action" ]
+          , div [ class_ fontBold ] [ text "Slot" ]
+          ]
+            <> inputLines
+        )
   where
-  inputLines = state ^. (_marloweState <<< _Head <<< _executionState <<< _SimulationRunning <<< _log <<< to (concatMap logToLines))
+  inputLines = state ^. (_marloweState <<< _Head <<< _executionState <<< _SimulationRunning <<< _log <<< to (concatMap (logToLines metadata) <<< reverse))
 
-logToLines :: forall p a. MarloweEvent -> Array (HTML p a)
-logToLines (InputEvent (TransactionInput { interval, inputs })) = Array.fromFoldable $ map (inputToLine interval) inputs
+logToLines :: forall p a. MetaData -> LogEntry -> Array (HTML p a)
+logToLines metadata (StartEvent slot) =
+  [ span_ [ text "Contract started" ]
+  , span [ class_ justifyEnd ] [ text $ show slot ]
+  ]
 
-logToLines (OutputEvent interval payment) = paymentToLines interval payment
+logToLines metadata (InputEvent (TransactionInput { interval, inputs })) = inputToLine metadata interval =<< Array.fromFoldable inputs
 
-inputToLine :: forall p a. SlotInterval -> Input -> HTML p a
-inputToLine (SlotInterval start end) (IDeposit accountOwner party token money) =
-  li [ classes [ ClassName "error-row" ] ]
-    [ span_
-        [ text "Deposit "
-        , strong_ [ text (showPrettyMoney money) ]
-        , text " units of "
-        , strong_ [ renderPrettyToken token ]
-        , text " into account of "
-        , strong_ [ renderPrettyParty accountOwner ]
-        , text " as "
-        , strong_ [ renderPrettyParty party ]
-        ]
-    , span_ [ text $ showSlotRange start end ]
-    ]
+logToLines metadata (OutputEvent interval payment) = paymentToLines metadata interval payment
 
-inputToLine (SlotInterval start end) (IChoice (ChoiceId choiceName choiceOwner) chosenNum) =
-  li [ classes [ ClassName "error-row" ] ]
-    [ span_
-        [ text "Participant "
-        , strong_ [ renderPrettyParty choiceOwner ]
-        , text " chooses the value "
-        , strong_ [ text (showPrettyMoney chosenNum) ]
-        , text " for choice with id "
-        , strong_ [ text (show choiceName) ]
-        ]
-    , span_ [ text $ showSlotRange start end ]
-    ]
+logToLines metadata (CloseEvent (SlotInterval start end)) =
+  [ span_ [ text $ "Contract ended" ]
+  , span [ class_ justifyEnd ] [ text $ showSlotRange start end ]
+  ]
 
-inputToLine (SlotInterval start end) INotify =
-  li [ classes [ ClassName "error-row" ] ]
-    [ text "Notify"
-    , span_ [ text $ showSlotRange start end ]
-    ]
+inputToLine :: forall p a. MetaData -> SlotInterval -> Input -> Array (HTML p a)
+inputToLine metadata (SlotInterval start end) (IDeposit accountOwner party token money) =
+  [ span_
+      [ text "Deposit "
+      , strong_ [ text (showPrettyMoney money) ]
+      , text " units of "
+      , strong_ [ renderPrettyToken token ]
+      , text " into account of "
+      , strong_ [ renderPrettyParty metadata accountOwner ]
+      , text " as "
+      , strong_ [ renderPrettyParty metadata party ]
+      ]
+  , span [ class_ justifyEnd ] [ text $ showSlotRange start end ]
+  ]
 
-paymentToLines :: forall p a. SlotInterval -> Payment -> Array (HTML p a)
-paymentToLines slotInterval (Payment party money) = unfoldAssets money (paymentToLine slotInterval party)
+inputToLine metadata (SlotInterval start end) (IChoice (ChoiceId choiceName choiceOwner) chosenNum) =
+  [ span_
+      [ text "Participant "
+      , strong_ [ renderPrettyParty metadata choiceOwner ]
+      , text " chooses the value "
+      , strong_ [ text (showPrettyChoice (getChoiceFormat metadata choiceName) chosenNum) ]
+      , text " for choice with id "
+      , strong_ [ text (show choiceName) ]
+      ]
+  , span [ class_ justifyEnd ] [ text $ showSlotRange start end ]
+  ]
 
-paymentToLine :: forall p a. SlotInterval -> Party -> Token -> BigInteger -> HTML p a
-paymentToLine (SlotInterval start end) party token money =
-  li [ classes [ ClassName "error-row" ] ]
-    [ span_
-        [ text "The contract pays "
-        , strong_ [ text (showPrettyMoney money) ]
-        , text " units of "
-        , strong_ [ renderPrettyToken token ]
-        , text " to participant "
-        , strong_ [ renderPrettyParty party ]
-        ]
-    , span_ [ text $ showSlotRange start end ]
-    ]
+inputToLine _ (SlotInterval start end) INotify =
+  [ text "Notify"
+  , span [ class_ justifyEnd ] [ text $ showSlotRange start end ]
+  ]
+
+paymentToLines :: forall p a. MetaData -> SlotInterval -> Payment -> Array (HTML p a)
+paymentToLines metadata slotInterval (Payment accountId payee money) = join $ unfoldAssets money (paymentToLine metadata slotInterval accountId payee)
+
+paymentToLine :: forall p a. MetaData -> SlotInterval -> AccountId -> Payee -> Token -> BigInteger -> Array (HTML p a)
+paymentToLine metadata (SlotInterval start end) accountId payee token money =
+  [ span_
+      [ text "The contract pays "
+      , strong_ [ text (showPrettyMoney money) ]
+      , text " units of "
+      , strong_ [ renderPrettyToken token ]
+      , text " to "
+      , strong_ $ renderPrettyPayee metadata payee
+      , text " from "
+      , strong_ $ renderPrettyPayee metadata (Account accountId)
+      ]
+  , span [ class_ justifyEnd ] [ text $ showSlotRange start end ]
+  ]
 
 showSlotRange :: Slot -> Slot -> String
 showSlotRange start end =
@@ -557,3 +689,16 @@ cardWidget name body =
       [ div [ class_ (ClassName "simulation-card-widget-header") ] [ title' ]
       , div [ class_ (ClassName "simulation-card-widget-body") ] [ body ]
       ]
+
+markdownHintWithTitle :: String -> String -> PlainHTML
+markdownHintWithTitle title markdown =
+  div_
+    $ [ h4
+          -- With min-w-max we define that the title should never break into
+          -- a different line.
+          [ classNames [ "no-margins", "text-lg", "font-semibold", "flex", "items-center", "pb-2", "min-w-max" ] ]
+          [ Icon.icon Icon.HelpOutline [ "mr-1", "font-normal" ]
+          , text title
+          ]
+      ]
+    <> markdownToHTML markdown

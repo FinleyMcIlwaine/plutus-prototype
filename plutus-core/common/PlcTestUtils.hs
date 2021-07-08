@@ -26,18 +26,18 @@ import           PlutusPrelude
 
 import           Common
 
-import qualified Language.PlutusCore                               as TPLC
-import           Language.PlutusCore.DeBruijn
-import qualified Language.PlutusCore.Evaluation.Machine.Cek        as TPLC
-import           Language.PlutusCore.Pretty
-import           Language.PlutusCore.Universe
+import qualified PlutusCore                               as TPLC
+import           PlutusCore.DeBruijn
+import           PlutusCore.Default.Universe
+import qualified PlutusCore.Evaluation.Machine.Ck         as TPLC
+import           PlutusCore.Pretty
 
-import qualified Language.UntypedPlutusCore                        as UPLC
-import qualified Language.UntypedPlutusCore.Evaluation.Machine.Cek as UPLC
+import qualified UntypedPlutusCore                        as UPLC
+import qualified UntypedPlutusCore.Evaluation.Machine.Cek as UPLC
 
 import           Control.Exception
 import           Control.Monad.Except
-import qualified Data.Text.Prettyprint.Doc                         as PP
+import qualified Data.Text.Prettyprint.Doc                as PP
 import           System.IO.Unsafe
 
 -- | Class for ad-hoc overloading of things which can be turned into a PLC program. Any errors
@@ -79,7 +79,7 @@ runTPlc
 runTPlc values = do
     ps <- traverse toTPlc values
     let (TPLC.Program _ _ t) = foldl1 TPLC.applyProgram ps
-    liftEither $ first toException $ TPLC.extractEvaluationResult $ TPLC.evaluateCek TPLC.defBuiltinsRuntime t
+    liftEither $ first toException $ TPLC.extractEvaluationResult $ TPLC.evaluateCkNoEmit TPLC.defaultBuiltinsRuntime t
 
 runUPlc
     :: ToUPlc a DefaultUni TPLC.DefaultFun
@@ -88,7 +88,7 @@ runUPlc
 runUPlc values = do
     ps <- traverse toUPlc values
     let (UPLC.Program _ _ t) = foldl1 UPLC.applyProgram ps
-    liftEither $ first toException $ TPLC.extractEvaluationResult $ UPLC.evaluateCek TPLC.defBuiltinsRuntime t
+    liftEither $ first toException $ TPLC.extractEvaluationResult $ UPLC.evaluateCekNoEmit TPLC.defaultCekParameters t
 
 ppCatch :: PrettyPlc a => ExceptT SomeException IO a -> IO (Doc ann)
 ppCatch value = either (PP.pretty . show) prettyPlcClassicDebug <$> runExceptT value

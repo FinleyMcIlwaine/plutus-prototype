@@ -15,12 +15,21 @@ build-type: Simple
 
 data-files:
         templates/*.tpl
-        validation/data/crowdfunding/*.plc
-        validation/data/future/*.plc
-        validation/data/multisigSM/*.plc
-        validation/data/vesting/*.plc
-        validation/data/marlowe/trustfund/*.plc
-        validation/data/marlowe/zerocoupon/*.plc
+        validation/data/crowdfunding/*.flat
+        validation/data/currency/*.flat
+        validation/data/escrow/*.flat
+        validation/data/future/*.flat
+        validation/data/game-sm/*.flat
+        validation/data/multisig-sm/*.flat
+        validation/data/ping-pong/*.flat
+        validation/data/prism/*.flat
+        validation/data/pubkey/*.flat
+        validation/data/stablecoin/*.flat
+        validation/data/token-account/*.flat
+        validation/data/uniswap/*.flat
+        validation/data/vesting/*.flat
+        validation/data/marlowe/trustfund/*.flat
+        validation/data/marlowe/zerocoupon/*.flat
 
 source-repository head
     type: git
@@ -70,8 +79,6 @@ library
     TypeApplications
     MultiParamTypeClasses
     ScopedTypeVariables
-  other-extensions:
-    NoImplicitPrelude
 
 executable nofib-exe
   import: lang
@@ -107,7 +114,7 @@ benchmark nofib
     , plutus-tx-plugin -any
     , plutus-core -any
     , containers -any
-    , criterion -any
+    , criterion >= 1.5.9.0
     , filepath -any
     , mtl -any
 
@@ -144,8 +151,12 @@ benchmark validation
     , plutus-core -any
     , bytestring -any
     , containers -any
-    , criterion -any
+    , criterion >= 1.5.9.0
+    , deepseq -any
+    , directory -any
     , filepath -any
+    , flat -any
+    , optparse-applicative -any
     , text -any
     , transformers -any
 
@@ -185,10 +196,12 @@ benchmark flat
     , boxes -any
     , bytestring -any
     , containers -any
-    , criterion -any
+    , criterion >= 1.5.9.0
+    , data-default -any
     , deepseq -any
     , flat -any
     , lens -any
+    , marlowe -any
     , plutus-core -any
     , plutus-use-cases -any
     , plutus-ledger -any

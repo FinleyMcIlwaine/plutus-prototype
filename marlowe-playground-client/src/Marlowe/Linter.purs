@@ -4,62 +4,49 @@ module Marlowe.Linter
   , MaxTimeout
   , Warning(..)
   , WarningDetail(..)
-  , AdditionalContext
   , _holes
+  , hasHoles
   , _warnings
-  , suggestions
-  , markers
-  , format
-  , provideCodeActions
-  , getWarningRange
+  , _metadataHints
+  , _location
   ) where
 
 import Prelude
 import Control.Monad.State as CMS
-import Data.Array (catMaybes, fold, foldMap, take)
-import Data.Array as Array
-import Data.Array.NonEmpty (index)
 import Data.Bifunctor (bimap)
 import Data.BigInteger (BigInteger)
-import Data.Either (Either(..), hush)
 import Data.Foldable (foldM)
 import Data.FoldableWithIndex (traverseWithIndex_)
-import Data.Function (on)
-import Data.Functor (mapFlipped)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq (genericEq)
 import Data.Generic.Rep.Ord (genericCompare)
-import Data.Lens (Lens', modifying, over, set, to, view, (^.))
+import Data.Lens (Lens', modifying, over, set, view)
 import Data.Lens.Iso.Newtype (_Newtype)
 import Data.Lens.Record (prop)
-import Data.List (List(..))
+import Data.List (List)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe(..), fromMaybe, isNothing, maybe)
+import Data.Maybe (Maybe(..), isNothing, maybe)
 import Data.Newtype (class Newtype)
 import Data.Ord (abs)
 import Data.Set (Set)
 import Data.Set as Set
-import Data.String (codePointFromChar, fromCodePointArray, length, takeWhile, toCodePointArray)
-import Data.String.Regex (match, regex)
-import Data.String.Regex.Flags (noFlags)
 import Data.Symbol (SProxy(..))
-import Data.Tuple (Tuple(..))
 import Data.Tuple.Nested (type (/\), (/\))
-import Help (holeText)
-import Marlowe.Holes (Action(..), Argument, Bound(..), Case(..), Contract(..), Holes(..), MarloweHole(..), MarloweType, Observation(..), Term(..), TermWrapper(..), Value(..), Range, constructMarloweType, fromTerm, getHoles, getMarloweConstructors, getRange, holeSuggestions, insertHole, readMarloweType)
-import Marlowe.Parser (ContractParseError(..), parseContract)
+import Marlowe.Extended as EM
+import Marlowe.Extended.Metadata (MetadataHintInfo, _choiceNames, _roles, _slotParameters, _valueParameters)
+import Marlowe.Holes (Action(..), Bound(..), Case(..), ChoiceId(..), Contract(..), Holes, Location(..), Observation(..), Party(..), Payee(..), Term(..), TermWrapper(..), Value(..), compareLocation, fromTerm, getHoles, getLocation, insertHole)
+import Marlowe.Holes as Holes
 import Marlowe.Semantics (Rational(..), Slot(..), emptyState, evalValue, makeEnvironment)
-import Marlowe.Semantics as Semantics
-import Monaco (CodeAction, CompletionItem, IMarkerData, IRange, TextEdit, Uri, markerSeverity)
-import Monaco as Monaco
+import Marlowe.Semantics as S
+import Monaco (TextEdit)
 import Pretty (showPrettyMoney, showPrettyParty, showPrettyToken)
-import MarloweEditor.Types (ContractPath, ContractPathStep(..), PrefixMap)
-import StaticAnalysis.Reachability (initialisePrefixMap, stepPrefixMap)
+import StaticAnalysis.Reachability (initializePrefixMap, stepPrefixMap)
+import StaticAnalysis.Types (ContractPath, ContractPathStep(..), PrefixMap)
 import Text.Pretty (hasArgs, pretty)
 
 newtype MaxTimeout
-  = MaxTimeout (TermWrapper Slot)
+  = MaxTimeout Slot
 
 derive instance newtypeMaxTimeout :: Newtype MaxTimeout _
 
@@ -71,14 +58,23 @@ instance semigroupMax :: Semigroup MaxTimeout where
   append a b = max a b
 
 instance monoidMaxTimeout :: Monoid MaxTimeout where
-  mempty = MaxTimeout (TermWrapper zero zero)
+  mempty = MaxTimeout zero
 
+-- We could eventually see if we can make Warning polymorphic on the location, even if Term cannot be.
+-- for the moment we don't have static guarantees on the Location type, but runtype exceptions if it
+-- is missused.
 newtype Warning
   = Warning
   { warning :: WarningDetail
-  , range :: IRange
+  , location :: Location
+  -- FIXME: The Maybe TextEdit only makes sense for LinterText
   , refactoring :: Maybe TextEdit
   }
+
+derive instance newtypeWarning :: Newtype Warning _
+
+_location :: Lens' Warning Location
+_location = _Newtype <<< prop (SProxy :: SProxy "location")
 
 data WarningDetail
   = NegativePayment
@@ -94,8 +90,8 @@ data WarningDetail
   | DivisionByZero
   | SimplifiableValue (Term Value) (Term Value)
   | SimplifiableObservation (Term Observation) (Term Observation)
-  | PayBeforeDeposit Semantics.AccountId
-  | PartialPayment Semantics.AccountId Semantics.Token BigInteger BigInteger
+  | PayBeforeDeposit S.AccountId
+  | PartialPayment S.AccountId S.Token BigInteger BigInteger
 
 instance showWarningDetail :: Show WarningDetail where
   show NegativePayment = "The contract can make a non-positive payment"
@@ -120,60 +116,14 @@ instance showWarningDetail :: Show WarningDetail where
       <> " but the account only has "
       <> showPrettyMoney availableAmount
 
-shortWarning :: WarningDetail -> String
-shortWarning NegativePayment = ""
-
-shortWarning NegativeDeposit = ""
-
-shortWarning TimeoutNotIncreasing = ""
-
-shortWarning UnreachableCaseEmptyChoice = ""
-
-shortWarning InvalidBound = ""
-
-shortWarning UnreachableCaseFalseNotify = ""
-
-shortWarning UnreachableContract = ""
-
-shortWarning UndefinedChoice = ""
-
-shortWarning UndefinedUse = ""
-
-shortWarning ShadowedLet = ""
-
-shortWarning DivisionByZero = ""
-
-shortWarning (SimplifiableValue _ _) = "Simplify Value"
-
-shortWarning (SimplifiableObservation _ _) = ""
-
-shortWarning (PayBeforeDeposit _) = ""
-
-shortWarning (PartialPayment _ _ _ _) = ""
-
-warningType :: Warning -> String
-warningType (Warning { warning }) = case warning of
-  NegativePayment -> "NegativePayment"
-  NegativeDeposit -> "NegativeDeposit"
-  TimeoutNotIncreasing -> "TimeoutNotIncreasing"
-  UnreachableCaseEmptyChoice -> "UnreachableCaseEmptyChoice"
-  InvalidBound -> "InvalidBound"
-  UnreachableCaseFalseNotify -> "UnreachableCaseFalseNotify"
-  UnreachableContract -> "UnreachableContract"
-  UndefinedChoice -> "UndefinedChoice"
-  UndefinedUse -> "UndefinedUse"
-  ShadowedLet -> "ShadowedLet"
-  DivisionByZero -> "DivisionByZero"
-  (SimplifiableValue _ _) -> "SimplifiableValue"
-  (SimplifiableObservation _ _) -> "SimplifiableObservation"
-  (PayBeforeDeposit _) -> "PayBeforeDeposit"
-  (PartialPayment _ _ _ _) -> "PartialPayment"
-
 derive instance genericWarningDetail :: Generic WarningDetail _
 
 instance eqWarningDetail :: Eq WarningDetail where
   eq = genericEq
 
+-- FIXME: This generic Ord requires a lot of instances defined in Marlowe.Holes and only for the fallback
+--        case in the ordWarning. I'm not sure if having a generic compare is worth, or we should have a
+--        manual definition that indicates which type of warning is "more severe"
 instance ordWarningDetail :: Ord WarningDetail where
   compare = genericCompare
 
@@ -184,26 +134,22 @@ instance eqWarning :: Eq Warning where
 
 -- We order Warnings by their Range first
 instance ordWarning :: Ord Warning where
-  compare a@(Warning { range: rangeA }) b@(Warning { range: rangeB }) =
+  compare a@(Warning { location: locA }) b@(Warning { location: locB }) =
     let
-      cmp f = (compare `on` f) rangeA rangeB
+      locCMP = compareLocation locA locB
     in
-      case cmp _.startLineNumber, cmp _.startColumn, cmp _.endLineNumber, cmp _.endColumn of
-        EQ, EQ, EQ, elc -> genericCompare a b
-        EQ, EQ, eln, _ -> eln
-        EQ, slc, _, _ -> slc
-        sln, _, _, _ -> sln
+      case locCMP of
+        EQ -> genericCompare a b
+        _ -> locCMP
 
 instance showWarning :: Show Warning where
   show (Warning warn) = show warn.warning
-
-getWarningRange :: Warning -> IRange
-getWarningRange (Warning warn) = warn.range
 
 newtype State
   = State
   { holes :: Holes
   , warnings :: Set Warning
+  , metadataHints :: MetadataHintInfo
   }
 
 derive instance newtypeState :: Newtype State _
@@ -218,11 +164,31 @@ _holes = _Newtype <<< prop (SProxy :: SProxy "holes")
 _warnings :: Lens' State (Set Warning)
 _warnings = _Newtype <<< prop (SProxy :: SProxy "warnings")
 
+_metadataHints :: Lens' State MetadataHintInfo
+_metadataHints = _Newtype <<< prop (SProxy :: SProxy "metadataHints")
+
+hasHoles :: State -> Boolean
+hasHoles = not Holes.isEmpty <<< view _holes
+
+addRoleFromPartyTerm :: Term Party -> CMS.State State Unit
+addRoleFromPartyTerm (Term (Role role) _) = modifying (_metadataHints <<< _roles) $ Set.insert role
+
+addRoleFromPartyTerm _ = pure unit
+
+addSlotParameter :: String -> CMS.State State Unit
+addSlotParameter slotParam = modifying (_metadataHints <<< _slotParameters) $ Set.insert slotParam
+
+addValueParameter :: String -> CMS.State State Unit
+addValueParameter valueParam = modifying (_metadataHints <<< _valueParameters) $ Set.insert valueParam
+
+addChoiceName :: String -> CMS.State State Unit
+addChoiceName choiceName = modifying (_metadataHints <<< _choiceNames) $ Set.insert choiceName
+
 newtype LintEnv
   = LintEnv
-  { choicesMade :: Set Semantics.ChoiceId
-  , deposits :: Map (Semantics.AccountId /\ Semantics.Token) (Maybe BigInteger)
-  , letBindings :: Set Semantics.ValueId
+  { choicesMade :: Set S.ChoiceId
+  , deposits :: Map (S.AccountId /\ S.Token) (Maybe BigInteger)
+  , letBindings :: Set S.ValueId
   , maxTimeout :: MaxTimeout
   , isReachable :: Boolean
   , unreachablePaths :: Maybe PrefixMap
@@ -230,16 +196,16 @@ newtype LintEnv
 
 derive instance newtypeLintEnv :: Newtype LintEnv _
 
-_choicesMade :: Lens' LintEnv (Set Semantics.ChoiceId)
+_choicesMade :: Lens' LintEnv (Set S.ChoiceId)
 _choicesMade = _Newtype <<< prop (SProxy :: SProxy "choicesMade")
 
-_letBindings :: Lens' LintEnv (Set Semantics.ValueId)
+_letBindings :: Lens' LintEnv (Set S.ValueId)
 _letBindings = _Newtype <<< prop (SProxy :: SProxy "letBindings")
 
-_maxTimeout :: Lens' LintEnv (TermWrapper Slot)
+_maxTimeout :: Lens' LintEnv Slot
 _maxTimeout = _Newtype <<< prop (SProxy :: SProxy "maxTimeout") <<< _Newtype
 
-_deposits :: Lens' LintEnv (Map (Semantics.AccountId /\ Semantics.Token) (Maybe BigInteger))
+_deposits :: Lens' LintEnv (Map (S.AccountId /\ S.Token) (Maybe BigInteger))
 _deposits = _Newtype <<< prop (SProxy :: SProxy "deposits")
 
 _isReachable :: Lens' LintEnv Boolean
@@ -253,7 +219,7 @@ emptyEnvironment unreachablePathList =
     , letBindings: mempty
     , maxTimeout: mempty
     , isReachable: true
-    , unreachablePaths: Just $ initialisePrefixMap unreachablePathList
+    , unreachablePaths: Just $ initializePrefixMap unreachablePathList
     }
 
 -- Generic wrapper for stepPrefixMap. It steps the results of reachability analysis to see
@@ -267,7 +233,7 @@ stepPrefixMapEnvGeneric (LintEnv env@{ unreachablePaths: Just upOld, isReachable
   pure $ LintEnv env { unreachablePaths = mUpNew, isReachable = oldReachable && (not $ isNothing mUpNew) }
 
 -- Wrapper for stepPrefixMap that marks unreachable code with a warning
-stepPrefixMapEnv :: forall a. Show a => LintEnv -> a -> Range -> ContractPathStep -> CMS.State State LintEnv
+stepPrefixMapEnv :: forall a. Show a => LintEnv -> a -> Location -> ContractPathStep -> CMS.State State LintEnv
 stepPrefixMapEnv env t pos cp = stepPrefixMapEnvGeneric env markUnreachable cp
   where
   markUnreachable = addWarning UnreachableContract t pos
@@ -281,15 +247,15 @@ stepPrefixMapEnv_ env cp = stepPrefixMapEnvGeneric env dontMarkUnreachable cp
 
 data TemporarySimplification a b
   = ConstantSimp
-    Range
+    Location
     Boolean -- Is simplified (it is not just a constant that was already a constant)
     a -- Constant
   | ValueSimp
-    Range
+    Location
     Boolean -- Is simplified (only root, no subtrees)
     (Term b) -- Value
 
-getSimpRange :: forall a b. TemporarySimplification a b -> Range
+getSimpRange :: forall a b. TemporarySimplification a b -> Location
 getSimpRange (ConstantSimp pos _ _) = pos
 
 getSimpRange (ValueSimp pos _ _) = pos
@@ -304,13 +270,13 @@ getValue f (ConstantSimp _ _ c) = f c
 
 getValue _ (ValueSimp _ _ v) = v
 
-simplifyTo :: forall a b. TemporarySimplification a b -> Range -> TemporarySimplification a b
+simplifyTo :: forall a b. TemporarySimplification a b -> Location -> TemporarySimplification a b
 simplifyTo (ConstantSimp _ _ c) pos = (ConstantSimp pos true c)
 
 simplifyTo (ValueSimp _ _ c) pos = (ValueSimp pos true c)
 
 simplifyRefactoring :: Term Value -> Term Value -> Maybe TextEdit
-simplifyRefactoring (Term _ range) to =
+simplifyRefactoring (Term _ (Range range)) to =
   let
     pv = show $ pretty to
 
@@ -320,8 +286,8 @@ simplifyRefactoring (Term _ range) to =
 
 simplifyRefactoring _ _ = Nothing
 
-addWarning :: forall a. Show a => WarningDetail -> a -> Range -> CMS.State State Unit
-addWarning warnDetail term range =
+addWarning :: forall a. Show a => WarningDetail -> a -> Location -> CMS.State State Unit
+addWarning warnDetail term location =
   let
     refactoring = case warnDetail of
       (SimplifiableValue from to) -> simplifyRefactoring from to
@@ -330,24 +296,24 @@ addWarning warnDetail term range =
     modifying _warnings $ Set.insert
       $ Warning
           { warning: warnDetail
-          , range
+          , location
           , refactoring
           }
 
 markSimplification :: forall a b. Show b => (a -> Term b) -> (Term b -> Term b -> WarningDetail) -> Term b -> TemporarySimplification a b -> CMS.State State Unit
 markSimplification f c oriVal x
-  | isSimplified x = addWarning (c oriVal (getValue f x)) oriVal (getRange oriVal)
+  | isSimplified x = addWarning (c oriVal (getValue f x)) oriVal (getLocation oriVal)
   | otherwise = pure unit
 
 constToObs :: Boolean -> Term Observation
-constToObs true = Term TrueObs zero
+constToObs true = Term TrueObs NoLocation
 
-constToObs false = Term FalseObs zero
+constToObs false = Term FalseObs NoLocation
 
 constToVal :: BigInteger -> Term Value
-constToVal x = Term (Constant x) zero
+constToVal x = Term (Constant x) NoLocation
 
-addMoneyToEnvAccount :: BigInteger -> Semantics.AccountId -> Semantics.Token -> LintEnv -> LintEnv
+addMoneyToEnvAccount :: BigInteger -> S.AccountId -> S.Token -> LintEnv -> LintEnv
 addMoneyToEnvAccount amountToAdd accTerm tokenTerm = over _deposits (Map.alter (addMoney amountToAdd) (accTerm /\ tokenTerm))
   where
   addMoney :: BigInteger -> Maybe (Maybe BigInteger) -> Maybe (Maybe BigInteger)
@@ -373,7 +339,7 @@ addMoneyToEnvAccount amountToAdd accTerm tokenTerm = over _deposits (Map.alter (
 lint :: List ContractPath -> Term Contract -> State
 lint unreachablePaths contract =
   let
-    env = (emptyEnvironment unreachablePaths)
+    env = emptyEnvironment unreachablePaths
   in
     CMS.execState (lintContract env contract) mempty
 
@@ -381,9 +347,12 @@ lintContract :: LintEnv -> Term Contract -> CMS.State State Unit
 lintContract env (Term Close _) = pure unit
 
 lintContract env t@(Term (Pay acc payee token payment cont) pos) = do
-  let
-    gatherHoles = getHoles acc <> getHoles payee <> getHoles token
-  modifying _holes gatherHoles
+  addRoleFromPartyTerm acc
+  case payee of
+    Term (Account party) _ -> addRoleFromPartyTerm party
+    Term (Party party) _ -> addRoleFromPartyTerm party
+    _ -> pure unit
+  modifying _holes (getHoles acc <> getHoles payee <> getHoles token) -- First we calculate the value and warn for non positive values
   sa <- lintValue env payment
   payedValue <- case sa of
     (ConstantSimp _ _ c)
@@ -393,36 +362,49 @@ lintContract env t@(Term (Pay acc payee token payment cont) pos) = do
       | otherwise -> pure (Just c)
     _ -> pure Nothing
   markSimplification constToVal SimplifiableValue payment sa
-  tmpEnv <- case (fromTerm acc /\ fromTerm token) of
-    Just accTerm /\ Just tokenTerm -> do
+  tmpEnv /\ actualPaidMoney <- case fromTerm acc /\ fromTerm token of -- Second we account for withdrawing money from source account (using the info we know)
+    Just accTerm /\ Just tokenTerm -> do -- We know source account
       let
         deposits = view _deposits env
 
         key = accTerm /\ tokenTerm
-      unless (Map.member key deposits)
-        (addWarning (PayBeforeDeposit accTerm) t pos)
-      case (Map.lookup key deposits /\ payedValue) of
-        (Just (Just avMoney)) /\ (Just paidMoney) -> do
-          unless (avMoney >= paidMoney) (addWarning (PartialPayment accTerm tokenTerm avMoney paidMoney) t pos)
-          let
-            actualPaidMoney = min avMoney paidMoney
-          let
-            tempEnv = over _deposits (Map.insert key (Just (avMoney - actualPaidMoney))) env
-          pure
-            ( case fromTerm payee of
-                Just (Semantics.Account newAcc) -> addMoneyToEnvAccount actualPaidMoney newAcc tokenTerm tempEnv
-                _ -> tempEnv
-            )
-        Nothing /\ _ -> pure env
-        _ -> pure (over _deposits (Map.insert key Nothing) env)
-    _ -> pure env
-  newEnv <- stepPrefixMapEnv_ tmpEnv PayContPath
+      newSrcAccVal /\ actualPaidMoney <- case Map.lookup key deposits /\ payedValue of
+        Just (Just avMoney) /\ Just paidMoney ->  -- We know exactly what is happening (everything is constant)
+          if (avMoney >= paidMoney) then
+            pure $ Just (Just (avMoney - paidMoney)) /\ Just paidMoney
+          else do
+            addWarning (PartialPayment accTerm tokenTerm avMoney paidMoney) t pos
+            pure $ Just (Just zero) /\ Just avMoney
+        Nothing /\ _ -> do
+          addWarning (PayBeforeDeposit accTerm) t pos -- There is definitely no money in that account
+          pure $ Nothing /\ Nothing
+        _ -> pure $ Just Nothing /\ Nothing -- We don't know how much is left in the account nor how much was paid
+      let
+        tmpEnv = over _deposits (Map.alter (const newSrcAccVal) key) env -- We set the source account with what we know
+      pure $ tmpEnv /\ actualPaidMoney
+    _ -> pure $ env /\ Nothing -- We don't know source account and thus we don't know how much was withdrawn either
+  let
+    tmpDeposits = view _deposits tmpEnv
+
+    fixTargetAcc = case fromTerm payee /\ fromTerm token of -- Thirdly, if target is an account we account for adding money to it
+      Just (EM.Account newAcc) /\ Just tokenTerm ->
+        let
+          destKey = newAcc /\ tokenTerm
+        in
+          Map.insert destKey case Map.lookup destKey tmpDeposits /\ actualPaidMoney of
+            Just (Just avMoney) /\ Just paidMoney -> Just (avMoney + paidMoney) -- We know exactly what is happening (everything is constant)
+            Nothing /\ Just paidMoney -> Just paidMoney -- We still know what is happening (there was no money, now there is)
+            _ -> Nothing -- Either we don't know how much money there was or how money we are adding or both (so we don't know how much there will be)
+      _ -> identity -- Either is not an account or we don't know so we do nothing     
+
+    tmpEnv2 = over _deposits fixTargetAcc tmpEnv
+  newEnv <- stepPrefixMapEnv_ tmpEnv2 PayContPath
   lintContract newEnv cont
 
 lintContract env (Term (If obs c1 c2) _) = do
   sa <- lintObservation env obs
-  c1Env <- stepPrefixMapEnv env c1 (getRange c1) IfTruePath
-  c2Env <- stepPrefixMapEnv env c2 (getRange c2) IfFalsePath
+  c1Env <- stepPrefixMapEnv env c1 (getLocation c1) IfTruePath
+  c2Env <- stepPrefixMapEnv env c2 (getLocation c2) IfFalsePath
   let
     reachable = view _isReachable
 
@@ -436,10 +418,10 @@ lintContract env (Term (If obs c1 c2) _) = do
       <$> ( case sa of
             (ConstantSimp _ _ c) ->
               if c then do
-                when c2Reachable $ addWarning UnreachableContract c2 (getRange c2)
+                when c2Reachable $ addWarning UnreachableContract c2 (getLocation c2)
                 pure (c1Reachable /\ false)
               else do
-                when c1Reachable $ addWarning UnreachableContract c1 (getRange c1)
+                when c1Reachable $ addWarning UnreachableContract c1 (getLocation c1)
                 pure (false /\ c2Reachable)
             _ -> do
               markSimplification constToObs SimplifiableObservation obs sa
@@ -448,12 +430,22 @@ lintContract env (Term (If obs c1 c2) _) = do
   lintContract c1NewEnv c1
   lintContract c2NewEnv c2
 
-lintContract env (Term (When cases timeout@(TermWrapper slot pos) cont) _) = do
-  when (timeout <= view _maxTimeout env) (addWarning TimeoutNotIncreasing slot pos)
+lintContract env (Term (When cases (Term (Holes.Slot timeout) pos) cont) _) = do
+  when (Slot timeout <= view _maxTimeout env) (addWarning TimeoutNotIncreasing timeout pos)
   let
-    tmpEnv = (over _maxTimeout (max timeout)) env
+    tmpEnv = (over _maxTimeout (max $ Slot timeout)) env
   traverseWithIndex_ (lintCase tmpEnv) cases
   newEnv <- stepPrefixMapEnv_ tmpEnv WhenTimeoutPath
+  lintContract newEnv cont
+  pure unit
+
+lintContract env (Term (When cases t cont) _) = do
+  case t of
+    Term (Holes.SlotParam slotParamName) _ -> addSlotParameter slotParamName
+    _ -> pure unit
+  modifying _holes (insertHole t)
+  traverseWithIndex_ (lintCase env) cases
+  newEnv <- stepPrefixMapEnv_ env WhenTimeoutPath
   lintContract newEnv cont
   pure unit
 
@@ -512,7 +504,9 @@ lintObservation env t@(Term (NotObs a) pos) = do
       markSimplification constToObs SimplifiableObservation a sa
       pure (ValueSimp pos false t)
 
-lintObservation env t@(Term (ChoseSomething choiceId) pos) = do
+lintObservation env t@(Term (ChoseSomething choiceId@(ChoiceId choiceName party)) pos) = do
+  addChoiceName choiceName
+  addRoleFromPartyTerm party
   modifying _holes (getHoles choiceId)
   pure (ValueSimp pos false t)
 
@@ -576,12 +570,17 @@ lintObservation env hole@(Hole _ _ pos) = do
 
 lintValue :: LintEnv -> Term Value -> CMS.State State (TemporarySimplification BigInteger Value)
 lintValue env t@(Term (AvailableMoney acc token) pos) = do
+  addRoleFromPartyTerm acc
   let
     gatherHoles = getHoles acc <> getHoles token
   modifying _holes gatherHoles
   pure (ValueSimp pos false t)
 
 lintValue env (Term (Constant v) pos) = pure (ConstantSimp pos false v)
+
+lintValue env t@(Term (ConstantParam str) pos) = do
+  addValueParameter str
+  pure (ValueSimp pos false t)
 
 lintValue env t@(Term (NegValue a) pos) = do
   sa <- lintValue env a
@@ -654,7 +653,7 @@ lintValue env t@(Term (Scale (TermWrapper r@(Rational a b) pos2) c) pos) = do
       isSimp = (abs gcdv) > one
     in
       case sc of
-        (ConstantSimp _ _ v) -> pure (ConstantSimp pos true (evalValue (makeEnvironment zero zero) (emptyState (Slot zero)) (Semantics.Scale (Semantics.Rational a b) (Semantics.Constant v))))
+        (ConstantSimp _ _ v) -> pure (ConstantSimp pos true (evalValue (makeEnvironment zero zero) (emptyState (Slot zero)) (S.Scale (S.Rational a b) (S.Constant v))))
         (ValueSimp _ _ v) -> do
           if isSimp then
             pure unit
@@ -662,7 +661,9 @@ lintValue env t@(Term (Scale (TermWrapper r@(Rational a b) pos2) c) pos) = do
             markSimplification constToVal SimplifiableValue c sc
           pure (ValueSimp pos isSimp (Term (Scale (TermWrapper (Rational na nb) pos2) c) pos))
 
-lintValue env t@(Term (ChoiceValue choiceId) pos) = do
+lintValue env t@(Term (ChoiceValue choiceId@(ChoiceId choiceName party)) pos) = do
+  addChoiceName choiceName
+  addRoleFromPartyTerm party
   when
     ( case fromTerm choiceId of
         Just semChoiceId -> not $ Set.member semChoiceId (view _choicesMade env)
@@ -706,9 +707,9 @@ lintValue env t@(Term (Cond c a b) pos) = do
       pure (ValueSimp pos false t)
 
 data Effect
-  = ConstantDeposit Semantics.AccountId Semantics.Token BigInteger
-  | UnknownDeposit Semantics.AccountId Semantics.Token
-  | ChoiceMade Semantics.ChoiceId
+  = ConstantDeposit S.AccountId S.Token BigInteger
+  | UnknownDeposit S.AccountId S.Token
+  | ChoiceMade S.ChoiceId
   | NoEffect
 
 lintCase :: LintEnv -> Int -> Term Case -> CMS.State State Unit
@@ -746,9 +747,9 @@ lintAction env t@(Term (Deposit acc party token value) pos) = do
     accTerm = maybe NoEffect (maybe (const NoEffect) UnknownDeposit (fromTerm acc)) (fromTerm token)
 
     isReachable = view _isReachable env
-
-    gatherHoles = getHoles acc <> getHoles party <> getHoles token
-  modifying _holes (gatherHoles)
+  addRoleFromPartyTerm acc
+  addRoleFromPartyTerm party
+  modifying _holes (getHoles acc <> getHoles party <> getHoles token)
   sa <- lintValue env value
   (\effect -> effect /\ isReachable)
     <$> case sa of
@@ -767,11 +768,13 @@ lintAction env t@(Term (Deposit acc party token value) pos) = do
 
   makeDepositConstant other _ = other
 
-lintAction env t@(Term (Choice choiceId bounds) pos) = do
+lintAction env t@(Term (Choice choiceId@(ChoiceId choiceName party) bounds) pos) = do
   let
     choTerm = maybe NoEffect ChoiceMade (fromTerm choiceId)
 
     isReachable = view _isReachable env
+  addChoiceName choiceName
+  addRoleFromPartyTerm party
   modifying _holes (getHoles choiceId <> getHoles bounds)
   allInvalid <- foldM lintBounds true bounds
   when (allInvalid && isReachable) $ addWarning UnreachableCaseEmptyChoice t pos
@@ -796,160 +799,3 @@ lintAction env hole@(Hole _ _ _) = do
     isReachable = view _isReachable env
   modifying _holes (insertHole hole)
   pure $ NoEffect /\ isReachable
-
-type AdditionalContext
-  = { warnings :: Set Warning
-    , contract :: Maybe (Term Contract)
-    }
-
-suggestions :: String -> Boolean -> String -> IRange -> AdditionalContext -> Array CompletionItem
-suggestions original stripParens contractString range { contract } =
-  fromMaybe [] do
-    -- there will be no contract if it had errors, this is no good because we want to try to fix this
-    -- with contractString, which is a contract that comes from the MarloweCompletionItemProvider with
-    -- holes where possible errors are, so it might be able to be parsed.
-    parsedContract <- case contract of
-      Nothing -> hush $ parseContract contractString
-      c -> c
-    let
-      (Holes holes) = view _holes ((lint Nil) parsedContract)
-    v <- Map.lookup "monaco_suggestions" holes
-    { head } <- Array.uncons $ Set.toUnfoldable v
-    pure $ holeSuggestions original stripParens range head
-
--- FIXME: We have multiple model markers, 1 per quick fix. This is wrong though, we need only 1 but in MarloweCodeActionProvider we want to run the code
--- to generate the quick fixes from this single model marker
-markers :: List ContractPath -> Either ContractParseError (Term Contract) -> Tuple (Array IMarkerData) AdditionalContext
-markers unreachablePaths parsedContract = do
-  case (lint unreachablePaths <$> parsedContract) of
-    Left EmptyInput -> (Tuple [] { warnings: mempty, contract: Nothing })
-    Left e@(ContractParseError { message, row, column, token }) ->
-      let
-        whiteSpaceChar c = Set.member c $ Set.fromFoldable $ map codePointFromChar [ '\n', '\r', ' ', '\t' ]
-
-        word = takeWhile (not <<< whiteSpaceChar) token
-
-        markerData =
-          [ { startColumn: column
-            , startLineNumber: row
-            , endColumn: column + (length word)
-            , endLineNumber: row
-            , message: message
-            , severity: markerSeverity "Error"
-            , code: ""
-            , source: ""
-            }
-          ]
-      in
-        (Tuple markerData { warnings: mempty, contract: Nothing })
-    Right state ->
-      let
-        holesMarkers = state ^. (_holes <<< to holesToMarkers)
-
-        warningsMarkers = state ^. (_warnings <<< to Set.toUnfoldable <<< to (map warningToMarker))
-
-        -- we store the current warnings and the parsed contract in the halogen state so that they can be reused
-        additionalContext = { warnings: state ^. _warnings, contract: hush parsedContract }
-      in
-        (Tuple (holesMarkers <> warningsMarkers) additionalContext)
-
--- other types of warning could do with being refactored to a Warning ADT first so we don't need to repeat ourselves
-holesToMarkers :: Holes -> Array IMarkerData
-holesToMarkers (Holes holes) =
-  let
-    (allHoles :: Array _) = Set.toUnfoldable $ fold $ Map.values holes
-  in
-    foldMap holeToMarkers allHoles
-
-holeToMarker :: MarloweHole -> Map String (Array Argument) -> String -> IMarkerData
-holeToMarker hole@(MarloweHole { name, marloweType, range: { startLineNumber, startColumn, endLineNumber, endColumn } }) m constructorName =
-  { startColumn
-  , startLineNumber
-  , endColumn
-  , endLineNumber
-  , message: holeText marloweType
-  , severity: markerSeverity "Warning"
-  , code: ""
-  , source: "Hole: " <> (dropEnd 4 $ show marloweType)
-  }
-  where
-  dropEnd :: Int -> String -> String
-  dropEnd n = fromCodePointArray <<< Array.dropEnd n <<< toCodePointArray
-
-holeToMarkers :: MarloweHole -> Array IMarkerData
-holeToMarkers hole@(MarloweHole { name, marloweType }) =
-  let
-    m = getMarloweConstructors marloweType
-
-    constructors = take 1 $ Set.toUnfoldable $ Map.keys m
-  in
-    map (holeToMarker hole m) constructors
-
-markerToHole :: IMarkerData -> MarloweType -> MarloweHole
-markerToHole markerData marloweType = MarloweHole { name: "unknown", marloweType, range: (Monaco.getRange markerData) }
-
-warningToMarker :: Warning -> IMarkerData
-warningToMarker warning =
-  let
-    { startColumn, startLineNumber, endColumn, endLineNumber } = getWarningRange warning
-  in
-    { startColumn
-    , startLineNumber
-    , endColumn
-    , endLineNumber
-    , message: show warning
-    , severity: markerSeverity "Warning"
-    , code: ""
-    , source: warningType warning
-    }
-
-format :: String -> String
-format contractString = case parseContract contractString of
-  Left _ -> contractString
-  Right contract -> show $ pretty contract
-
-provideLintCodeActions :: Uri -> AdditionalContext -> Array CodeAction
-provideLintCodeActions uri { warnings } = catMaybes <<< map codeAction <<< Set.toUnfoldable $ warnings
-  where
-  codeAction :: Warning -> Maybe CodeAction
-  codeAction (Warning { warning, range, refactoring: Just refactoring }) =
-    Just
-      { title: shortWarning warning
-      , edit: { edits: [ { resource: uri, edit: refactoring } ] }
-      , kind: "quickfix"
-      }
-
-  codeAction _ = Nothing
-
-provideCodeActions :: Uri -> Array IMarkerData -> AdditionalContext -> Array CodeAction
-provideCodeActions uri markers' additionalContext =
-  provideLintCodeActions uri additionalContext
-    <> (flip foldMap) markers' \(marker@{ source, startLineNumber, startColumn, endLineNumber, endColumn }) -> case regex "Hole: (\\w+)" noFlags of
-        Left _ -> []
-        Right r -> case readMarloweType =<< (join <<< (flip index 1)) =<< match r (source <> "Type") of
-          Nothing -> []
-          Just marloweType ->
-            let
-              m = getMarloweConstructors marloweType
-
-              hole = markerToHole marker marloweType
-
-              (constructors :: Array _) = Set.toUnfoldable $ Map.keys m
-
-              range =
-                { startLineNumber
-                , startColumn
-                , endLineNumber
-                , endColumn
-                }
-
-              actions =
-                mapFlipped constructors \constructorName ->
-                  let
-                    text = constructMarloweType constructorName hole m
-
-                    edit = { resource: uri, edit: { range, text } }
-                  in
-                    { title: constructorName, edit: { edits: [ edit ] }, kind: "quickfix" }
-            in
-              actions

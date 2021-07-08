@@ -31,9 +31,9 @@ import Data.Tuple.Nested ((/\))
 import Halogen.HTML (ClassName(..), HTML, IProp, br_, div, div_, h2_, hr_, li_, p_, small_, span_, strong_, table, tbody_, td, text, th, th_, thead_, tr, tr_, ul_)
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Properties (class_, classes, colSpan, rowSpan)
-import Language.PlutusTx.AssocMap as AssocMap
+import PlutusTx.AssocMap as AssocMap
 import Plutus.V1.Ledger.Crypto (PubKey(..), PubKeyHash(..))
-import Ledger.Extra (humaniseInterval)
+import Ledger.Extra (humaniseSlotInterval)
 import Plutus.V1.Ledger.Tx (TxOut(..))
 import Plutus.V1.Ledger.TxId (TxId(..))
 import Plutus.V1.Ledger.Value (CurrencySymbol(..), TokenName(..), Value(..))
@@ -126,7 +126,7 @@ transactionDetailView namingFn annotatedBlockchain annotatedTx =
                     , div [ class_ textTruncate ]
                         [ strong_ [ text "Validity:" ]
                         , nbsp
-                        , text $ humaniseInterval (view (_tx <<< _txValidRange) annotatedTx)
+                        , text $ humaniseSlotInterval (view (_tx <<< _txValidRange) annotatedTx)
                         ]
                     , div [ class_ textTruncate ]
                         [ strong_ [ text "Signatures:" ]
@@ -136,7 +136,7 @@ transactionDetailView namingFn annotatedBlockchain annotatedTx =
                         ]
                     ]
                 ]
-            , forgeView (view (_tx <<< _txForge) annotatedTx)
+            , forgeView (view (_tx <<< _txMint) annotatedTx)
             ]
         , col3_
             [ h2_ [ text "Outputs" ]
@@ -361,7 +361,7 @@ outputView namingFn txId annotatedBlockchain outputIndex txOut =
   consumedInTx = findConsumptionPoint outputIndex txId annotatedBlockchain
 
 txOutOfView :: forall p. NamingFn -> Boolean -> TxOut -> Maybe (HTML p Action) -> HTML p Action
-txOutOfView namingFn showArrow txOut@(TxOut { txOutAddress, txOutType, txOutValue }) mFooter =
+txOutOfView namingFn showArrow txOut@(TxOut { txOutAddress, txOutValue }) mFooter =
   div
     [ classes [ card, entryClass, beneficialOwnerClass beneficialOwner ] ]
     [ div [ classes [ cardHeader, textTruncate ] ]

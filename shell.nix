@@ -1,19 +1,25 @@
-{ crossSystem ? null
-, system ? builtins.currentSystem
-, config ? { allowUnfreePredicate = (import ./lib.nix).unfreePredicate; }
-, rev ? "in-nix-shell"
-, sourcesOverride ? { }
-, packages ? import ./. { inherit crossSystem config sourcesOverride rev; }
+{ system ? builtins.currentSystem
+, enableHaskellProfiling ? false
+, packages ? import ./. { inherit system enableHaskellProfiling; }
 }:
 let
-  inherit (packages) pkgs plutus plutusMusl plutus-playground marlowe-playground plutus-pab;
+  inherit (packages) pkgs plutus plutus-playground marlowe-playground plutus-pab marlowe-dashboard fake-pab deployment docs;
   inherit (pkgs) stdenv lib utillinux python3 nixpkgs-fmt;
-  inherit (plutus) haskell agdaPackages stylish-haskell sphinxcontrib-haddock nix-pre-commit-hooks;
+  inherit (plutus) haskell agdaPackages stylish-haskell sphinxcontrib-haddock sphinx-markdown-tables sphinxemoji nix-pre-commit-hooks cardano-cli cardano-node;
   inherit (plutus) agdaWithStdlib;
   inherit (plutus) purty purty-pre-commit purs spargo;
 
   # For Sphinx, and ad-hoc usage
-  sphinxTools = python3.withPackages (ps: [ sphinxcontrib-haddock.sphinxcontrib-domaintools ps.sphinx ps.sphinx_rtd_theme ]);
+  sphinxTools = python3.withPackages (ps: [
+    sphinxcontrib-haddock.sphinxcontrib-domaintools
+    sphinx-markdown-tables
+    sphinxemoji
+    ps.sphinxcontrib_plantuml
+    ps.sphinxcontrib-bibtex
+    ps.sphinx
+    ps.sphinx_rtd_theme
+    ps.recommonmark
+  ]);
 
   # Configure project pre-commit hooks
   pre-commit-check = nix-pre-commit-hooks.run {
@@ -32,47 +38,61 @@ let
         # While nixpkgs-fmt does exclude patterns specified in `.ignore` this
         # does not appear to work inside the hook. For now we have to thus
         # maintain excludes here *and* in `./.ignore` and *keep them in sync*.
-        excludes = [ ".*nix/stack.materialized/.*" ".*nix/sources.nix$" ".*/spago-packages.nix$" ".*/packages.nix$" ];
+        excludes = [ ".*nix/pkgs/haskell/materialized.*/.*" ".*nix/sources.nix$" ".*/spago-packages.nix$" ".*/packages.nix$" ];
       };
       shellcheck.enable = true;
+      png-optimization = {
+        enable = true;
+        name = "png-optimization";
+        description = "Ensure that PNG files are optimized";
+        entry = "${pkgs.optipng}/bin/optipng";
+        files = "\\.png$";
+      };
     };
   };
 
   # build inputs from nixpkgs ( -> ./nix/default.nix )
   nixpkgsInputs = (with pkgs; [
-    # pkgs.sqlite-analyzer -- Broken on 20.03, needs a backport
-    awscli
     cacert
     ghcid
+    morph
     niv
     nixpkgs-fmt
     nodejs
-    pass
     shellcheck
     sqlite-interactive
     stack
-    terraform
-    yubikey-manager
     z3
     zlib
   ] ++ (lib.optionals (!stdenv.isDarwin) [ rPackages.plotly R ]));
 
   # local build inputs ( -> ./nix/pkgs/default.nix )
   localInputs = (with plutus; [
+    aws-mfa-login
     cabal-install
+    cardano-repo-tool
     fixPurty
     fixStylishHaskell
     haskell-language-server
     hie-bios
-    gen-hie
     hlint
+    marlowe-playground.generate-purescript
+    marlowe-playground.start-backend
+    plutus-playground.generate-purescript
+    plutus-playground.start-backend
+    plutus-pab.generate-purescript
+    plutus-pab.migrate
+    plutus-pab.start-backend
+    plutus-pab.start-all-servers
+    plutus-pab.start-all-servers-m
     purs
     purty
     spago
     stylish-haskell
-    updateHie
+    updateMaterialized
     updateClientDeps
     updateMetadataSamples
+    docs.build-and-serve-docs
   ]);
 
 in
@@ -81,9 +101,6 @@ haskell.project.shellFor {
   # We don't currently use this, and it's a pain to materialize, and otherwise
   # costs a fair bit of eval time.
   withHoogle = false;
-
-  # we have a local passwords store that we use for deployments etc.
-  PASSWORD_STORE_DIR = toString ./. + "/secrets";
 
   shellHook = ''
     ${pre-commit-check.shellHook}

@@ -1,24 +1,31 @@
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE OverloadedStrings #-}
 module ZeroCouponBond where
 
-import           Language.Marlowe
+import           Language.Marlowe.Extended
 
 main :: IO ()
 main = print . pretty $ contract
 
+discountedPrice, notionalPrice :: Value
+discountedPrice = ConstantParam "Discounted price"
+notionalPrice = ConstantParam "Notional price"
+
+investor, issuer :: Party
+investor = Role "Investor"
+issuer = Role "Issuer"
+
+initialExchange, maturityExchangeTimeout :: Timeout
+initialExchange = SlotParam "Initial exchange deadline"
+maturityExchangeTimeout = SlotParam "Maturity exchange deadline"
+
+transfer :: Timeout -> Party -> Party -> Value -> Contract -> Contract
+transfer timeout from to amount continuation =
+    When [ Case (Deposit from from ada amount)
+                (Pay from (Party to) ada amount continuation) ]
+         timeout
+         Close
+
 contract :: Contract
-contract = When [ Case
-        (Deposit "investor" "investor" ada (Constant 850_000))
-        (Pay "investor" (Party "issuer") ada (Constant 850_000)
-            (When
-                [ Case (Deposit "investor" "issuer" ada (Constant 1000_000))
-                        (Pay "investor" (Party "investor") ada (Constant 1000_000) Close)
-                ]
-                (Slot 20)
-                Close
-            )
-        )
-    ]
-    (Slot 10)
-    Close
+contract = transfer initialExchange investor issuer discountedPrice
+         $ transfer maturityExchangeTimeout issuer investor notionalPrice
+           Close

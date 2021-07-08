@@ -32,7 +32,6 @@ flag defer-plugin-errors
 
 library
     exposed-modules:
-        Playground.Lambda
         Playground.Server
         Playground.Interpreter
         Playground.Usecases
@@ -59,21 +58,20 @@ library
                  -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
     build-depends:
         aeson -any,
-        aws-lambda-haskell-runtime -any,
-        aws-lambda-haskell-runtime-wai -any,
         base >=4.7 && <5,
         bytestring -any,
         containers -any,
         cookie -any,
         cryptonite -any,
+        data-default -any,
         exceptions -any,
         file-embed -any,
         filepath -any,
+        freer-extras -any,
         http-client -any,
         http-client-tls -any,
         http-conduit -any,
         http-types -any,
-        iots-export -any,
         jwt -any,
         lens -any,
         monad-logger -any,
@@ -133,11 +131,11 @@ library plutus-playground-usecases
     build-depends:
         aeson -any,
         base >=4.7 && <5,
+        data-default -any,
         lens -any,
         bytestring -any,
         containers -any,
         insert-ordered-containers -any,
-        iots-export -any,
         mtl -any,
         playground-common -any,
         plutus-contract -any,
@@ -153,7 +151,7 @@ library plutus-playground-usecases
         build-depends: plutus-tx-plugin -any
 
     if flag(defer-plugin-errors)
-        ghc-options: -fplugin-opt Language.PlutusTx.Plugin:defer-errors
+        ghc-options: -fplugin-opt PlutusTx.Plugin:defer-errors
 
 executable plutus-playground-server
     main-is: Main.hs
@@ -189,11 +187,12 @@ executable plutus-playground-server
         base >=4.7 && <5,
         bytestring -any,
         containers -any,
+        data-default -any,
         exceptions -any,
         data-default-class -any,
         filepath -any,
+        freer-extras -any,
         http-types -any,
-        iots-export -any,
         playground-common -any,
         lens -any,
         monad-logger -any,
@@ -249,7 +248,6 @@ test-suite plutus-playground-server-test
         insert-ordered-containers -any,
         newtype-generics -any,
         playground-common -any,
-        iots-export -any,
         mtl -any,
         plutus-playground-server -any,
         plutus-tx -any,

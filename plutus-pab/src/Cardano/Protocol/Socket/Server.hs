@@ -7,28 +7,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeApplications  #-}
 {-# LANGUAGE TypeFamilies      #-}
-{-# LANGUAGE TypeOperators     #-}
 
 module Cardano.Protocol.Socket.Server where
 
+import           Cardano.BM.Data.Trace                               (Trace)
+import           Cardano.Node.Types                                  (MockServerLogMsg (..))
 import qualified Data.ByteString.Lazy                                as LBS
-import           Data.Foldable                                       (traverse_)
 import           Data.List                                           (intersect)
 import           Data.Maybe                                          (listToMaybe)
 import           Data.Text                                           (Text)
-import           Data.Text.Extras                                    (tshow)
 import           Data.Void                                           (Void)
 
 import           Control.Concurrent
 import           Control.Concurrent.Async
 import           Control.Concurrent.STM
-import           Control.Lens                                        hiding (ix)
-import qualified Control.Monad.Freer                                 as Free
-import           Control.Monad.Freer.Log                             (LogMessage, LogMsg)
-import qualified Control.Monad.Freer.Log                             as Free
-import qualified Control.Monad.Freer.State                           as Free
-import           Control.Monad.Freer.Writer                          (Writer)
-import qualified Control.Monad.Freer.Writer                          as Free
+import           Control.Lens                                        hiding (index, ix)
+import           Control.Monad.Freer                                 (interpret, runM)
+import           Control.Monad.Freer.State                           (runState)
 import           Control.Monad.Reader
 import           Control.Tracer
 
@@ -37,27 +32,36 @@ import           Ouroboros.Network.Protocol.ChainSync.Server         (ChainSyncS
 import qualified Ouroboros.Network.Protocol.ChainSync.Server         as ChainSync
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Server as TxSubmission
 import qualified Ouroboros.Network.Protocol.LocalTxSubmission.Type   as TxSubmission
+import qualified Plutus.PAB.Monitoring.Util                          as LM
 
 import           Cardano.Slotting.Slot                               (SlotNo (..), WithOrigin (..))
 import           Ouroboros.Network.Block                             (Point (..), pointSlot)
 import           Ouroboros.Network.IOManager
-import           Ouroboros.Network.Magic
 import           Ouroboros.Network.Mux
-import           Ouroboros.Network.NodeToNode
+import           Ouroboros.Network.NodeToClient                      (NodeToClientProtocols (..),
+                                                                      nodeToClientCodecCBORTerm,
+                                                                      nodeToClientHandshakeCodec, nullErrorPolicies,
+                                                                      versionedNodeToClientProtocols)
 import qualified Ouroboros.Network.Point                             as OP (Block (..))
 import           Ouroboros.Network.Protocol.Handshake.Codec
-import           Ouroboros.Network.Protocol.Handshake.Unversioned
 import           Ouroboros.Network.Protocol.Handshake.Version
 import           Ouroboros.Network.Snocket
 import           Ouroboros.Network.Socket
 
 import           Cardano.Protocol.Socket.Type
 
+import           Cardano.Chain                                       (MockNodeServerChainState (..), addTxToPool,
+                                                                      chainNewestFirst, channel, currentSlot,
+                                                                      getChannel, getTip, handleControlChain, tip,
+                                                                      txPool)
 import           Ledger                                              (Block, Slot (..), Tx (..))
-import           Wallet.Emulator.Chain                               (ChainEvent (..), ChainState (..))
 import qualified Wallet.Emulator.Chain                               as Chain
 
-type CommandQueue = TQueue (Either ServerCommand ServerResponse)
+data CommandChannel = CommandChannel
+  { ccCommand  :: TQueue ServerCommand
+  , ccResponse :: TQueue ServerResponse
+  }
+
 type Error a = Either Text a
 
 {- | Clone the original channel for each connected client, then use
@@ -68,98 +72,127 @@ newtype LocalChannel = LocalChannel (TChan Block)
 {- | A handler used to pass around the path to the server
      and channels used for controlling the server. -}
 data ServerHandler = ServerHandler {
-    shSocketPath   :: FilePath,
+    shSocketPath     :: FilePath,
     -- The client will send a `ServerCommand` and the server will
     -- respond with a `ServerResponse`.
-    shCommandQueue :: CommandQueue
+    shCommandChannel :: CommandChannel
 }
 
-{- | The commands that control the server. For now we have only
-     a command used to add a new block. -}
+{- | The commands that control the server. This API is not part of the client
+     interface, and in order to call them directly you will need access to the
+     returned ServerHandler -}
 data ServerCommand =
     -- This command will add a new block by processing
     -- transactions in the memory pool.
     ProcessBlock
-    deriving Show
+    -- Set the slot number
+  | ModifySlot (Slot -> Slot)
+    -- Append a transaction to the transaction pool.
+  | AddTx Tx
+
+instance Show ServerCommand where
+    show = \case
+        ProcessBlock -> "ProcessBlock"
+        ModifySlot _ -> "ModifySlot"
+        AddTx t      -> "AddTx " <> show t
 
 {- | The response from the server. Can be used for the information
      passed back, or for synchronisation.
 -}
 data ServerResponse =
-    -- A block was added.
+    -- A block was added. We are using this for synchronization.
     BlockAdded Block
-    -- A response was received instead of a request.
-    | IgnoredResponse ServerResponse
+    | SlotChanged Slot
     deriving Show
 
-{- | Tell the server to process a new block, by validating the transactions
-     in the memory pool. This function will block waiting for a response. -}
-processBlock :: ServerHandler -> IO (Error Block)
-processBlock ServerHandler {shCommandQueue} = atomically $ do
-    writeTQueue shCommandQueue (Left ProcessBlock)
-    readTQueue  shCommandQueue >>= \case
-      Right (BlockAdded block) ->
-          pure $ Right block
-      Right (IgnoredResponse response) ->
-          pure $ Left ("Ignored response: " <> tshow response)
-      response ->
-          pure $ Left ("Unexpected response: " <> tshow response)
+processBlock :: MonadIO m => ServerHandler -> m Block
+processBlock ServerHandler {shCommandChannel} = do
+    liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) ProcessBlock
+    -- Wait for the server to finish processing blocks.
+    liftIO $ atomically $ readTQueue (ccResponse shCommandChannel) >>= \case
+        BlockAdded block -> pure block
+        _                -> retry
+
+modifySlot :: MonadIO m => (Slot -> Slot) -> ServerHandler -> m Slot
+modifySlot f ServerHandler{shCommandChannel} = do
+    liftIO $ atomically $ writeTQueue (ccCommand shCommandChannel) $ ModifySlot f
+    -- Wait for the server to finish changing the slot.
+    liftIO $ atomically $ readTQueue (ccResponse shCommandChannel) >>= \case
+        SlotChanged slot -> pure slot
+        _                -> retry
+
+addTx :: MonadIO m => ServerHandler -> Tx -> m ()
+addTx ServerHandler { shCommandChannel } tx = do
+    liftIO $ atomically $ writeTQueue (ccCommand  shCommandChannel) $ AddTx tx
+
+{- Create a thread that keeps the number of blocks in the channel to the maximum
+   limit of K -}
+pruneChain :: MonadIO m => Integer -> TChan Block -> m ThreadId
+pruneChain k original = do
+  localChannel <- liftIO $ atomically $ cloneTChan original
+  liftIO . forkIO $ go k localChannel
+  where
+  go :: MonadIO m => Integer -> TChan Block -> m ()
+  go k' localChannel = do
+    -- Wait for data on the channel
+    _ <- liftIO $ atomically $ readTChan localChannel
+    if k' == 0
+       {- When the counter reaches zero, there are K blocks in the
+          original channel and we start to remove the oldest stored
+          block by reading it. -}
+       then do
+           liftIO $ atomically (readTChan original) >> go 0 localChannel
+       else do
+           go (k' - 1) localChannel
 
 handleCommand ::
-    CommandQueue
- -> InternalState
- -> IO ()
-handleCommand commandQueue InternalState {isBlocks, isState} =
-    atomically (readTQueue commandQueue) >>= \case
-        -- Use the same code to add a block as the pure client.
-        Left ProcessBlock -> do
-            state <- takeMVar isState
-            let ((block, _events), newState) = Free.run
-                    $ Free.runState state
-                    $ Free.runWriter @[LogMessage ChainEvent]
-                    $ Free.reinterpret @(LogMsg ChainEvent) @(Writer [LogMessage ChainEvent]) (Free.handleLogWriter @ChainEvent @[LogMessage ChainEvent] (unto return))
-                    $ Free.interpret Chain.handleControlChain Chain.processBlock
-            putMVar isState newState
+    MonadIO m
+ => Trace IO MockServerLogMsg
+ -> CommandChannel
+ -> MVar MockNodeServerChainState
+ -> m ()
+handleCommand trace CommandChannel {ccCommand, ccResponse} mvChainState =
+    liftIO (atomically $ readTQueue ccCommand) >>= \case
+        AddTx tx     -> do
+            liftIO $ modifyMVar_ mvChainState (pure . over txPool (tx :))
+        ModifySlot f -> liftIO $ do
+            state <- liftIO $ takeMVar mvChainState
+            (s, nextState') <- liftIO $ Chain.modifySlot f
+                  & interpret handleControlChain
+                  & interpret (LM.handleLogMsgTraceMap ProcessingChainEvent trace)
+                  & runState state
+                  & runM
+            putMVar mvChainState nextState'
             atomically $ do
-                -- It is important for the blocks channel and chain
-                -- state to remain synchronised.
-                writeTChan isBlocks block
-                writeTQueue commandQueue (Right (BlockAdded block))
-        -- A client sent a response instead of a request.
-        Right response ->
-            atomically $ writeTQueue commandQueue (Right (IgnoredResponse response))
+                writeTQueue ccResponse (SlotChanged s)
+        ProcessBlock -> liftIO $ do
+            state <- liftIO $ takeMVar mvChainState
+            (block, nextState') <- liftIO $ Chain.processBlock
+                  & interpret handleControlChain
+                  & interpret (LM.handleLogMsgTraceMap ProcessingChainEvent trace)
+                  & runState state
+                  & runM
+            putMVar mvChainState nextState'
+            atomically $
+                writeTQueue ccResponse (BlockAdded block)
 
 {- | Start the server in a new thread, and return a server handler
      used to control the server -}
 runServerNode ::
-    FilePath
- -> ChainState
- -> IO ServerHandler
-runServerNode shSocketPath initialState = do
-    serverState    <- initialiseInternalState initialState
-    shCommandQueue <- newTQueueIO
-    _ <- forkIO . void    $ protocolLoop  shSocketPath   serverState
-    _ <- forkIO . forever $ handleCommand shCommandQueue serverState
-    pure $ ServerHandler { shSocketPath, shCommandQueue }
-
--- * Internal state
-
-{- Store a channel (that is *never* cleared, for now) containing all
-   the blocks, and the state required for validating the next block. -}
-data InternalState = InternalState {
-    isBlocks :: TChan Block,
-    isState  :: MVar ChainState
-}
-
-initialiseInternalState ::
-    ChainState
- -> IO InternalState
-initialiseInternalState chainState = do
-    isBlocks <- newTChanIO
-    isState  <- newMVar chainState
-    traverse_ (atomically . writeTChan isBlocks)
-              (view Chain.chainNewestFirst chainState)
-    pure InternalState { isBlocks, isState }
+    MonadIO m
+ => Trace IO MockServerLogMsg
+ -> FilePath
+ -> Integer
+ -> MockNodeServerChainState
+ -> m ServerHandler
+runServerNode trace shSocketPath k initialState = liftIO $ do
+    serverState      <- newMVar initialState
+    shCommandChannel <- CommandChannel <$> newTQueueIO <*> newTQueueIO
+    globalChannel    <- getChannel serverState
+    void $ forkIO . void    $ protocolLoop        shSocketPath     serverState
+    void $ forkIO . forever $ handleCommand trace shCommandChannel serverState
+    void                    $ pruneChain k globalChannel
+    pure $ ServerHandler { shSocketPath, shCommandChannel }
 
 -- * ChainSync protocol
 
@@ -167,116 +200,120 @@ initialiseInternalState chainState = do
    transition is invoked. It makes the implementation of
    state transitions easier to read. -}
 
-type ChainSyncMonad = ReaderT InternalState IO
+type ChainSyncMonad = ReaderT (MVar MockNodeServerChainState) IO
 
-runChainSync :: InternalState -> ChainSyncMonad a -> IO a
+runChainSync :: MVar MockNodeServerChainState -> ChainSyncMonad a -> IO a
 runChainSync = flip runReaderT
 
 {- The initial state of the protocol. You can move into
    requesting the next block or reset state by searching for an
    intersection. -}
 idleState ::
-    ( MonadReader InternalState m
+    ( MonadReader (MVar MockNodeServerChainState) m
     , MonadIO m )
- => Maybe LocalChannel
- -> m (ServerStIdle Block Tip m ())
-idleState (Just channel) =
+ => LocalChannel
+ -> m (ServerStIdle Block (Point Block) Tip m ())
+idleState channel' =
     pure ServerStIdle {
-        recvMsgRequestNext = nextState channel,
+        recvMsgRequestNext = nextState channel',
         recvMsgFindIntersect = findIntersect,
         recvMsgDoneClient = return ()
     }
-idleState Nothing = undefined
 
 {- Get the next block, either immediately (the Just/Left branch)
    or within a monad (IO, in our case) where you can wait for the
    next block (Nothing/Right branch) -}
 nextState ::
-    ( MonadReader InternalState m
+    ( MonadReader (MVar MockNodeServerChainState) m
     , MonadIO m )
  => LocalChannel
- -> m (Either (ServerStNext Block Tip m ())
-              (m (ServerStNext Block Tip m ())))
-nextState localChannel@(LocalChannel channel) = do
-    chainState <- ask <&> isState
-    tip <- head . view Chain.chainNewestFirst <$>
-           liftIO (readMVar chainState)
-    (liftIO . atomically $ tryReadTChan channel) >>= \case
-        Nothing -> Right . pure <$> do
-            nextBlock <- liftIO . atomically $ readTChan channel
-            sendRollForward localChannel tip nextBlock
-        Just nextBlock -> Left  <$>
-            sendRollForward localChannel tip nextBlock
+ -> m (Either (ServerStNext Block (Point Block) Tip m ())
+              (m (ServerStNext Block (Point Block) Tip m ())))
+nextState localChannel@(LocalChannel channel') = do
+    chainState <- ask
+    tip' <- getTip chainState
+    (liftIO . atomically $ tryReadTChan channel') >>= \case
+        Nothing -> do
+            Right . pure <$> do
+                nextBlock <- liftIO . atomically $ readTChan channel'
+                liftIO $ modifyMVar_ chainState (pure . (tip ?~ nextBlock))
+                sendRollForward localChannel tip' nextBlock
+        Just nextBlock -> do
+            liftIO $ modifyMVar_ chainState (pure . (tip ?~ nextBlock))
+            Left <$> sendRollForward localChannel tip' nextBlock
 
 {- This protocol state will search for a block intersection
    with some client provided blocks. When an intersection is found
    the client state is reset to the new offset (the Just branch)
    or to the genesis block if no intersection was found. -}
 findIntersect ::
-    ( MonadReader InternalState m
+    ( MonadReader (MVar MockNodeServerChainState) m
     , MonadIO m )
  => [Point Block]
- -> m (ServerStIntersect Block Tip m ())
+ -> m (ServerStIntersect Block (Point Block) Tip m ())
 findIntersect clientPoints = do
-    chainState <- ask <&> isState >>= liftIO . readMVar
+    mvState <- ask
+    chainState <- liftIO $ readMVar mvState
+    serverPoints <- getChainPoints (view channel chainState) chainState
     let point = listToMaybe
-              $ intersect (getChainPoints chainState)
+              $ intersect serverPoints
                           clientPoints
+    tip' <- getTip mvState
     pure $ case point of
         Nothing ->
           SendMsgIntersectNotFound
-            (head $ view Chain.chainNewestFirst chainState)
+            tip'
             -- No intersection found. Resume from origin.
             (ChainSyncServer $ cloneChainFrom 0 >>= idleState)
         Just point' ->
           SendMsgIntersectFound
             point'
-            (head $ view Chain.chainNewestFirst chainState)
+            tip'
             -- Resuming from point'.
             (ChainSyncServer $ cloneChainFrom (pointOffset point') >>= idleState)
 
 {- This is a wrapper around the creation of a `ServerStNext` -}
 sendRollForward ::
-    ( MonadReader InternalState m
+    ( MonadReader (MVar MockNodeServerChainState) m
     , MonadIO m )
  => LocalChannel
  -> Block -- tip
  -> Block -- current
- -> m (ServerStNext Block Tip m ())
-sendRollForward channel tip current = pure $
+ -> m (ServerStNext Block (Point Block) Tip m ())
+sendRollForward channel' tip' current = pure $
     SendMsgRollForward
         current
-        tip
-        (ChainSyncServer (idleState (Just channel)))
+        tip'
+        (ChainSyncServer (idleState channel'))
 
 {- This is the state for a new connection. For now we start with
    slot 0, and in idleState. This will probably change, since it
    makes more sense to start in the `StIntersect` state. -}
 chainSyncServer ::
-    ( MonadReader InternalState m
+    ( MonadReader (MVar MockNodeServerChainState) m
     , MonadIO m )
- => ChainSyncServer Block Tip m ()
+ => ChainSyncServer Block (Point Block) Tip m ()
 chainSyncServer =
     ChainSyncServer (cloneChainFrom 0 >>= idleState)
 
 {- Use a `TChan` to model a broadcast channel of which we
    clone (with potentially varying offsets) for clients. -}
 cloneChainFrom :: forall m.
-    ( MonadReader InternalState m
+    ( MonadReader (MVar MockNodeServerChainState) m
     , MonadIO m )
  => Integer
- -> m (Maybe LocalChannel)
-cloneChainFrom offset = (LocalChannel <$>) <$> go
+ -> m LocalChannel
+cloneChainFrom offset = LocalChannel <$> go
   where
-    go :: m (Maybe (TChan Block))
+    go :: m (TChan Block)
     go = do
-        blocks <- ask <&> isBlocks
+        globalChannel <- ask >>= getChannel
         liftIO $ atomically $ do
-            newChannel <- cloneTChan blocks
-            consume newChannel offset
+            localChannel <- cloneTChan globalChannel
+            consume localChannel offset
 
-    consume :: TChan a -> Integer -> STM (Maybe (TChan a))
-    consume channel' ix | ix == 0    = pure $ Just channel'
+    consume :: TChan a -> Integer -> STM (TChan a)
+    consume channel' ix | ix == 0    = pure channel'
     consume channel' ix =
         -- We should have all requested blocks available on the
         -- channel, for consumption.
@@ -291,9 +328,9 @@ cloneChainFrom offset = (LocalChannel <$>) <$> go
    into IO. -}
 
 hoistChainSync ::
-    MonadReader InternalState m
- => ChainSyncServer Block Block ChainSyncMonad a
- -> m (ChainSyncServer Block Block IO a)
+    MonadReader (MVar MockNodeServerChainState) m
+ => ChainSyncServer Block (Point Block) Tip ChainSyncMonad a
+ -> m (ChainSyncServer Block (Point Block) Tip IO a)
 hoistChainSync machine = do
     internalState <- ask
     pure ChainSyncServer {
@@ -305,9 +342,9 @@ hoistChainSync machine = do
     }
 
 hoistStIdle ::
-    MonadReader InternalState m
- => ServerStIdle Block Block ChainSyncMonad a
- -> m (ServerStIdle Block Block IO a)
+    MonadReader (MVar MockNodeServerChainState) m
+ => ServerStIdle Block (Point Block) Tip ChainSyncMonad a
+ -> m (ServerStIdle Block (Point Block) Tip IO a)
 hoistStIdle (ServerStIdle nextState' findIntersect' done) = do
     internalState <- ask
     pure ServerStIdle {
@@ -323,32 +360,33 @@ hoistStIdle (ServerStIdle nextState' findIntersect' done) = do
    }
 
 hoistStIntersect ::
-    MonadReader InternalState m
- => ServerStIntersect Block Block ChainSyncMonad a
- -> m (ServerStIntersect Block Block IO a)
-hoistStIntersect (SendMsgIntersectFound point tip nextState') =
-    SendMsgIntersectFound point tip <$> hoistChainSync nextState'
-hoistStIntersect (SendMsgIntersectNotFound tip nextState') =
-    SendMsgIntersectNotFound tip    <$> hoistChainSync nextState'
+    MonadReader (MVar MockNodeServerChainState) m
+ => ServerStIntersect Block (Point Block) Tip ChainSyncMonad a
+ -> m (ServerStIntersect Block (Point Block) Tip IO a)
+hoistStIntersect (SendMsgIntersectFound point tip' nextState') =
+    SendMsgIntersectFound point tip' <$> hoistChainSync nextState'
+hoistStIntersect (SendMsgIntersectNotFound tip' nextState') =
+    SendMsgIntersectNotFound tip'    <$> hoistChainSync nextState'
 
 hoistStNext ::
-    MonadReader InternalState m
- => ServerStNext Block Block ChainSyncMonad a
- -> m (ServerStNext Block Block IO a)
-hoistStNext (SendMsgRollForward header tip nextState') =
-    SendMsgRollForward header tip <$> hoistChainSync nextState'
-hoistStNext (SendMsgRollBackward header tip nextState') =
-    SendMsgRollBackward header tip <$> hoistChainSync nextState'
+    MonadReader (MVar MockNodeServerChainState) m
+ => ServerStNext Block (Point Block) Tip ChainSyncMonad a
+ -> m (ServerStNext Block (Point Block) Tip IO a)
+hoistStNext (SendMsgRollForward header tip' nextState') =
+    SendMsgRollForward header tip' <$> hoistChainSync nextState'
+hoistStNext (SendMsgRollBackward header tip' nextState') =
+    SendMsgRollBackward header tip' <$> hoistChainSync nextState'
 
 {- This is boilerplate code that sets up the node protocols,
    you can find in:
      ouroboros-network/ouroboros-network/demo/chain-sync.hs -}
 
 protocolLoop ::
-    FilePath
- -> InternalState
- -> IO Void
-protocolLoop socketPath internalState = withIOManager $ \iocp -> do
+    MonadIO m
+ => FilePath
+ -> MVar MockNodeServerChainState
+ -> m Void
+protocolLoop socketPath internalState = liftIO $ withIOManager $ \iocp -> do
     networkState <- newNetworkMutableState
     _ <- async $ cleanNetworkMutableState networkState
     withServerNode
@@ -357,42 +395,50 @@ protocolLoop socketPath internalState = withIOManager $ \iocp -> do
       networkState
       (AcceptedConnectionsLimit maxBound maxBound 0)
       (localAddressFromPath socketPath)
-      unversionedHandshakeCodec
-      cborTermVersionDataCodec
-      (\(DictVersion _) -> acceptableVersion)
-      (simpleSingletonVersions UnversionedProtocol
-                               (NodeToNodeVersionData $ NetworkMagic 0)
-                               (DictVersion nodeToNodeCodecCBORTerm)
-                               (SomeResponderApplication (application internalState)))
+      nodeToClientHandshakeCodec
+      noTimeLimitsHandshake
+      (cborTermVersionDataCodec nodeToClientCodecCBORTerm)
+      acceptableVersion
+      (SomeResponderApplication <$>
+        versionedNodeToClientProtocols
+          nodeToClientVersion
+          nodeToClientVersionData
+          (\_ _ -> nodeToClientProtocols internalState))
       nullErrorPolicies
       $ \_ serverAsync -> wait serverAsync
 
-application ::
-    InternalState
- -> OuroborosApplication 'ResponderMode
-                         addr
-                         LBS.ByteString
-                         IO Void ()
-application internalState@InternalState {isState} =
-    nodeApplication chainSync txSubmission
-    where
-        chainSync :: RunMiniProtocol 'ResponderMode LBS.ByteString IO Void ()
-        chainSync =
-             ResponderProtocolOnly $
-             MuxPeer
-               (contramap show stdoutTracer)
-               codecChainSync
-               (ChainSync.chainSyncServerPeer
-                   (runReader (hoistChainSync chainSyncServer)
-                              internalState))
+nodeToClientProtocols
+  :: MVar MockNodeServerChainState
+  -> NodeToClientProtocols 'ResponderMode LBS.ByteString IO Void ()
+nodeToClientProtocols internalState =
+  NodeToClientProtocols
+    { localChainSyncProtocol = chainSync internalState
+    , localTxSubmissionProtocol = txSubmission internalState
+    , localStateQueryProtocol = doNothingResponderProtocol
+    }
 
-        txSubmission :: RunMiniProtocol 'ResponderMode LBS.ByteString IO Void ()
-        txSubmission =
-            ResponderProtocolOnly $
-            MuxPeer
-              (contramap show stdoutTracer)
-              codecTxSubmission
-              (TxSubmission.localTxSubmissionServerPeer (pure $ txSubmissionServer isState))
+chainSync
+  :: MVar MockNodeServerChainState
+  -> RunMiniProtocol 'ResponderMode LBS.ByteString IO Void ()
+chainSync mvChainState =
+     ResponderProtocolOnly $
+     MuxPeer
+       nullTracer
+       codecChainSync
+       (ChainSync.chainSyncServerPeer
+           (runReader (hoistChainSync chainSyncServer)
+                      mvChainState))
+
+txSubmission
+  :: MVar MockNodeServerChainState
+  -> RunMiniProtocol 'ResponderMode LBS.ByteString IO Void ()
+txSubmission mvChainState =
+    ResponderProtocolOnly $
+    MuxPeer
+      nullTracer
+      codecTxSubmission
+      (TxSubmission.localTxSubmissionServerPeer
+          (pure $ txSubmissionServer mvChainState))
 
 -- * Computing intersections
 
@@ -405,11 +451,12 @@ pointOffset pt =
     At (SlotNo s) -> fromIntegral s
 
 -- Currently selects all points from the blockchain.
-getChainPoints :: ChainState -> [Point Block]
-getChainPoints st =
-  zipWith mkPoint
-    [(st ^. Chain.currentSlot) .. 0]
-    (st ^. Chain.chainNewestFirst)
+getChainPoints :: MonadIO m => TChan Block -> MockNodeServerChainState -> m [Point Block]
+getChainPoints ch st = do
+  chain <- chainNewestFirst ch
+  pure $ zipWith mkPoint
+    [(st ^. currentSlot) .. 0]
+    chain
   where
     mkPoint :: Slot -> Block -> Point Block
     mkPoint (Slot s) block =
@@ -423,7 +470,7 @@ getChainPoints st =
    it is much simpler. -}
 
 txSubmissionServer ::
-    MVar ChainState
+    MVar MockNodeServerChainState
  -> TxSubmission.LocalTxSubmissionServer Tx String IO ()
 txSubmissionServer state = txSubmissionState
     where
@@ -432,7 +479,7 @@ txSubmissionServer state = txSubmissionState
         TxSubmission.LocalTxSubmissionServer {
           TxSubmission.recvMsgSubmitTx =
             \tx -> do
-                modifyMVar_ state (pure . over Chain.txPool (Chain.addTxToPool tx))
+                modifyMVar_ state (pure . over txPool (addTxToPool tx))
                 return (TxSubmission.SubmitSuccess, txSubmissionState)
         , TxSubmission.recvMsgDone     = ()
         }

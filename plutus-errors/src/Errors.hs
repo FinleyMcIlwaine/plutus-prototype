@@ -4,17 +4,17 @@
 module Errors (allErrors) where
 
 import           ErrorCode
-import           Language.Haskell.TH                              as TH
+import           Language.Haskell.TH                      as TH
 
-import qualified Language.PlutusCore.DeBruijn                     as PLC
-import qualified Language.PlutusCore.Error                        as PLC
-import qualified Language.PlutusCore.Evaluation.Machine.Cek       as PLC
-import qualified Language.PlutusCore.Evaluation.Machine.Exception as PLC
-import qualified Language.PlutusIR.Error                          as PIR
-import qualified Language.PlutusIR.Parser                         as PIR
-import qualified Language.PlutusTx.Code                           as PTX
-import qualified Language.PlutusTx.Compiler.Error                 as PTX
-import qualified Language.PlutusTx.Lift.Class                     as PTX
+import qualified PlutusCore.DeBruijn                      as PLC
+import qualified PlutusCore.Error                         as PLC
+import qualified PlutusCore.Evaluation.Machine.Exception  as PLC
+import qualified PlutusIR.Error                           as PIR
+import qualified PlutusIR.Parser                          as PIR
+import qualified PlutusTx.Code                            as PTX
+import qualified PlutusTx.Compiler.Error                  as PTX
+import qualified PlutusTx.Lift.Class                      as PTX
+import qualified UntypedPlutusCore.Evaluation.Machine.Cek as PLC
 
 {- | A collection of error instances which are obsolete, together with their error codes bundled to one instance.
 See plutus-errors/README.md
@@ -37,10 +37,12 @@ allErrors =
    , 'PIR.CompilationError
    , 'PIR.UnsupportedError
    , 'PIR.UnknownBuiltinType
+   , 'PIR.BuiltinTypeNotAStar
    , 'PIR.InvalidConstant
    , 'PLC.LexErr
    , 'PLC.Unexpected
    , 'PLC.UnknownBuiltinType
+   , 'PLC.BuiltinTypeNotAStar
    , 'PLC.UnknownBuiltinFunction
    , 'PLC.InvalidBuiltinConstant
    , 'PLC.MultiplyDefined
@@ -59,8 +61,6 @@ allErrors =
    , 'PLC.NonWrapUnwrappedMachineError
    , 'PLC.NonFunctionalApplicationMachineError
    , 'PLC.OpenTermEvaluatedMachineError
-   , 'PLC.TooFewArgumentsConstAppError
-   , 'PLC.TooManyArgumentsConstAppError
    , 'PLC.UnliftingErrorE
    , 'PLC.BuiltinTermArgumentExpectedMachineError
    , 'PLC.UnexpectedBuiltinTermArgumentMachineError

@@ -1,21 +1,63 @@
-{ pkgs, nix-gitignore, set-git-rev, haskell, webCommon, webCommonPlutus, buildPursPackage, buildNodeModules }:
+{ pkgs, gitignore-nix, haskell, webCommon, webCommonPlutus, buildPursPackage, buildNodeModules, filterNpm }:
 let
-  server-invoker = set-git-rev haskell.packages.plutus-pab.components.exes.plutus-pab;
+  server-invoker = haskell.packages.plutus-pab.components.exes.plutus-pab;
+  test-generator = haskell.packages.plutus-pab.components.exes.plutus-pab-test-psgenerator;
 
   generated-purescript = pkgs.runCommand "plutus-pab-purescript" { } ''
     mkdir $out
     ln -s ${haskell.packages.plutus-pab.src}/plutus-pab.yaml.sample plutus-pab.yaml
     ${server-invoker}/bin/plutus-pab psgenerator $out
+    ${test-generator}/bin/plutus-pab-test-psgenerator $out
   '';
 
   # For dev usage
-  generate-purescript = pkgs.writeShellScript "plutus-pab-generate-purescript" ''
-    rm -rf ./generated
-    ${server-invoker}/bin/plutus-pab psgenerator generated
+  generate-purescript = pkgs.writeShellScriptBin "plutus-pab-generate-purs" ''
+    generatedDir=./generated
+    rm -rf $generatedDir
+    # There might be local modifications so only copy when missing
+    ! test -f ./plutus-pab.yaml && cp ../plutus-pab/plutus-pab.yaml.sample plutus-pab.yaml
+    $(nix-build ../default.nix --quiet --no-build-output -A plutus-pab.server-invoker)/bin/plutus-pab psgenerator $generatedDir
+    $(nix-build ../default.nix --quiet --no-build-output -A plutus-pab.test-generator)/bin/plutus-pab-test-psgenerator $generatedDir
   '';
 
+  # For dev usage
+  migrate = pkgs.writeShellScriptBin "plutus-pab-migrate" ''
+    # There might be local modifications so only copy when missing
+    ! test -f ./plutus-pab.yaml && cp ../plutus-pab/plutus-pab.yaml.sample plutus-pab.yaml
+    $(nix-build ../default.nix --quiet --no-build-output -A plutus-pab.server-invoker)/bin/plutus-pab migrate
+  '';
+
+  # For dev usage
+  start-backend = pkgs.writeShellScriptBin "plutus-pab-server" ''
+    export FRONTEND_URL=https://localhost:8009
+    export WEBGHC_URL=http://localhost:8080
+    # There might be local modifications so only copy when missing
+    ! test -f ./plutus-pab.yaml && cp ../plutus-pab/plutus-pab.yaml.sample plutus-pab.yaml
+    $(nix-build ../default.nix --quiet --no-build-output -A plutus-pab.server-invoker)/bin/plutus-pab --config=plutus-pab.yaml webserver
+  '';
+
+  # For dev usage
+  start-all-servers = pkgs.writeShellScriptBin "plutus-pab-all-servers" ''
+    export FRONTEND_URL=https://localhost:8009
+    export WEBGHC_URL=http://localhost:8080
+    # There might be local modifications so only copy when missing
+    ! test -f ./plutus-pab.yaml && cp ../plutus-pab/plutus-pab.yaml.sample plutus-pab.yaml
+    $(nix-build ../default.nix --quiet --no-build-output -A plutus-pab.server-invoker)/bin/plutus-pab --config=plutus-pab.yaml all-servers
+  '';
+
+  # For dev usage
+  start-all-servers-m = pkgs.writeShellScriptBin "plutus-pab-all-servers-m" ''
+    export FRONTEND_URL=https://localhost:8009
+    export WEBGHC_URL=http://localhost:8080
+    # There might be local modifications so only copy when missing
+    ! test -f ./plutus-pab.yaml && cp ../plutus-pab/plutus-pab.yaml.sample plutus-pab.yaml
+    $(nix-build ../default.nix --quiet --no-build-output -A plutus-pab.server-invoker)/bin/plutus-pab --config=plutus-pab.yaml -m all-servers
+  '';
+
+  cleanSrc = gitignore-nix.gitignoreSource ./.;
+
   nodeModules = buildNodeModules {
-    projectDir = nix-gitignore.gitignoreSource [ "/*.nix" "/*.md" ] ./.;
+    projectDir = filterNpm cleanSrc;
     packageJson = ./package.json;
     packageLockJson = ./package-lock.json;
   };
@@ -23,7 +65,7 @@ let
   client =
     buildPursPackage {
       inherit pkgs nodeModules;
-      src = ./.;
+      src = cleanSrc;
       name = "plutus-pab-client";
       extraSrcs = {
         web-common = webCommon;
@@ -40,9 +82,13 @@ let
       spagoPackages = pkgs.callPackage ./spago-packages.nix { };
     };
 
-  demo-scripts = (dbPath: pkgs.callPackage ./pab-demo-scripts.nix { inherit pkgs dbPath client; pab-exes = haskell.packages.plutus-pab.components.exes; });
+  pab-exes = haskell.packages.plutus-pab.components.exes;
+
+  demo-scripts = pkgs.callPackage ./pab-demo-scripts.nix { inherit client pab-exes; };
+
+  mkConf = pkgs.callPackage ./config.nix { };
 
 in
 {
-  inherit client demo-scripts server-invoker generated-purescript generate-purescript;
+  inherit client demo-scripts server-invoker test-generator generated-purescript generate-purescript migrate start-backend start-all-servers start-all-servers-m mkConf pab-exes;
 }

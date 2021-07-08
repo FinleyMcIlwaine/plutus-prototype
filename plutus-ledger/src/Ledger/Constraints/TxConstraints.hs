@@ -17,39 +17,40 @@
 -- | Constraints for transactions
 module Ledger.Constraints.TxConstraints where
 
-import           Data.Aeson                 (FromJSON, ToJSON)
-import           Data.Bifunctor             (Bifunctor (..))
-import qualified Data.Map                   as Map
-import           Data.Text.Prettyprint.Doc  hiding ((<>))
-import           GHC.Generics               (Generic)
+import           Data.Aeson                (FromJSON, ToJSON)
+import           Data.Bifunctor            (Bifunctor (..))
+import qualified Data.Map                  as Map
+import           Data.Text.Prettyprint.Doc hiding ((<>))
+import           GHC.Generics              (Generic)
 
-import qualified Language.PlutusTx          as PlutusTx
-import qualified Language.PlutusTx.AssocMap as AssocMap
-import           Language.PlutusTx.Prelude
+import qualified PlutusTx
+import qualified PlutusTx.AssocMap         as AssocMap
+import           PlutusTx.Prelude
 
-import           Plutus.V1.Ledger.Crypto    (PubKeyHash)
-import qualified Plutus.V1.Ledger.Interval  as I
-import           Plutus.V1.Ledger.Scripts   (Datum (..), DatumHash, MonetaryPolicyHash, Redeemer, ValidatorHash)
-import           Plutus.V1.Ledger.Slot      (SlotRange)
-import           Plutus.V1.Ledger.Tx        (TxOutRef)
-import           Plutus.V1.Ledger.Value     (TokenName, Value, isZero)
-import qualified Plutus.V1.Ledger.Value     as Value
+import           Plutus.V1.Ledger.Crypto   (PubKeyHash)
+import qualified Plutus.V1.Ledger.Interval as I
+import           Plutus.V1.Ledger.Scripts  (Datum (..), DatumHash, MintingPolicyHash, Redeemer (..), ValidatorHash)
+import           Plutus.V1.Ledger.Time     (POSIXTimeRange)
+import           Plutus.V1.Ledger.Tx       (TxOutRef)
+import           Plutus.V1.Ledger.Value    (TokenName, Value, isZero)
+import qualified Plutus.V1.Ledger.Value    as Value
 
-import qualified Prelude                    as Haskell
+import qualified Prelude                   as Haskell
 
 -- | Constraints on transactions that want to spend script outputs
 data TxConstraint =
     MustIncludeDatum Datum
-    | MustValidateIn SlotRange
+    | MustValidateIn POSIXTimeRange
     | MustBeSignedBy PubKeyHash
-    | MustSpendValue Value
+    | MustSpendAtLeast Value
+    | MustProduceAtLeast Value
     | MustSpendPubKeyOutput TxOutRef
     | MustSpendScriptOutput TxOutRef Redeemer
-    | MustForgeValue MonetaryPolicyHash TokenName Integer
+    | MustMintValue MintingPolicyHash Redeemer TokenName Integer
     | MustPayToPubKey PubKeyHash Value
     | MustPayToOtherScript ValidatorHash Datum Value
     | MustHashDatum DatumHash Datum
-    deriving stock (Show, Generic, Haskell.Eq)
+    deriving stock (Haskell.Show, Generic, Haskell.Eq)
     deriving anyclass (ToJSON, FromJSON)
 
 instance Pretty TxConstraint where
@@ -60,14 +61,16 @@ instance Pretty TxConstraint where
             "must validate in:" <+> viaShow range
         MustBeSignedBy signatory ->
             "must be signed by:" <+> pretty signatory
-        MustSpendValue vl ->
-            hang 2 $ vsep ["must spend value:", pretty vl]
+        MustSpendAtLeast vl ->
+            hang 2 $ vsep ["must spend at least:", pretty vl]
+        MustProduceAtLeast vl ->
+            hang 2 $ vsep ["must produce at least:", pretty vl]
         MustSpendPubKeyOutput ref ->
             hang 2 $ vsep ["must spend pubkey output:", pretty ref]
         MustSpendScriptOutput ref red ->
             hang 2 $ vsep ["must spend script output:", pretty ref, pretty red]
-        MustForgeValue mps tn i ->
-            hang 2 $ vsep ["must forge value:", pretty mps, pretty tn <+> pretty i]
+        MustMintValue mps red tn i ->
+            hang 2 $ vsep ["must mint value:", pretty mps, pretty red, pretty tn <+> pretty i]
         MustPayToPubKey pk v ->
             hang 2 $ vsep ["must pay to pubkey:", pretty pk, pretty v]
         MustPayToOtherScript vlh dv vl ->
@@ -79,7 +82,7 @@ data InputConstraint a =
     InputConstraint
         { icRedeemer :: a
         , icTxOutRef :: TxOutRef
-        } deriving stock (Show, Generic, Haskell.Functor)
+        } deriving stock (Haskell.Show, Generic, Haskell.Functor)
 
 addTxIn :: TxOutRef -> i -> TxConstraints i o -> TxConstraints i o
 addTxIn outRef red tc =
@@ -101,7 +104,7 @@ data OutputConstraint a =
     OutputConstraint
         { ocDatum :: a
         , ocValue :: Value
-        } deriving stock (Show, Generic, Haskell.Functor)
+        } deriving stock (Haskell.Show, Generic, Haskell.Functor)
 
 instance (Pretty a) => Pretty (OutputConstraint a) where
     pretty OutputConstraint{ocDatum, ocValue} =
@@ -121,7 +124,7 @@ data TxConstraints i o =
         , txOwnInputs   :: [InputConstraint i]
         , txOwnOutputs  :: [OutputConstraint o]
         }
-    deriving stock (Show, Generic)
+    deriving stock (Haskell.Show, Generic)
 
 instance Bifunctor TxConstraints where
     bimap f g txc =
@@ -159,9 +162,9 @@ singleton :: TxConstraint -> TxConstraints i o
 singleton a = mempty { txConstraints = [a] }
 
 {-# INLINABLE mustValidateIn #-}
--- | @mustValidateIn r@ requires the transaction's slot range to be contained
+-- | @mustValidateIn r@ requires the transaction's time range to be contained
 --   in @r@.
-mustValidateIn :: forall i o. SlotRange -> TxConstraints i o
+mustValidateIn :: forall i o. POSIXTimeRange -> TxConstraints i o
 mustValidateIn = singleton . MustValidateIn
 
 {-# INLINABLE mustBeSignedBy #-}
@@ -196,23 +199,38 @@ mustPayToOtherScript vh dv vl =
     singleton (MustPayToOtherScript vh dv vl)
     <> singleton (MustIncludeDatum dv)
 
-{-# INLINABLE mustForgeValue #-}
+{-# INLINABLE mustMintValue #-}
 -- | Create the given value
-mustForgeValue :: forall i o. Value -> TxConstraints i o
-mustForgeValue = foldMap valueConstraint . (AssocMap.toList . Value.getValue) where
+mustMintValue :: forall i o. Value -> TxConstraints i o
+mustMintValue = mustMintValueWithRedeemer (Redeemer $ PlutusTx.toData ())
+
+{-# INLINABLE mustMintValueWithRedeemer #-}
+-- | Create the given value
+mustMintValueWithRedeemer :: forall i o. Redeemer -> Value -> TxConstraints i o
+mustMintValueWithRedeemer red = foldMap valueConstraint . (AssocMap.toList . Value.getValue) where
     valueConstraint (currencySymbol, mp) =
         let hs = Value.currencyMPSHash currencySymbol in
-        foldMap (uncurry (mustForgeCurrency hs)) (AssocMap.toList mp)
+        foldMap (Haskell.uncurry (mustMintCurrencyWithRedeemer hs red)) (AssocMap.toList mp)
 
-{-# INLINABLE mustForgeCurrency #-}
+{-# INLINABLE mustMintCurrency #-}
 -- | Create the given amount of the currency
-mustForgeCurrency :: forall i o. MonetaryPolicyHash -> TokenName -> Integer -> TxConstraints i o
-mustForgeCurrency mps tn = singleton . MustForgeValue mps tn
+mustMintCurrency :: forall i o. MintingPolicyHash -> TokenName -> Integer -> TxConstraints i o
+mustMintCurrency mps = mustMintCurrencyWithRedeemer mps (Redeemer $ PlutusTx.toData ())
 
-{-# INLINABLE mustSpendValue #-}
--- | Requirement to spend the given value
-mustSpendValue :: forall i o. Value -> TxConstraints i o
-mustSpendValue = singleton . MustSpendValue
+{-# INLINABLE mustMintCurrencyWithRedeemer #-}
+-- | Create the given amount of the currency
+mustMintCurrencyWithRedeemer :: forall i o. MintingPolicyHash -> Redeemer -> TokenName -> Integer -> TxConstraints i o
+mustMintCurrencyWithRedeemer mps red tn = singleton . MustMintValue mps red tn
+
+{-# INLINABLE mustSpendAtLeast #-}
+-- | Requirement to spend inputs with at least the given value
+mustSpendAtLeast :: forall i o. Value -> TxConstraints i o
+mustSpendAtLeast = singleton . MustSpendAtLeast
+
+{-# INLINABLE mustProduceAtLeast #-}
+-- | Requirement to produce outputs with at least the given value
+mustProduceAtLeast :: forall i o. Value -> TxConstraints i o
+mustProduceAtLeast = singleton . MustProduceAtLeast
 
 {-# INLINABLE mustSpendPubKeyOutput #-}
 mustSpendPubKeyOutput :: forall i o. TxOutRef -> TxConstraints i o
@@ -241,11 +259,19 @@ pubKeyPayments TxConstraints{txConstraints} =
     $ Map.fromListWith (<>)
       (txConstraints >>= \case { MustPayToPubKey pk vl -> [(pk, vl)]; _ -> [] })
 
-{-# INLINABLE mustSpendValueTotal #-}
-mustSpendValueTotal :: forall i o. TxConstraints i o -> Value
-mustSpendValueTotal = foldMap f . txConstraints where
-    f (MustSpendValue v) = v
-    f _                  = mempty
+-- | The minimum 'Value' that satisfies all 'MustSpendAtLeast' constraints
+{-# INLINABLE mustSpendAtLeastTotal #-}
+mustSpendAtLeastTotal :: forall i o. TxConstraints i o -> Value
+mustSpendAtLeastTotal = foldl (\/) mempty . fmap f . txConstraints where
+    f (MustSpendAtLeast v) = v
+    f _                    = mempty
+
+-- | The minimum 'Value' that satisfies all 'MustProduceAtLeast' constraints
+{-# INLINABLE mustProduceAtLeastTotal #-}
+mustProduceAtLeastTotal :: forall i o. TxConstraints i o -> Value
+mustProduceAtLeastTotal = foldl (\/) mempty . fmap f . txConstraints where
+    f (MustProduceAtLeast v) = v
+    f _                      = mempty
 
 {-# INLINABLE requiredSignatories #-}
 requiredSignatories :: forall i o. TxConstraints i o -> [PubKeyHash]
@@ -254,10 +280,10 @@ requiredSignatories = foldMap f . txConstraints where
     f _                   = []
 
 {-# INLINABLE requiredMonetaryPolicies #-}
-requiredMonetaryPolicies :: forall i o. TxConstraints i o -> [MonetaryPolicyHash]
+requiredMonetaryPolicies :: forall i o. TxConstraints i o -> [MintingPolicyHash]
 requiredMonetaryPolicies = foldMap f . txConstraints where
-    f (MustForgeValue mps _ _) = [mps]
-    f _                        = []
+    f (MustMintValue mps _ _ _) = [mps]
+    f _                         = []
 
 {-# INLINABLE requiredDatums #-}
 requiredDatums :: forall i o. TxConstraints i o -> [Datum]
@@ -271,10 +297,11 @@ requiredDatums = foldMap f . txConstraints where
 modifiesUtxoSet :: forall i o. TxConstraints i o -> Bool
 modifiesUtxoSet TxConstraints{txConstraints, txOwnOutputs, txOwnInputs} =
     let requiresInputOutput = \case
-            MustSpendValue{}            -> True
+            MustSpendAtLeast{}          -> True
+            MustProduceAtLeast{}        -> True
             MustSpendPubKeyOutput{}     -> True
             MustSpendScriptOutput{}     -> True
-            MustForgeValue{}            -> True
+            MustMintValue{}             -> True
             MustPayToPubKey _ vl        -> not (isZero vl)
             MustPayToOtherScript _ _ vl -> not (isZero vl)
             _                           -> False

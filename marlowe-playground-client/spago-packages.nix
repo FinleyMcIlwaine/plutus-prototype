@@ -329,6 +329,18 @@ let
         installPhase = "ln -s $src $out";
       };
 
+    "filterable" = pkgs.stdenv.mkDerivation {
+        name = "filterable";
+        version = "v3.0.1";
+        src = pkgs.fetchgit {
+          url = "https://github.com/LiamGoodacre/purescript-filterable";
+          rev = "0b9b0994704f29e75072e6b3e6b8658b93b35ab8";
+          sha256 = "1sj0r49pzkiibrin28p2ikh3z0884kzqa9p6glzh5hxh6smx8ihb";
+        };
+        phases = "installPhase";
+        installPhase = "ln -s $src $out";
+      };
+
     "fixed-points" = pkgs.stdenv.mkDerivation {
         name = "fixed-points";
         version = "v5.1.0";
@@ -653,6 +665,18 @@ let
         installPhase = "ln -s $src $out";
       };
 
+    "markdown" = pkgs.stdenv.mkDerivation {
+        name = "markdown";
+        version = "b51ee0e4aa04c9e6a5a70f2552a400c3f9cad439";
+        src = pkgs.fetchgit {
+          url = "https://github.com/input-output-hk/purescript-markdown";
+          rev = "b51ee0e4aa04c9e6a5a70f2552a400c3f9cad439";
+          sha256 = "0xp41wg1p4dwivgpy121mzpimkdakg0m83hx8ypb5ayjk98vvyf0";
+        };
+        phases = "installPhase";
+        installPhase = "ln -s $src $out";
+      };
+
     "math" = pkgs.stdenv.mkDerivation {
         name = "math";
         version = "v2.1.1";
@@ -809,6 +833,18 @@ let
         installPhase = "ln -s $src $out";
       };
 
+    "numbers" = pkgs.stdenv.mkDerivation {
+        name = "numbers";
+        version = "v7.0.0";
+        src = pkgs.fetchgit {
+          url = "https://github.com/sharkdp/purescript-numbers.git";
+          rev = "6262a5f17dcdfba11dfae03f4fa8eec02f7ed29f";
+          sha256 = "1l9s22fkjf7wc0zd3wjax4hlif7gqh6ij0ijb8sq20mfh2xl4hj8";
+        };
+        phases = "installPhase";
+        installPhase = "ln -s $src $out";
+      };
+
     "ordered-collections" = pkgs.stdenv.mkDerivation {
         name = "ordered-collections";
         version = "v1.6.1";
@@ -876,6 +912,18 @@ let
           url = "https://github.com/felixSchl/purescript-pipes.git";
           rev = "a9533035f6fe8e59a65c6d11a3a7c767f3c9ae67";
           sha256 = "0vl37f42dy4w4hswiay22w0n14k7sr670x54iwn7428larzrzs8y";
+        };
+        phases = "installPhase";
+        installPhase = "ln -s $src $out";
+      };
+
+    "precise" = pkgs.stdenv.mkDerivation {
+        name = "precise";
+        version = "v5.1.0";
+        src = pkgs.fetchgit {
+          url = "https://github.com/purescript-contrib/purescript-precise";
+          rev = "5bedbf520022ce15b03a70474d9cf1a8dc3e6b2d";
+          sha256 = "1zashxhy100r0pgmnjxbqjf9q9bml9rwm0hqqcxzkd2l0llxaggc";
         };
         phases = "installPhase";
         installPhase = "ln -s $src $out";

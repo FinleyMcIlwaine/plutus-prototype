@@ -1,205 +1,194 @@
 module MarloweEditor.State
   ( handleAction
   , editorGetValue
-  , {- FIXME: this should be an action -} editorResize
   ) where
 
 import Prelude hiding (div)
-import CloseAnalysis (startCloseAnalysis)
+import BottomPanel.State (handleAction) as BottomPanel
+import BottomPanel.Types (Action(..), State) as BottomPanel
+import CloseAnalysis (analyseClose)
 import Control.Monad.Except (ExceptT, lift, runExceptT)
 import Control.Monad.Maybe.Extra (hoistMaybe)
 import Control.Monad.Maybe.Trans (MaybeT(..), runMaybeT)
-import Control.Monad.Reader (runReaderT)
-import Data.Array (filter)
+import Control.Monad.Reader (class MonadAsk)
+import Data.Array as Array
 import Data.Either (Either(..), hush)
-import Data.Foldable (for_, traverse_)
-import Data.Lens (assign, preview, set, use)
+import Data.Foldable (for_)
+import Data.Lens (assign, modifying, over, preview, set, use)
 import Data.Lens.Index (ix)
-import Data.Maybe (Maybe(..))
-import Data.String (codePointFromChar)
+import Data.Map as Map
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.String (Pattern(..), codePointFromChar, contains)
 import Data.String as String
 import Data.Tuple (Tuple(..))
 import Effect.Aff.Class (class MonadAff, liftAff)
-import Effect.Class (class MonadEffect)
+import Env (Env)
+import Examples.Marlowe.Contracts (example) as ME
 import Halogen (HalogenM, liftEffect, modify_, query)
+import Halogen as H
+import Halogen.Extra (mapSubmodule)
 import Halogen.Monaco (Message(..), Query(..)) as Monaco
-import LocalStorage as LocalStorage
 import MainFrame.Types (ChildSlots, _marloweEditorPageSlot)
-import Marlowe (SPParams_)
-import Marlowe as Server
-import Marlowe.Holes (fromTerm)
-import Marlowe.Linter as Linter
+import Marlowe.Extended as Extended
+import Marlowe.Extended.Metadata (MetadataHintInfo)
+import Marlowe.Holes as Holes
+import Marlowe.LinterText as Linter
 import Marlowe.Monaco (updateAdditionalContext)
+import Marlowe.Monaco as MM
 import Marlowe.Parser (parseContract)
-import Marlowe.Semantics (Contract, emptyState)
-import Marlowe.Symbolic.Types.Request as MSReq
-import MarloweEditor.Types (Action(..), AnalysisState(..), State, _analysisState, _bottomPanelView, _editorErrors, _editorWarnings, _keybindings, _selectedHole, _showBottomPanel, _showErrorDetail)
-import Monaco (IMarker, isError, isWarning)
-import Network.RemoteData (RemoteData(..))
+import Marlowe.Template (TemplateContent)
+import Marlowe.Template as Template
+import MarloweEditor.Types (Action(..), BottomPanelView, State, _bottomPanelState, _editorErrors, _editorReady, _editorWarnings, _hasHoles, _keybindings, _metadataHintInfo, _selectedHole, _showErrorDetail)
+import Monaco (isError, isWarning)
 import Network.RemoteData as RemoteData
 import Servant.PureScript.Ajax (AjaxError)
-import Servant.PureScript.Settings (SPSettings_)
-import StaticAnalysis.Reachability (getUnreachableContracts, startReachabilityAnalysis)
+import SessionStorage as SessionStorage
+import StaticAnalysis.Reachability (analyseReachability, getUnreachableContracts)
+import StaticAnalysis.StaticTools (analyseContract)
+import StaticAnalysis.Types (AnalysisExecutionState(..), _analysisExecutionState, _analysisState, _templateContent)
 import StaticData (marloweBufferLocalStorageKey)
 import StaticData as StaticData
 import Text.Pretty (pretty)
 import Types (WebData)
 import Web.Event.Extra (preventDefault, readFileFromDragEvent)
 
+toBottomPanel ::
+  forall m a.
+  Functor m =>
+  HalogenM (BottomPanel.State BottomPanelView) (BottomPanel.Action BottomPanelView Action) ChildSlots Void m a ->
+  HalogenM State Action ChildSlots Void m a
+toBottomPanel = mapSubmodule _bottomPanelState BottomPanelAction
+
 handleAction ::
   forall m.
   MonadAff m =>
-  SPSettings_ SPParams_ ->
+  MonadAsk Env m =>
   Action ->
   HalogenM State Action ChildSlots Void m Unit
-handleAction _ (ChangeKeyBindings bindings) = do
+handleAction (ChangeKeyBindings bindings) = do
   assign _keybindings bindings
   void $ query _marloweEditorPageSlot unit (Monaco.SetKeyBindings bindings unit)
 
-handleAction _ (HandleEditorMessage (Monaco.TextChanged text)) = do
-  assign _selectedHole Nothing
-  liftEffect $ LocalStorage.setItem marloweBufferLocalStorageKey text
-  analysisState <- use _analysisState
-  let
-    parsedContract = parseContract text
+handleAction (HandleEditorMessage Monaco.EditorReady) = do
+  editorSetTheme
+  mContents <- liftEffect $ SessionStorage.getItem marloweBufferLocalStorageKey
+  editorSetValue $ fromMaybe ME.example mContents
+  for_ mContents processMarloweCode
+  assign _editorReady true
 
-    unreachableContracts = getUnreachableContracts analysisState
+handleAction (HandleEditorMessage (Monaco.TextChanged text)) = do
+  -- When the Monaco component start it fires two messages at the same time, an EditorReady
+  -- and TextChanged. Because of how Halogen works, it interwines the handleActions calls which
+  -- can cause problems while setting and getting the values of the session storage. To avoid
+  -- starting with an empty text editor we use an editorReady flag to ignore the text changes until
+  -- we are ready to go. Eventually we could remove the initial TextChanged event, but we need to check
+  -- that it doesn't break the plutus playground.
+  editorReady <- use _editorReady
+  when editorReady do
+    assign _selectedHole Nothing
+    liftEffect $ SessionStorage.setItem marloweBufferLocalStorageKey text
+    processMarloweCode text
 
-    (Tuple markerData additionalContext) = Linter.markers unreachableContracts parsedContract
-  markers <- query _marloweEditorPageSlot unit (Monaco.SetModelMarkers markerData identity)
-  traverse_ editorSetMarkers markers
-  {-
-    There are three different Monaco objects that require the linting information:
-      * Markers
-      * Code completion (type aheads)
-      * Code suggestions (Quick fixes)
-     To avoid having to recalculate the linting multiple times, we add aditional context to the providers
-     whenever the code changes.
-  -}
-  providers <- query _marloweEditorPageSlot unit (Monaco.GetObjects identity)
-  case providers of
-    Just { codeActionProvider: Just caProvider, completionItemProvider: Just ciProvider } -> pure $ updateAdditionalContext caProvider ciProvider additionalContext
-    _ -> pure unit
+handleAction (HandleDragEvent event) = liftEffect $ preventDefault event
 
-handleAction _ (HandleDragEvent event) = liftEffect $ preventDefault event
-
-handleAction settings (HandleDropEvent event) = do
+handleAction (HandleDropEvent event) = do
   liftEffect $ preventDefault event
   contents <- liftAff $ readFileFromDragEvent event
   void $ editorSetValue contents
 
-handleAction _ (MoveToPosition lineNumber column) = do
+handleAction (MoveToPosition lineNumber column) = do
   void $ query _marloweEditorPageSlot unit (Monaco.SetPosition { column, lineNumber } unit)
 
-handleAction settings (LoadScript key) = do
+handleAction (LoadScript key) = do
   for_ (preview (ix key) StaticData.marloweContracts) \contents -> do
     let
       prettyContents = case parseContract contents of
         Right pcon -> show $ pretty pcon
         Left _ -> contents
     editorSetValue prettyContents
-    liftEffect $ LocalStorage.setItem marloweBufferLocalStorageKey prettyContents
+    liftEffect $ SessionStorage.setItem marloweBufferLocalStorageKey prettyContents
 
-handleAction settings (SetEditorText contents) = do
+handleAction (SetEditorText contents) = editorSetValue contents
+
+handleAction (BottomPanelAction (BottomPanel.PanelAction action)) = handleAction action
+
+handleAction (BottomPanelAction action) = do
+  toBottomPanel (BottomPanel.handleAction action)
+
+handleAction (ShowErrorDetail val) = assign _showErrorDetail val
+
+handleAction SendToSimulator = pure unit
+
+handleAction ViewAsBlockly = pure unit
+
+handleAction (InitMarloweProject contents) = do
   editorSetValue contents
+  liftEffect $ SessionStorage.setItem marloweBufferLocalStorageKey contents
 
-handleAction _ (ShowBottomPanel val) = do
-  assign _showBottomPanel val
-  editorResize
+handleAction (SelectHole hole) = assign _selectedHole hole
 
-handleAction _ (ShowErrorDetail val) = assign _showErrorDetail val
+handleAction (SetIntegerTemplateParam templateType key value) = modifying (_analysisState <<< _templateContent <<< Template.typeToLens templateType) (Map.insert key value)
 
-handleAction _ (ChangeBottomPanelView view) = do
-  assign _bottomPanelView view
-  assign _showBottomPanel true
-  editorResize
+handleAction (MetadataAction _) = pure unit
 
-handleAction _ SendToSimulator = pure unit
+handleAction AnalyseContract = runAnalysis $ analyseContract
 
-handleAction _ ViewAsBlockly = pure unit
+handleAction AnalyseReachabilityContract = runAnalysis $ analyseReachability
 
-handleAction _ (InitMarloweProject contents) = do
-  editorSetValue contents
-  liftEffect $ LocalStorage.setItem marloweBufferLocalStorageKey contents
+handleAction AnalyseContractForCloseRefund = runAnalysis $ analyseClose
 
-handleAction _ (SelectHole hole) = assign _selectedHole hole
+handleAction ClearAnalysisResults = do
+  assign (_analysisState <<< _analysisExecutionState) NoneAsked
+  mContents <- editorGetValue
+  for_ mContents processMarloweCode
 
-handleAction settings AnalyseContract =
+handleAction Save = pure unit
+
+runAnalysis ::
+  forall m.
+  MonadAff m =>
+  (Extended.Contract -> HalogenM State Action ChildSlots Void m Unit) ->
+  HalogenM State Action ChildSlots Void m Unit
+runAnalysis doAnalyze =
   void
     $ runMaybeT do
         contents <- MaybeT $ editorGetValue
         contract <- hoistMaybe $ parseContract' contents
-        -- when editor and simulator were together the analyse contract could be made
-        -- at any step of the simulator. Now that they are separate, it can only be done
-        -- with initial state
-        let
-          emptySemanticState = emptyState zero
-        assign _analysisState (WarningAnalysis Loading)
-        response <- lift $ checkContractForWarnings contract emptySemanticState
-        assign _analysisState (WarningAnalysis response)
-  where
-  checkContractForWarnings contract state = runAjax $ (flip runReaderT) settings (Server.postMarloweanalysis (MSReq.Request { onlyAssertions: false, contract, state }))
+        lift
+          $ do
+              doAnalyze contract
+              processMarloweCode contents
 
-handleAction settings AnalyseReachabilityContract =
-  void
-    $ runMaybeT do
-        contents <- MaybeT $ editorGetValue
-        contract <- hoistMaybe $ parseContract' contents
-        -- when editor and simulator were together the analyse contract could be made
-        -- at any step of the simulator. Now that they are separate, it can only be done
-        -- with initial state
-        let
-          emptySemanticState = emptyState zero
-        newReachabilityAnalysisState <- lift $ startReachabilityAnalysis settings contract emptySemanticState
-        assign _analysisState (ReachabilityAnalysis newReachabilityAnalysisState)
+parseContract' :: String -> Maybe Extended.Contract
+parseContract' = Holes.fromTerm <=< hush <<< parseContract
 
-handleAction settings AnalyseContractForCloseRefund =
-  void
-    $ runMaybeT do
-        contents <- MaybeT $ editorGetValue
-        contract <- hoistMaybe $ parseContract' contents
-        -- when editor and simulator were together the analyse contract could be made
-        -- at any step of the simulator. Now that they are separate, it can only be done
-        -- with initial state
-        let
-          emptySemanticState = emptyState zero
-        newCloseAnalysisState <- lift $ startCloseAnalysis settings contract emptySemanticState
-        assign _analysisState (CloseAnalysis newCloseAnalysisState)
-
-handleAction _ Save = pure unit
-
-parseContract' :: String -> Maybe Contract
-parseContract' = fromTerm <=< hush <<< parseContract
-
-runAjax ::
-  forall m a.
-  ExceptT AjaxError (HalogenM State Action ChildSlots Void m) a ->
-  HalogenM State Action ChildSlots Void m (WebData a)
-runAjax action = RemoteData.fromEither <$> runExceptT action
-
-editorResize :: forall state action msg m. HalogenM state action ChildSlots msg m Unit
-editorResize = void $ query _marloweEditorPageSlot unit (Monaco.Resize unit)
-
-editorSetValue :: forall state action msg m. String -> HalogenM state action ChildSlots msg m Unit
-editorSetValue contents = void $ query _marloweEditorPageSlot unit (Monaco.SetText contents unit)
-
-editorGetValue :: forall state action msg m. HalogenM state action ChildSlots msg m (Maybe String)
-editorGetValue = query _marloweEditorPageSlot unit (Monaco.GetText identity)
-
--- FIXME: This receives markers and sets errors and warnings. Maybe rename to processErrorsAndWarnings
-editorSetMarkers :: forall m. MonadEffect m => Array IMarker -> HalogenM State Action ChildSlots Void m Unit
-editorSetMarkers markers = do
+-- This function makes all the heavy processing needed to have the Editor state in sync with current changes.
+processMarloweCode ::
+  forall m.
+  MonadAff m =>
+  String ->
+  HalogenM State Action ChildSlots Void m Unit
+processMarloweCode text = do
+  analysisExecutionState <- use (_analysisState <<< _analysisExecutionState)
+  oldMetadataInfo <- use _metadataHintInfo
   let
-    errors = filter (\{ severity } -> isError severity) markers
+    eParsedContract = parseContract text
 
-    warnings = filter (\{ severity } -> isWarning severity) markers
+    unreachableContracts = getUnreachableContracts analysisExecutionState
+
+    (Tuple markerData additionalContext) = Linter.markers unreachableContracts eParsedContract
+
+    errorMarkers =
+      markerData
+        # Array.filter (isError <<< _.severity)
 
     -- The initial message of a hole warning is very lengthy, so we trim it before
     -- displaying it.
     -- see https://github.com/input-output-hk/plutus/pull/2560#discussion_r550252989
-    warningsWithTrimmedHoleMessage =
-      map
-        ( \marker ->
+    warningMarkers =
+      markerData
+        # Array.filter (isWarning <<< _.severity)
+        <#> \marker ->
             let
               trimmedMessage =
                 if String.take 6 marker.source == "Hole: " then
@@ -208,9 +197,53 @@ editorSetMarkers markers = do
                   marker.message
             in
               marker { message = trimmedMessage }
-        )
-        warnings
+
+    mContract :: Maybe Extended.Contract
+    mContract = Holes.fromTerm =<< hush eParsedContract
+
+    metadataInfo :: MetadataHintInfo
+    metadataInfo = fromMaybe oldMetadataInfo additionalContext.metadataHints
+
+    hasHoles =
+      not $ Array.null
+        $ Array.filter (contains (Pattern "hole") <<< _.message) warningMarkers
+
+    -- If we can get an Extended contract from the holes contract (basically if it has no holes)
+    -- then update the template content. If not, leave them as they are
+    maybeUpdateTemplateContent :: TemplateContent -> TemplateContent
+    maybeUpdateTemplateContent = maybe identity (Template.updateTemplateContent <<< Template.getPlaceholderIds) mContract
+  void $ query _marloweEditorPageSlot unit $ H.request $ Monaco.SetModelMarkers markerData
   modify_
-    ( set _editorWarnings warningsWithTrimmedHoleMessage
-        <<< set _editorErrors errors
+    ( set _editorWarnings warningMarkers
+        <<< set _editorErrors errorMarkers
+        <<< set _hasHoles hasHoles
+        <<< over (_analysisState <<< _templateContent) maybeUpdateTemplateContent
+        <<< set _metadataHintInfo metadataInfo
     )
+  {-
+    There are three different Monaco objects that require the linting information:
+      * Markers
+      * Code completion (type aheads)
+      * Code suggestions (Quick fixes)
+     To avoid having to recalculate the linting multiple times, we add aditional context to the providers
+     whenever the code changes.
+  -}
+  mProviders <- query _marloweEditorPageSlot unit (Monaco.GetObjects identity)
+  case mProviders of
+    Just { codeActionProvider: Just caProvider, completionItemProvider: Just ciProvider } -> pure $ updateAdditionalContext caProvider ciProvider additionalContext
+    _ -> pure unit
+
+runAjax ::
+  forall m a.
+  ExceptT AjaxError (HalogenM State Action ChildSlots Void m) a ->
+  HalogenM State Action ChildSlots Void m (WebData a)
+runAjax action = RemoteData.fromEither <$> runExceptT action
+
+editorSetTheme :: forall state action msg m. HalogenM state action ChildSlots msg m Unit
+editorSetTheme = void $ query _marloweEditorPageSlot unit (Monaco.SetTheme MM.daylightTheme.name unit)
+
+editorSetValue :: forall state action msg m. String -> HalogenM state action ChildSlots msg m Unit
+editorSetValue contents = void $ query _marloweEditorPageSlot unit (Monaco.SetText contents unit)
+
+editorGetValue :: forall state action msg m. HalogenM state action ChildSlots msg m (Maybe String)
+editorGetValue = query _marloweEditorPageSlot unit (Monaco.GetText identity)

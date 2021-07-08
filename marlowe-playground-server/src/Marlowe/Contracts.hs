@@ -11,6 +11,9 @@ example = $(makeRelativeToProject "contracts/Example.hs" >>= embedFile)
 escrow :: ByteString
 escrow = $(makeRelativeToProject "contracts/Escrow.hs" >>= embedFile)
 
+escrowWithCollateral :: ByteString
+escrowWithCollateral = $(makeRelativeToProject "contracts/EscrowWithCollateral.hs" >>= embedFile)
+
 zeroCouponBond :: ByteString
 zeroCouponBond = $(makeRelativeToProject "contracts/ZeroCouponBond.hs" >>= embedFile)
 
@@ -23,5 +26,9 @@ swap = $(makeRelativeToProject "contracts/Swap.hs" >>= embedFile)
 option :: ByteString
 option = $(makeRelativeToProject "contracts/Option.hs" >>= embedFile)
 
-contractForDifference :: ByteString
-contractForDifference = $(makeRelativeToProject "contracts/ContractForDifference.hs" >>= embedFile)
+contractForDifferences :: ByteString
+contractForDifferences = $(makeRelativeToProject "contracts/ContractForDifferences.hs" >>= embedFile)
+
+contractForDifferencesWithOracle :: ByteString
+contractForDifferencesWithOracle = $(makeRelativeToProject "contracts/ContractForDifferencesWithOracle.hs" >>= embedFile)
+

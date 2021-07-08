@@ -25,30 +25,36 @@ flag defer-plugin-errors
 
 library
     exposed-modules:
-        Language.PlutusTx.Coordination.Contracts
-        Language.PlutusTx.Coordination.Contracts.TokenAccount
-        Language.PlutusTx.Coordination.Contracts.Crowdfunding
-        Language.PlutusTx.Coordination.Contracts.Currency
-        Language.PlutusTx.Coordination.Contracts.Escrow
-        Language.PlutusTx.Coordination.Contracts.Future
-        Language.PlutusTx.Coordination.Contracts.Game
-        Language.PlutusTx.Coordination.Contracts.GameStateMachine
-        Language.PlutusTx.Coordination.Contracts.ErrorHandling
-        Language.PlutusTx.Coordination.Contracts.MultiSig
-        Language.PlutusTx.Coordination.Contracts.MultiSigStateMachine
-        Language.PlutusTx.Coordination.Contracts.PingPong
-        Language.PlutusTx.Coordination.Contracts.Prism
-        Language.PlutusTx.Coordination.Contracts.Prism.Credential
-        Language.PlutusTx.Coordination.Contracts.Prism.CredentialManager
-        Language.PlutusTx.Coordination.Contracts.Prism.STO
-        Language.PlutusTx.Coordination.Contracts.Prism.Mirror
-        Language.PlutusTx.Coordination.Contracts.Prism.StateMachine
-        Language.PlutusTx.Coordination.Contracts.Prism.Unlock
-        Language.PlutusTx.Coordination.Contracts.PubKey
-        Language.PlutusTx.Coordination.Contracts.RPC
-        Language.PlutusTx.Coordination.Contracts.Stablecoin
-        Language.PlutusTx.Coordination.Contracts.Swap
-        Language.PlutusTx.Coordination.Contracts.Vesting
+        Plutus.Contracts
+        Plutus.Contracts.Auction
+        Plutus.Contracts.TokenAccount
+        Plutus.Contracts.Crowdfunding
+        Plutus.Contracts.Currency
+        Plutus.Contracts.ErrorHandling
+        Plutus.Contracts.Escrow
+        Plutus.Contracts.SimpleEscrow
+        Plutus.Contracts.Future
+        Plutus.Contracts.GameStateMachine
+        Plutus.Contracts.Governance
+        Plutus.Contracts.MultiSig
+        Plutus.Contracts.MultiSigStateMachine
+        Plutus.Contracts.PingPong
+        Plutus.Contracts.Prism
+        Plutus.Contracts.Prism.Credential
+        Plutus.Contracts.Prism.STO
+        Plutus.Contracts.Prism.Mirror
+        Plutus.Contracts.Prism.StateMachine
+        Plutus.Contracts.Prism.Unlock
+        Plutus.Contracts.PubKey
+        Plutus.Contracts.Stablecoin
+        Plutus.Contracts.Swap
+        Plutus.Contracts.Uniswap
+        Plutus.Contracts.Uniswap.OnChain
+        Plutus.Contracts.Uniswap.OffChain
+        Plutus.Contracts.Uniswap.Pool
+        Plutus.Contracts.Uniswap.Trace
+        Plutus.Contracts.Uniswap.Types
+        Plutus.Contracts.Vesting
     hs-source-dirs: src
     default-language: Haskell2010
     default-extensions: ExplicitForAll ScopedTypeVariables
@@ -65,7 +71,8 @@ library
         aeson -any,
         bytestring -any,
         containers -any,
-        iots-export -any,
+        data-default -any,
+        freer-extras -any,
         mtl -any,
         plutus-core -any,
         plutus-tx -any,
@@ -78,35 +85,37 @@ library
         prettyprinter -any,
         hashable -any,
         freer-simple -any,
-        streaming -any
+        streaming -any,
+        semigroups -any
 
     if !(impl(ghcjs) || os(ghcjs))
         build-depends: plutus-tx-plugin -any
 
     if flag(defer-plugin-errors)
-        ghc-options: -fplugin-opt Language.PlutusTx.Plugin:defer-errors
+        ghc-options: -fplugin-opt PlutusTx.Plugin:defer-errors
 
 test-suite plutus-use-cases-test
     type: exitcode-stdio-1.0
     main-is: Spec.hs
     hs-source-dirs: test
     other-modules:
+        Spec.Auction
         Spec.Crowdfunding
         Spec.Currency
         Spec.ErrorHandling
         Spec.Escrow
+        Spec.SimpleEscrow
         Spec.Future
-        Spec.Game
         Spec.GameStateMachine
-        Spec.Lib
+        Spec.Governance
         Spec.MultiSig
         Spec.MultiSigStateMachine
         Spec.PingPong
         Spec.PubKey
         Spec.Prism
         Spec.Rollup
-        Spec.RPC
         Spec.Stablecoin
+        Spec.Uniswap
         Spec.TokenAccount
         Spec.Vesting
     default-language: Haskell2010
@@ -126,16 +135,20 @@ test-suite plutus-use-cases-test
         aeson -any,
         bytestring -any,
         containers -any,
+        data-default -any,
+        freer-extras -any,
         hedgehog -any,
         prettyprinter -any,
         tasty -any,
         tasty-hunit -any,
         tasty-hedgehog >=0.2.0.0,
         tasty-golden -any,
+        tasty-quickcheck -any,
         text -any,
         lens -any,
         mtl -any,
         row-types -any,
+        QuickCheck -any,
         freer-simple -any,
         foldl -any,
         streaming -any
@@ -152,21 +165,21 @@ executable plutus-use-cases-scripts
         test
     default-language: Haskell2010
     other-modules:
+        Spec.Auction
         Spec.Crowdfunding
         Spec.Currency
         Spec.ErrorHandling
         Spec.Escrow
+        Spec.SimpleEscrow
         Spec.Future
-        Spec.Game
         Spec.GameStateMachine
-        Spec.Lib
+        Spec.Governance
         Spec.MultiSig
         Spec.MultiSigStateMachine
         Spec.PingPong
         Spec.PubKey
         Spec.Prism
         Spec.Rollup
-        Spec.RPC
         Spec.Stablecoin
         Spec.TokenAccount
         Spec.Vesting
@@ -180,12 +193,17 @@ executable plutus-use-cases-scripts
         aeson -any,
         bytestring -any,
         containers -any,
+        data-default -any,
+        flat -any,
+        freer-extras -any,
         hedgehog -any,
         prettyprinter -any,
+        QuickCheck -any,
         tasty -any,
         tasty-hunit -any,
         tasty-hedgehog >=0.2.0.0,
         tasty-golden -any,
+        tasty-quickcheck -any,
         text -any,
         lens -any,
         mtl -any,
@@ -193,9 +211,11 @@ executable plutus-use-cases-scripts
         freer-simple -any,
         foldl -any,
         streaming -any,
+        directory -any,
         filepath -any,
         serialise -any,
         plutus-core -any,
+        plutus-ledger-api -any,
         plutus-tx -any,
         plutus-contract -any,
         plutus-ledger -any,
@@ -221,6 +241,8 @@ benchmark plutus-use-cases-bench
         base -any,
         criterion -any,
         cryptonite -any,
+        data-default -any,
+        freer-extras -any,
         plutus-core -any,
         lens -any,
         memory -any,

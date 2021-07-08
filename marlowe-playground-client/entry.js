@@ -1,8 +1,9 @@
 /*eslint-env node*/
 /*global global*/
+// FIXME: We should check where we use this and replace it with google font icons
 import '@fortawesome/fontawesome-free/css/all.css';
-import './static/css/main.scss';
-import 'node-blockly/browser';
+import './static/css/main.css';
+import 'blockly';
 
 import './grammar.ne';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';

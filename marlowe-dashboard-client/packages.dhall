@@ -121,7 +121,20 @@ let additions =
 let upstream =
       https://github.com/purescript/package-sets/releases/download/psc-0.13.6-20200502/packages.dhall sha256:1e1ecbf222c709b76cc7e24cf63af3c2089ffd22bbb1e3379dfd3c07a1787694
 
-let overrides = {=}
+let overrides =
+      {- The package set we're using has `purescript-uuid` v6. This depends on the `uuid-validate` node
+         module, which only works in node (it uses node's Buffer API). This was fine when we were using
+         webpack 4, which provides polyfills for node stuff automatically. But webpack 5 - rightly, in
+         my opinion - no longer provides these polyfills. I was going to add it back in manually when I
+         noticed that the newer versions of `purescript-uuid` use the `uuid` node module, which works
+         in the browser out of the box. :tada:
+      -}
+      { uuid =
+          { dependencies = [ "effect", "maybe", "foreign-generic", "console", "spec" ]
+          , repo = "https://github.com/spicydonuts/purescript-uuid.git"
+          , version = "v8.0.0"
+          }
+      }
 
 let additions =
       { servant-support =
@@ -139,7 +152,7 @@ let additions =
             , "foreign-generic"
             ]
           , repo = "https://github.com/shmish111/purescript-servant-support"
-          , version = "c03a68d5dbc60e516b7c531250ccb40db5bb2658"
+          , version = "1805f896560751c48a04d3e29f9c109df850d8d3"
           }
       , concurrent-queues =
           { dependencies = [ "aff", "avar" ]
@@ -163,6 +176,12 @@ let additions =
             [ "prelude", "fixed-points", "free", "transformers", "profunctor" ]
           , repo = "https://github.com/slamdata/purescript-matryoshka.git"
           , version = "v0.4.0"
+          }
+      , now =
+          { dependencies =
+              [ "console", "datetime", "effect", "psci-support" ]
+          , repo = "https://github.com/purescript-contrib/purescript-now"
+          , version = "v5.0.0"
           }
       , numerics =
           { dependencies =

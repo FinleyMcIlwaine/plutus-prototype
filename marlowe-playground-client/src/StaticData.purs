@@ -1,8 +1,9 @@
 module StaticData
-  ( bufferLocalStorageKey
+  ( haskellBufferLocalStorageKey
   , jsBufferLocalStorageKey
   , demoFiles
   , demoFilesJS
+  , demoFilesMetadata
   , marloweBufferLocalStorageKey
   , simulatorBufferLocalStorageKey
   , marloweContract
@@ -14,11 +15,12 @@ module StaticData
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Tuple.Nested ((/\))
-import Examples.Haskell.Contracts (contractForDifference, couponBondGuaranteed, escrow, example, swap, zeroCouponBond) as HE
-import Examples.JS.Contracts (cfd, couponBondGuaranteed, escrow, example, swap, zeroCouponBond) as JSE
-import Examples.Marlowe.Contracts (contractForDifference, escrow, example, option, swap, zeroCouponBond) as ME
+import Examples.Haskell.Contracts (contractForDifferences, contractForDifferencesWithOracle, couponBondGuaranteed, escrow, escrowWithCollateral, example, swap, zeroCouponBond) as HE
+import Examples.JS.Contracts (contractForDifferences, contractForDifferencesWithOracle, couponBondGuaranteed, escrow, escrowWithCollateral, example, swap, zeroCouponBond) as JSE
+import Examples.Marlowe.Contracts (contractForDifferences, contractForDifferencesWithOracle, couponBondGuaranteed, escrow, escrowWithCollateral, example, swap, zeroCouponBond) as ME
+import Examples.Metadata (contractForDifferences, contractForDifferencesWithOracle, couponBondGuaranteed, escrow, escrowWithCollateral, example, swap, zeroCouponBond) as M
 import LocalStorage as LocalStorage
-import Prim.TypeError (class Warn, Text)
+import Marlowe.Extended.Metadata (MetaData)
 
 type Label
   = String
@@ -32,10 +34,12 @@ demoFiles =
   Map.fromFoldable
     [ "Example" /\ HE.example
     , "Escrow" /\ HE.escrow
+    , "EscrowWithCollateral" /\ HE.escrowWithCollateral
     , "ZeroCouponBond" /\ HE.zeroCouponBond
     , "CouponBondGuaranteed" /\ HE.couponBondGuaranteed
     , "Swap" /\ HE.swap
-    , "CFD" /\ HE.contractForDifference
+    , "CFD" /\ HE.contractForDifferences
+    , "CFDWithOracle" /\ HE.contractForDifferencesWithOracle
     ]
 
 demoFilesJS ::
@@ -44,10 +48,12 @@ demoFilesJS =
   Map.fromFoldable
     [ "Example" /\ JSE.example
     , "Escrow" /\ JSE.escrow
+    , "EscrowWithCollateral" /\ JSE.escrowWithCollateral
     , "ZeroCouponBond" /\ JSE.zeroCouponBond
     , "CouponBondGuaranteed" /\ JSE.couponBondGuaranteed
     , "Swap" /\ JSE.swap
-    , "CFD" /\ JSE.cfd
+    , "CFD" /\ JSE.contractForDifferences
+    , "CFDWithOracle" /\ JSE.contractForDifferencesWithOracle
     ]
 
 marloweContracts ::
@@ -56,20 +62,35 @@ marloweContracts =
   Map.fromFoldable
     [ "Example" /\ ME.example
     , "Escrow" /\ ME.escrow
+    , "EscrowWithCollateral" /\ ME.escrowWithCollateral
     , "ZeroCouponBond" /\ ME.zeroCouponBond
-    , "Option" /\ ME.option
+    , "CouponBondGuaranteed" /\ ME.couponBondGuaranteed
     , "Swap" /\ ME.swap
-    , "CFD" /\ ME.contractForDifference
+    , "CFD" /\ ME.contractForDifferences
+    , "CFDWithOracle" /\ ME.contractForDifferencesWithOracle
+    ]
+
+demoFilesMetadata ::
+  Map Label MetaData
+demoFilesMetadata =
+  Map.fromFoldable
+    [ "Example" /\ M.example
+    , "Escrow" /\ M.escrow
+    , "EscrowWithCollateral" /\ M.escrowWithCollateral
+    , "ZeroCouponBond" /\ M.zeroCouponBond
+    , "CouponBondGuaranteed" /\ M.couponBondGuaranteed
+    , "Swap" /\ M.swap
+    , "CFD" /\ M.contractForDifferences
+    , "CFDWithOracle" /\ M.contractForDifferencesWithOracle
     ]
 
 marloweContract ::
   Contents
 marloweContract = "(Some Marlowe Code)"
 
-bufferLocalStorageKey ::
-  Warn (Text "Refactor bufferLocalStorageKey -> haskellBufferLocalStorageKey") =>
+haskellBufferLocalStorageKey ::
   LocalStorage.Key
-bufferLocalStorageKey = LocalStorage.Key "HaskellBuffer"
+haskellBufferLocalStorageKey = LocalStorage.Key "HaskellBuffer"
 
 jsBufferLocalStorageKey ::
   LocalStorage.Key

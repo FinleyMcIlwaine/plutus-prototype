@@ -3,26 +3,40 @@ module HaskellEditor.Types where
 import Prelude
 import Analytics (class IsEvent, Event)
 import Analytics as A
+import BottomPanel.Types as BottomPanel
+import Data.BigInteger (BigInteger)
 import Data.Either (Either(..))
-import Data.Lens (Getter', Lens', Fold', _Right, to)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Show (genericShow)
+import Data.Lens (Fold', Getter', Lens', _Right, has, to)
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
 import Halogen.Monaco (KeyBindings(..))
 import Halogen.Monaco as Monaco
 import Language.Haskell.Interpreter (InterpreterError, InterpreterResult, _InterpreterResult)
+import Marlowe.Template (IntegerTemplateType)
+import Marlowe.Extended.Metadata (MetadataHintInfo)
 import Marlowe.Parser (parseContract)
-import Network.RemoteData (RemoteData(..), _Success)
-import Types (WebData)
+import MetadataTab.Types (MetadataAction, showConstructor)
+import Network.RemoteData (RemoteData(..), _Loading, _Success)
+import StaticAnalysis.Types (AnalysisState, initAnalysisState)
 import Text.Pretty (pretty)
+import Types (WebData)
 
 data Action
   = Compile
   | ChangeKeyBindings KeyBindings
   | HandleEditorMessage Monaco.Message
-  | ShowBottomPanel Boolean
+  | BottomPanelAction (BottomPanel.Action BottomPanelView Action)
   | SendResultToSimulator
-  | InitHaskellProject String
+  | InitHaskellProject MetadataHintInfo String
+  | SetIntegerTemplateParam IntegerTemplateType String BigInteger
+  | AnalyseContract
+  | AnalyseReachabilityContract
+  | AnalyseContractForCloseRefund
+  | ClearAnalysisResults
+  | MetadataAction MetadataAction
 
 defaultEvent :: String -> Event
 defaultEvent s = A.defaultEvent $ "Haskell." <> s
@@ -31,14 +45,23 @@ instance actionIsEvent :: IsEvent Action where
   toEvent Compile = Just $ defaultEvent "Compile"
   toEvent (ChangeKeyBindings _) = Just $ defaultEvent "ChangeKeyBindings"
   toEvent (HandleEditorMessage _) = Just $ defaultEvent "HandleEditorMessage"
-  toEvent (ShowBottomPanel _) = Just $ defaultEvent "ShowBottomPanel"
+  toEvent (BottomPanelAction action) = A.toEvent action
   toEvent SendResultToSimulator = Just $ defaultEvent "SendResultToSimulator"
-  toEvent (InitHaskellProject _) = Just $ defaultEvent "InitHaskellProject"
+  toEvent (InitHaskellProject _ _) = Just $ defaultEvent "InitHaskellProject"
+  toEvent (SetIntegerTemplateParam _ _ _) = Just $ defaultEvent "SetIntegerTemplateParam"
+  toEvent AnalyseContract = Just $ defaultEvent "AnalyseContract"
+  toEvent AnalyseReachabilityContract = Just $ defaultEvent "AnalyseReachabilityContract"
+  toEvent AnalyseContractForCloseRefund = Just $ defaultEvent "AnalyseContractForCloseRefund"
+  toEvent ClearAnalysisResults = Just $ defaultEvent "ClearAnalysisResults"
+  toEvent (MetadataAction action) = Just $ (defaultEvent "MetadataAction") { label = Just $ showConstructor action }
 
 type State
   = { keybindings :: KeyBindings
     , compilationResult :: WebData (Either InterpreterError (InterpreterResult String))
-    , showBottomPanel :: Boolean
+    , bottomPanelState :: BottomPanel.State BottomPanelView
+    , metadataHintInfo :: MetadataHintInfo
+    , analysisState :: AnalysisState
+    , editorReady :: Boolean
     }
 
 _haskellEditorKeybindings :: Lens' State KeyBindings
@@ -46,6 +69,15 @@ _haskellEditorKeybindings = prop (SProxy :: SProxy "keybindings")
 
 _compilationResult :: Lens' State (WebData (Either InterpreterError (InterpreterResult String)))
 _compilationResult = prop (SProxy :: SProxy "compilationResult")
+
+_metadataHintInfo :: Lens' State MetadataHintInfo
+_metadataHintInfo = prop (SProxy :: SProxy "metadataHintInfo")
+
+_analysisState :: Lens' State AnalysisState
+_analysisState = prop (SProxy :: SProxy "analysisState")
+
+_editorReady :: Lens' State Boolean
+_editorReady = prop (SProxy :: SProxy "editorReady")
 
 --- Language.Haskell.Interpreter is missing this ---
 _result :: forall s a. Lens' { result :: a | s } a
@@ -61,12 +93,31 @@ _Pretty = to f
 _ContractString :: forall r. Monoid r => Fold' r State String
 _ContractString = _compilationResult <<< _Success <<< _Right <<< _InterpreterResult <<< _result <<< _Pretty
 
-_showBottomPanel :: Lens' State Boolean
-_showBottomPanel = prop (SProxy :: SProxy "showBottomPanel")
+_bottomPanelState :: Lens' State (BottomPanel.State BottomPanelView)
+_bottomPanelState = prop (SProxy :: SProxy "bottomPanelState")
 
 initialState :: State
 initialState =
   { keybindings: DefaultBindings
   , compilationResult: NotAsked
-  , showBottomPanel: true
+  , bottomPanelState: BottomPanel.initialState MetadataView
+  , metadataHintInfo: mempty
+  , analysisState: initAnalysisState
+  , editorReady: false
   }
+
+isCompiling :: State -> Boolean
+isCompiling = has (_compilationResult <<< _Loading)
+
+data BottomPanelView
+  = StaticAnalysisView
+  | ErrorsView
+  | GeneratedOutputView
+  | MetadataView
+
+derive instance eqBottomPanelView :: Eq BottomPanelView
+
+derive instance genericBottomPanelView :: Generic BottomPanelView _
+
+instance showBottomPanelView :: Show BottomPanelView where
+  show = genericShow

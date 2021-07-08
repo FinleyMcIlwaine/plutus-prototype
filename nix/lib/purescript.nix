@@ -1,7 +1,6 @@
 { stdenv
 , nodejs
 , easyPS
-, nix-gitignore
 }:
 
 { pkgs
@@ -21,16 +20,12 @@
 , checkPhase
 }:
 let
-  # Cleans the source based on the patterns in ./.gitignore and the additionalIgnores
-  cleanSrcs = nix-gitignore.gitignoreSource [ "/*.adoc" "/*.nix" ] src;
-
   addExtraSrc = k: v: "ln -sf ${v} ${k}";
   addExtraSrcs = builtins.concatStringsSep "\n" (builtins.attrValues (pkgs.lib.mapAttrs addExtraSrc extraSrcs));
   extraPSPaths = builtins.concatStringsSep " " (map (d: "${d}/**/*.purs") (builtins.attrNames extraSrcs));
 in
 stdenv.mkDerivation {
-  inherit name checkPhase;
-  src = cleanSrcs;
+  inherit name src checkPhase;
   buildInputs = [
     nodejs
     nodeModules
@@ -43,7 +38,8 @@ stdenv.mkDerivation {
   buildPhase = ''
     export HOME=$NIX_BUILD_TOP
     shopt -s globstar
-    ln -s ${nodeModules}/node_modules node_modules
+    cp -R ${nodeModules}/node_modules .
+    chmod -R u+rw ./node_modules
     ${addExtraSrcs}
 
     install-spago-style
@@ -53,5 +49,18 @@ stdenv.mkDerivation {
   doCheck = true;
   installPhase = ''
     mv dist $out
+  '';
+
+  # The `nodeModules` we symlinked above contain `devDependencies` which
+  # are only required at build-time and not at run-time. `npm prune --production`
+  # removes all packages that belong to `devDependencies`.
+  #
+  # [Note 1]: that we have to run this during `postInstall` because 
+  # `devDependencies` may be required during `checkPhase` which runs before.
+  #
+  # [Note 2]: *currently* the installPhase only uses `dist` but this may change
+  # or may be overriden so we follow the best-practice of pruning dependencies here.
+  postInstall = ''
+    npm prune --production
   '';
 }

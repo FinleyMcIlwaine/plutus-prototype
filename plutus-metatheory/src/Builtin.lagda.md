@@ -29,6 +29,8 @@ data Builtin : Set where
   concatenate              : Builtin
   takeByteString           : Builtin
   dropByteString           : Builtin
+  lessThanByteString       : Builtin
+  greaterThanByteString    : Builtin
   sha2-256                 : Builtin
   sha3-256                 : Builtin
   verifySignature          : Builtin
@@ -38,8 +40,8 @@ data Builtin : Set where
   append                   : Builtin
   trace                    : Builtin
 
-{-# FOREIGN GHC import Language.PlutusCore.Builtins #-}
-{-# COMPILE GHC Builtin = data DefaultFun (AddInteger 
+{-# FOREIGN GHC import PlutusCore.Default #-}
+{-# COMPILE GHC Builtin = data DefaultFun (AddInteger
                                           | SubtractInteger
                                           | MultiplyInteger
                                           | DivideInteger
@@ -47,17 +49,19 @@ data Builtin : Set where
                                           | RemainderInteger
                                           | ModInteger
                                           | LessThanInteger
-                                          | LessThanEqInteger
+                                          | LessThanEqualsInteger
                                           | GreaterThanInteger
-                                          | GreaterThanEqInteger
-                                          | EqInteger
+                                          | GreaterThanEqualsInteger
+                                          | EqualsInteger
                                           | Concatenate
                                           | TakeByteString
                                           | DropByteString
-                                          | SHA2
-                                          | SHA3
+                                          | LessThanByteString
+                                          | GreaterThanByteString
+                                          | Sha2_256
+                                          | Sha3_256
                                           | VerifySignature
-                                          | EqByteString
+                                          | EqualsByteString
                                           | IfThenElse
                                           | CharToString
                                           | Append
@@ -80,6 +84,8 @@ postulate
   concat    : ByteString → ByteString → ByteString
   take      : Int → ByteString → ByteString
   drop      : Int → ByteString → ByteString
+  B<        : ByteString -> ByteString -> Bool
+  B>        : ByteString -> ByteString -> Bool
   SHA2-256  : ByteString → ByteString
   SHA3-256  : ByteString → ByteString
   verifySig : ByteString → ByteString → ByteString → Maybe Bool
@@ -120,6 +126,8 @@ postulate
 {-# COMPILE GHC SHA2-256 = B.convert . hash @BS.ByteString @SHA256 #-}
 {-# COMPILE GHC SHA3-256 = B.convert . hash @BS.ByteString @SHA3_256 #-}
 {-# COMPILE GHC equals = (==) #-}
+{-# COMPILE GHC B< = (<) #-}
+{-# COMPILE GHC B> = (>) #-}
 
 {-# FOREIGN GHC import Crypto #-}
 {-# COMPILE GHC verifySig = verifySignature #-}
@@ -132,4 +140,3 @@ postulate
 -- no binding needed for traceStr
 
 ```
-

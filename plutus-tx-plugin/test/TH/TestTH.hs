@@ -5,10 +5,10 @@
 module TH.TestTH where
 
 import           Language.Haskell.TH
-import           Language.PlutusTx.Builtins
-import           Language.PlutusTx.Prelude
+import           PlutusTx.Builtins
+import           PlutusTx.Prelude
 
-{-# ANN module "HLint: ignore" #-}
+{- HLINT ignore -}
 
 power :: Integer -> Q (TExp (Integer -> Integer))
 power n =

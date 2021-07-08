@@ -57,13 +57,11 @@ pkgs.recurseIntoAttrs {
     unraveling-recursion = pkgs.callPackage ../papers/unraveling-recursion/default.nix { agda = agdaWithStdlib; inherit latex; };
   };
 
-  plutus-contract = import ../plutus-contract/doc { inherit buildAsciiDoc; };
-  marlowe-tutorial = import ../marlowe/doc { inherit buildAsciiDoc; };
   plutus-core-spec = import ../plutus-core-spec { inherit buildLatexDoc; };
   multi-currency = import ../notes/multi-currency { inherit buildLatexDoc; };
   extended-utxo-spec = import ../extended-utxo-spec { inherit buildLatexDoc; };
   lazy-machine = import ../notes/fomega/lazy-machine { inherit buildLatexDoc; };
-  plutus-report = import ../notes/plutus-report { inherit buildLatexDoc; };
+  plutus-report = import ../plutus-report { inherit buildLatexDoc; };
   cost-model-notes = import ../notes/cost-model-notes { inherit buildLatexDoc; };
 
   site = pkgs.callPackage ../doc {
@@ -72,4 +70,9 @@ pkgs.recurseIntoAttrs {
     combined-haddock = plutus.plutus-haddock-combined;
     pythonPackages = pkgs.python3Packages;
   };
+
+  build-and-serve-docs = pkgs.writeShellScriptBin "build-and-serve-docs" ''
+    cd $(nix-build default.nix -A docs.site) && \
+    ${pkgs.python3}/bin/python3 -m http.server 8002
+  '';
 }

@@ -18,12 +18,12 @@ import           Control.Monad.Except         (ExceptT, runExceptT, throwError)
 import           Control.Monad.IO.Class       (MonadIO, liftIO)
 import           Control.Monad.Logger         (LoggingT, runStderrLoggingT)
 import           Control.Monad.Reader         (ReaderT, runReaderT)
+import           Data.Aeson                   (decodeFileStrict)
 import qualified Data.ByteString.Lazy.Char8   as BSL
 import           Data.Proxy                   (Proxy (Proxy))
 import           Data.Text                    (Text)
 import qualified Data.Text                    as Text
 import           Data.Time.Units              (Second)
-import           Git                          (gitRev)
 import           Language.Haskell.Interpreter (InterpreterError (CompilationErrors), InterpreterResult, SourceCode)
 import qualified Language.Haskell.Interpreter as Interpreter
 import           Network.HTTP.Client.Conduit  (defaultManagerSettings)
@@ -33,7 +33,7 @@ import qualified Playground.Interpreter       as PI
 import           Playground.Types             (CompilationResult, Evaluation, EvaluationResult, PlaygroundError)
 import           Playground.Usecases          (vesting)
 import           Servant                      (Application, err400, errBody, hoistServer, serve)
-import           Servant.API                  (Get, JSON, PlainText, Post, ReqBody, (:<|>) ((:<|>)), (:>))
+import           Servant.API                  (Get, JSON, Post, ReqBody, (:<|>) ((:<|>)), (:>))
 import           Servant.Client               (ClientEnv, mkClientEnv, parseBaseUrl)
 import           Servant.Server               (Handler (Handler), Server, ServerError)
 import           System.Environment           (lookupEnv)
@@ -41,14 +41,10 @@ import qualified Web.JWT                      as JWT
 
 type API
      = "contract" :> ReqBody '[ JSON] SourceCode :> Post '[ JSON] (Either Interpreter.InterpreterError (InterpreterResult CompilationResult))
-       :<|> "version" :> Get '[PlainText, JSON] Text
        :<|> "evaluate" :> ReqBody '[ JSON] Evaluation :> Post '[ JSON] (Either PlaygroundError EvaluationResult)
        :<|> "health" :> Get '[ JSON] ()
 
 type Web = "api" :> (API :<|> Auth.API)
-
-version :: Applicative m => m Text
-version = pure gitRev
 
 maxInterpretationTime :: Second
 maxInterpretationTime = 80
@@ -93,7 +89,7 @@ mkHandlers :: MonadIO m => AppConfig -> m (Server Web)
 mkHandlers AppConfig {..} = do
     liftIO $ putStrLn "Interpreter ready"
     githubEndpoints <- liftIO Auth.mkGithubEndpoints
-    pure $ (compileSourceCode clientEnv :<|> version :<|> evaluateSimulation clientEnv :<|> checkHealth clientEnv) :<|> liftedAuthServer githubEndpoints authConfig
+    pure $ (compileSourceCode clientEnv :<|> evaluateSimulation clientEnv :<|> checkHealth clientEnv) :<|> liftedAuthServer githubEndpoints authConfig
 
 app :: Server Web -> Application
 app handlers =
@@ -104,22 +100,10 @@ app handlers =
 
 data AppConfig = AppConfig { authConfig :: Auth.Config, clientEnv :: ClientEnv }
 
-initializeContext :: MonadIO m => m AppConfig
-initializeContext = liftIO $ do
+initializeServerContext :: MonadIO m => Maybe FilePath -> m AppConfig
+initializeServerContext secrets = liftIO $ do
   putStrLn "Initializing Context"
-  githubClientId <- getEnvOrEmpty "GITHUB_CLIENT_ID"
-  githubClientSecret <- getEnvOrEmpty "GITHUB_CLIENT_SECRET"
-  jwtSignature <- getEnvOrEmpty "JWT_SIGNATURE"
-  frontendURL <- getEnvOrEmpty "FRONTEND_URL"
-  cbPath <- getEnvOrEmpty "GITHUB_CALLBACK_PATH"
-  let authConfig =
-        Auth.Config
-          { _configJWTSignature = JWT.hmacSecret jwtSignature,
-            _configFrontendUrl = frontendURL,
-            _configGithubCbPath = cbPath,
-            _configGithubClientId = OAuthClientId githubClientId,
-            _configGithubClientSecret = OAuthClientSecret githubClientSecret
-          }
+  authConfig <- mkAuthConfig secrets
   mWebghcURL <- lookupEnv "WEBGHC_URL"
   webghcURL <- case mWebghcURL of
     Just url -> parseBaseUrl url
@@ -130,6 +114,29 @@ initializeContext = liftIO $ do
   manager <- newManager defaultManagerSettings
   let clientEnv = mkClientEnv manager webghcURL
   pure $ AppConfig authConfig clientEnv
+
+mkAuthConfig :: MonadIO m => Maybe FilePath -> m Auth.Config
+mkAuthConfig (Just path) = do
+  mConfig <- liftIO $ decodeFileStrict path
+  case mConfig of
+    Just config -> pure config
+    Nothing -> do
+      liftIO $ putStrLn $ "failed to decode " <> path
+      mkAuthConfig Nothing
+mkAuthConfig Nothing = liftIO $ do
+  putStrLn "Initializing Context"
+  githubClientId <- getEnvOrEmpty "GITHUB_CLIENT_ID"
+  githubClientSecret <- getEnvOrEmpty "GITHUB_CLIENT_SECRET"
+  jwtSignature <- getEnvOrEmpty "JWT_SIGNATURE"
+  frontendURL <- getEnvOrEmpty "FRONTEND_URL"
+  cbPath <- getEnvOrEmpty "GITHUB_CALLBACK_PATH"
+  pure Auth.Config
+          { _configJWTSignature = JWT.hmacSecret jwtSignature,
+            _configFrontendUrl = frontendURL,
+            _configGithubCbPath = cbPath,
+            _configGithubClientId = OAuthClientId githubClientId,
+            _configGithubClientSecret = OAuthClientSecret githubClientSecret
+          }
 
 getEnvOrEmpty :: String -> IO Text
 getEnvOrEmpty name = do

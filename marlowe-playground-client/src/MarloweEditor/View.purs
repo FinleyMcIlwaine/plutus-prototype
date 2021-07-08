@@ -1,42 +1,70 @@
 module MarloweEditor.View where
 
 import Prelude hiding (div)
+import BottomPanel.Types (Action(..)) as BottomPanel
+import BottomPanel.View (render) as BottomPanel
+import Data.Array as Array
+import Data.Bifunctor (bimap)
 import Data.Enum (toEnum, upFromIncluding)
 import Data.Lens ((^.))
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..))
 import Effect.Aff.Class (class MonadAff)
-import Examples.Haskell.Contracts as HE
-import Halogen (ClassName(..), ComponentHTML, liftEffect)
-import Halogen.Classes (codeEditor, group)
-import Halogen.HTML (HTML, button, div, div_, option, section, select, slot, text)
+import Halogen (ClassName(..), ComponentHTML)
+import Halogen.Classes (flex, flexCol, flexGrow, fullHeight, group, maxH70p, minH0, overflowHidden, paddingX)
+import Halogen.Css (classNames)
+import Halogen.Extra (renderSubmodule)
+import Halogen.HTML (HTML, button, div, option, section, select, slot, text)
 import Halogen.HTML.Events (onClick, onSelectedIndexChange)
-import Halogen.HTML.Properties (class_, classes, disabled, title)
+import Halogen.HTML.Properties (class_, classes, disabled, id_, title)
 import Halogen.HTML.Properties as HTML
 import Halogen.Monaco (monacoComponent)
-import LocalStorage as LocalStorage
 import MainFrame.Types (ChildSlots, _marloweEditorPageSlot)
+import Marlowe.Extended.Metadata (MetaData)
 import Marlowe.Monaco as MM
-import MarloweEditor.BottomPanel (bottomPanel)
-import MarloweEditor.Types (Action(..), State, _keybindings, _showBottomPanel, contractHasErrors, contractHasHoles)
-import Monaco (getModel, setValue) as Monaco
-import Prim.TypeError (class Warn, Text)
-import StaticData as StaticData
+import MarloweEditor.BottomPanel (panelContents)
+import MarloweEditor.Types (Action(..), BottomPanelView(..), State, _bottomPanelState, _editorErrors, _editorWarnings, _keybindings, contractHasErrors, contractHasHoles)
+import Popper (Placement(..))
+import Tooltip.State (tooltip)
+import Tooltip.Types (ReferenceId(..))
 
 render ::
   forall m.
   MonadAff m =>
+  MetaData ->
   State ->
   ComponentHTML Action ChildSlots m
-render state =
-  div_
-    [ section [ class_ (ClassName "code-panel") ]
-        [ div [ classes (codeEditor $ state ^. _showBottomPanel) ]
-            [ marloweEditor state ]
+render metadata state =
+  div [ classes [ flex, flexCol, fullHeight, paddingX ] ]
+    [ section [ classes [ minH0, flexGrow, overflowHidden ] ]
+        [ marloweEditor state ]
+    , section [ classes [ maxH70p ] ]
+        [ renderSubmodule
+            _bottomPanelState
+            BottomPanelAction
+            (BottomPanel.render panelTitles wrapBottomPanelContents)
+            state
         ]
-    , bottomPanel state
+    ]
+  where
+  panelTitles =
+    [ { title: "Metadata", view: MetadataView, classes: [] }
+    , { title: "Static Analysis", view: StaticAnalysisView, classes: [] }
+    , { title: warningsTitle, view: MarloweWarningsView, classes: [] }
+    , { title: errorsTitle, view: MarloweErrorsView, classes: [] }
     ]
 
-otherActions :: forall p. State -> HTML p Action
+  withCount str arry = str <> if Array.null arry then "" else " (" <> show (Array.length arry) <> ")"
+
+  warningsTitle = withCount "Warnings" $ state ^. _editorWarnings
+
+  errorsTitle = withCount "Errors" $ state ^. _editorErrors
+
+  -- TODO: improve this wrapper helper
+  actionWrapper = BottomPanel.PanelAction
+
+  wrapBottomPanelContents panelView = bimap (map actionWrapper) actionWrapper $ panelContents state metadata panelView
+
+otherActions :: forall m. MonadAff m => State -> ComponentHTML Action ChildSlots m
 otherActions state =
   div [ classes [ group ] ]
     [ editorOptions state
@@ -45,37 +73,35 @@ otherActions state =
     ]
 
 sendToSimulatorButton ::
-  forall p.
-  Warn (Text "Create a custom tooltip element") =>
+  forall m.
+  MonadAff m =>
   State ->
-  HTML p Action
+  ComponentHTML Action ChildSlots m
 sendToSimulatorButton state =
-  button
-    ( [ onClick $ const $ Just SendToSimulator
-      , disabled disabled'
-      ]
-        <> disabledTooltip
-    )
-    [ text "Send To Simulator" ]
+  div [ id_ "marloweSendToSimulator" ]
+    [ button
+        [ onClick $ const $ Just SendToSimulator
+        , disabled disabled'
+        , classNames [ "btn" ]
+        ]
+        [ text "Send To Simulator" ]
+    , tooltip tooltipMessage (RefId "marloweSendToSimulator") Bottom
+    ]
   where
   disabled' = contractHasErrors state || contractHasHoles state
 
-  disabledTooltip =
+  tooltipMessage =
     if disabled' then
-      {-
-        TODO: The title property generates a native tooltip in the browser, but it takes a couple
-        of seconds to appear, we should ask for a design and then implement a custom tooltip element.
-      -}
-      [ title "A contract can only be sent to the simulator if it has no errors and no holes"
-      ]
+      "A contract can only be sent to the simulator if it has no errors and no holes"
     else
-      []
+      "Execute this contract in the Marlowe simulator"
 
 viewAsBlocklyButton :: forall p. State -> HTML p Action
 viewAsBlocklyButton state =
   button
     ( [ onClick $ const $ Just ViewAsBlockly
       , disabled disabled'
+      , classNames [ "btn" ]
       ]
         <> disabledTooltip
     )
@@ -96,7 +122,6 @@ editorOptions state =
   div [ class_ (ClassName "editor-options") ]
     [ select
         [ HTML.id_ "editor-options"
-        , class_ (ClassName "dropdown-header")
         , HTML.value $ show $ state ^. _keybindings
         , onSelectedIndexChange (\idx -> ChangeKeyBindings <$> toEnum idx)
         ]
@@ -116,13 +141,6 @@ marloweEditor ::
   ComponentHTML Action ChildSlots m
 marloweEditor state = slot _marloweEditorPageSlot unit component unit (Just <<< HandleEditorMessage)
   where
-  setup editor =
-    liftEffect do
-      -- FIXME we shouldn't access local storage from the view
-      mContents <- LocalStorage.getItem StaticData.marloweBufferLocalStorageKey
-      let
-        contents = fromMaybe HE.escrow mContents
-      model <- Monaco.getModel editor
-      Monaco.setValue model contents
+  setup editor = pure unit
 
   component = monacoComponent $ MM.settings setup

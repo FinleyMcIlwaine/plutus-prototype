@@ -4,7 +4,7 @@ The Haskell package `plutus-core` implements a range of functionality for manipu
 
 ## Specification
 
-### Exported functionality: `Language.PlutusCore`
+### Exported functionality: `PlutusCore`
 
 * Parser and pretty-printer for textual Plutus Core representation as per the Plutus Core specification
 
@@ -36,7 +36,7 @@ The Haskell package `plutus-core` implements a range of functionality for manipu
 
 ### Parser and pretty printer
 
-The lexer & parser are based on Alex & Happy and the pretty printer uses the `prettyprinter` package. Names (identifiers) are interned using uniques as per `Language.PlutusCore.Name`. They are also parameterised with an attribute used differently in different stages.
+The lexer & parser are based on Alex & Happy and the pretty printer uses the `prettyprinter` package. Names (identifiers) are interned using uniques as per `PlutusCore.Name`. They are also parameterised with an attribute used differently in different stages.
 
 Parsing, pretty-printing and the AST representation closely follow the Plutus Core specification. AST nodes are parametereised with the same attribute as the embedded names.
 
@@ -50,13 +50,13 @@ Moreover, renaming ensures that programs meet the **global uniqueness property**
 
 If program transformations are performed on renamed programs (such as substitution on subterms with free variables), the global uniqueness property may no longer hold. It is recommended to simply perform all necessary transformations without expecting or reinstating the global uniqueness property in between individual transformation steps. When the final form of the program has been reached (or when a program needs to be type checked), an additional use of the renamer can reinstate the global unqiueness property again.
 
-NB: Whenever the global uniqueness property is not a given, care needs be taken to correctly handle binders. For example, when implementing substitution, we need to ensure that we do not propagate a substitution below a binder matching the susbtituted variable and we need to avoid variable capture (as per standard treatments of names in lambda calculi).
+NB: Whenever the global uniqueness property is not a given, care needs be taken to correctly handle binders. For example, when implementing substitution, we need to ensure that we do not propagate a substitution below a binder matching the substituted variable and we need to avoid variable capture (as per standard treatments of names in lambda calculi).
 
 ### Type checker
 
-The type checker synthesises the kind of a given type and the type of a given term. This does not involve any form of inference as Plutus Core is already fully typed. It merely checks the consistency of all variable declarations and the well-formedness of types and terms, while deriving the kind or type of the given type or term.
+The type checker synthesizes the kind of a given type and the type of a given term. This does not involve any form of inference as Plutus Core is already fully typed. It merely checks the consistency of all variable declarations and the well-formedness of types and terms, while deriving the kind or type of the given type or term.
 
-NB: The type checker requires terms to meet the global unqiueness property. If this is not a given, use a renamer pass to suitably pre-process the term in question.
+NB: The type checker requires terms to meet the global uniqueness property. If this is not a given, use a renamer pass to suitably pre-process the term in question.
 
 ### Evaluation
 
@@ -66,7 +66,7 @@ You can install the executables described below via either `stack` or `nix`.
 
 ##### Via `nix`
 
-Run `nix build -f default.nix haskell.projectPackages.plutus-core.components.exes.plc` being in the `plutus` folder. Once the build finishes, copy the executables from the `result/bin` folder to somewhere in $PATH.
+Run `nix build -f default.nix plutus.haskell.packages.plutus-core.components.exes.plc` being in the `plutus` folder. Once the build finishes, copy the executables from the `result/bin` folder to somewhere in $PATH.
 
 ##### Via `stack`
 
@@ -82,7 +82,7 @@ Copied executables to ~/.local/bin:
 
 The CK machine can be used to evaluate programs. For this, feed a type checked
 Plutus Core term to the `unsafeEvaluateCk` function defined in the
-[`Language.PlutusCore.Evaluation.Machine.Ck`](src/Language/PlutusCore/Evaluation/Machine/Ck.hs)
+[`PlutusCore.Evaluation.Machine.Ck`](src/PlutusCore/Evaluation/Machine/Ck.hs)
 module (the `DynamicBuiltinNameMeanings` argument contains information about
 extra built-in functions and can safely be set to `Data.Map.empty` for simple
 programs):
@@ -112,7 +112,7 @@ echo "(program 0.1.0 [(lam x (con integer) x) (con integer 271)])" | plc evaluat
 
 #### Tests
 
-A term generation machinery sits in the [`Language.PlutusCore.Generators.Internal.Entity`](generators/Language/PlutusCore/Generators/Internal/Entity.hs) module. It allows to generate terms that contain built-ins (integers, bytestrings, sizes and booleans), constant applications and first-order functions.
+A term generation machinery sits in the [`PlutusCore.Generators.Internal.Entity`](plutus-core/generators/PlutusCore/Generators/Internal/Entity.hs) module. It allows to generate terms that contain built-ins (integers, bytestrings, sizes and booleans), constant applications and first-order functions.
 
 The generator makes sure a term is well-typed and keeps track of what it's supposed to evaluate to.
 

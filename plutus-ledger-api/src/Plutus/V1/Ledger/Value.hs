@@ -27,6 +27,11 @@ module Plutus.V1.Ledger.Value(
     , TokenName(..)
     , tokenName
     , toString
+    -- * Asset classes
+    , AssetClass(..)
+    , assetClass
+    , assetClassValue
+    , assetClassValueOf
     -- ** Value
     , Value(..)
     , singleton
@@ -41,16 +46,20 @@ module Plutus.V1.Ledger.Value(
       -- * Etc.
     , isZero
     , split
+    , unionWith
+    , flattenValue
     ) where
 
 import qualified Prelude                          as Haskell
 
 import           Codec.Serialise.Class            (Serialise)
 import           Control.DeepSeq                  (NFData)
+import           Control.Monad                    (guard)
 import           Data.Aeson                       (FromJSON, FromJSONKey, ToJSON, ToJSONKey, (.:))
 import qualified Data.Aeson                       as JSON
 import qualified Data.Aeson.Extras                as JSON
 import           Data.Hashable                    (Hashable)
+import qualified Data.List                        (sortBy)
 import           Data.String                      (IsString (fromString))
 import           Data.Text                        (Text)
 import qualified Data.Text                        as Text
@@ -58,18 +67,20 @@ import qualified Data.Text.Encoding               as E
 import           Data.Text.Prettyprint.Doc
 import           Data.Text.Prettyprint.Doc.Extras
 import           GHC.Generics                     (Generic)
-import qualified Language.PlutusTx                as PlutusTx
-import qualified Language.PlutusTx.AssocMap       as Map
-import qualified Language.PlutusTx.Builtins       as Builtins
-import           Language.PlutusTx.Lift           (makeLift)
-import           Language.PlutusTx.Prelude
-import           Language.PlutusTx.These
+import           GHC.Show                         (showList__)
 import           Plutus.V1.Ledger.Bytes           (LedgerBytes (LedgerBytes))
 import           Plutus.V1.Ledger.Orphans         ()
 import           Plutus.V1.Ledger.Scripts
+import qualified PlutusTx                         as PlutusTx
+import qualified PlutusTx.AssocMap                as Map
+import qualified PlutusTx.Builtins                as Builtins
+import           PlutusTx.Lift                    (makeLift)
+import qualified PlutusTx.Ord                     as Ord
+import           PlutusTx.Prelude
+import           PlutusTx.These
 
 newtype CurrencySymbol = CurrencySymbol { unCurrencySymbol :: Builtins.ByteString }
-    deriving (IsString, Show, Serialise, Pretty) via LedgerBytes
+    deriving (IsString, Haskell.Show, Serialise, Pretty) via LedgerBytes
     deriving stock (Generic)
     deriving newtype (Haskell.Eq, Haskell.Ord, Eq, Ord, PlutusTx.IsData)
     deriving anyclass (Hashable, ToJSONKey, FromJSONKey,  NFData)
@@ -95,19 +106,19 @@ makeLift ''CurrencySymbol
 
 {-# INLINABLE mpsSymbol #-}
 -- | The currency symbol of a monetay policy hash
-mpsSymbol :: MonetaryPolicyHash -> CurrencySymbol
-mpsSymbol (MonetaryPolicyHash h) = CurrencySymbol h
+mpsSymbol :: MintingPolicyHash -> CurrencySymbol
+mpsSymbol (MintingPolicyHash h) = CurrencySymbol h
 
 {-# INLINABLE currencyMPSHash #-}
--- | The monetary policy hash of a currency symbol
-currencyMPSHash :: CurrencySymbol -> MonetaryPolicyHash
-currencyMPSHash (CurrencySymbol h) = MonetaryPolicyHash h
+-- | The minting policy hash of a currency symbol
+currencyMPSHash :: CurrencySymbol -> MintingPolicyHash
+currencyMPSHash (CurrencySymbol h) = MintingPolicyHash h
 
 {-# INLINABLE currencySymbol #-}
 currencySymbol :: ByteString -> CurrencySymbol
 currencySymbol = CurrencySymbol
 
--- | UTF-8 encoded ByteString of a name of a token
+-- | ByteString of a name of a token, shown as UTF-8 string when possible
 newtype TokenName = TokenName { unTokenName :: Builtins.ByteString }
     deriving (Serialise) via LedgerBytes
     deriving stock (Generic)
@@ -116,36 +127,70 @@ newtype TokenName = TokenName { unTokenName :: Builtins.ByteString }
     deriving Pretty via (PrettyShow TokenName)
 
 instance IsString TokenName where
-  fromString = fromText . Text.pack
+    fromString = fromText . Text.pack
 
 fromText :: Text -> TokenName
 fromText = TokenName . E.encodeUtf8
 
-toText :: TokenName -> Text
-toText = E.decodeUtf8 . unTokenName
+fromTokenName :: (Builtins.ByteString -> r) -> (Text -> r) -> TokenName -> r
+fromTokenName handleBytestring handleText (TokenName bs) = either (\_ -> handleBytestring bs) handleText $ E.decodeUtf8' bs
 
-toString :: TokenName -> String
-toString = Text.unpack . toText
+asBase16 :: Builtins.ByteString -> Text
+asBase16 bs = Text.concat ["0x", JSON.encodeByteString bs]
 
-instance Show TokenName where
-  show = toString
+quoted :: Text -> Text
+quoted s = Text.concat ["\"", s, "\""]
+
+toString :: TokenName -> Haskell.String
+toString = Text.unpack . fromTokenName asBase16 id
+
+instance Haskell.Show TokenName where
+    show = Text.unpack . fromTokenName asBase16 quoted
+
+{- note [Roundtripping token names]
+
+How to properly roundtrip a token name that is not valid UTF-8 through PureScript
+without a big rewrite of the API?
+We prefix it with a zero byte so we can recognize it when we get a bytestring value back,
+and we serialize it base16 encoded, with 0x in front so it will look as a hex string.
+(Browsers don't render the zero byte.)
+-}
 
 instance ToJSON TokenName where
-    toJSON tokenName =
-        JSON.object
-        [ ( "unTokenName", JSON.toJSON $ toText tokenName)]
+    toJSON = JSON.object . Haskell.pure . (,) "unTokenName" . JSON.toJSON .
+        fromTokenName
+            (\bs -> Text.cons '\NUL' (asBase16 bs))
+            (\t -> case Text.take 1 t of "\NUL" -> Text.concat ["\NUL\NUL", t]; _ -> t)
 
 instance FromJSON TokenName where
     parseJSON =
         JSON.withObject "TokenName" $ \object -> do
         raw <- object .: "unTokenName"
-        Haskell.pure . fromText $ raw
+        fromJSONText raw
+        where
+            fromJSONText t = case Text.take 3 t of
+                "\NUL0x"       -> either Haskell.fail (Haskell.pure . TokenName) . JSON.tryDecode . Text.drop 3 $ t
+                "\NUL\NUL\NUL" -> Haskell.pure . fromText . Text.drop 2 $ t
+                _              -> Haskell.pure . fromText $ t
 
 makeLift ''TokenName
 
 {-# INLINABLE tokenName #-}
 tokenName :: ByteString -> TokenName
 tokenName = TokenName
+
+-- | An asset class, identified by currency symbol and token name.
+newtype AssetClass = AssetClass { unAssetClass :: (CurrencySymbol, TokenName) }
+    deriving stock (Generic)
+    deriving newtype (Haskell.Eq, Haskell.Ord, Haskell.Show, Eq, Ord, PlutusTx.IsData, Serialise)
+    deriving anyclass (Hashable, NFData, ToJSON, FromJSON)
+    deriving Pretty via (PrettyShow (CurrencySymbol, TokenName))
+
+{-# INLINABLE assetClass #-}
+assetClass :: CurrencySymbol -> TokenName -> AssetClass
+assetClass s t = AssetClass (s, t)
+
+makeLift ''AssetClass
 
 -- | A cryptocurrency value. This is a map from 'CurrencySymbol's to a
 -- quantity of that currency.
@@ -163,10 +208,26 @@ tokenName = TokenName
 --
 -- See note [Currencies] for more details.
 newtype Value = Value { getValue :: Map.Map CurrencySymbol (Map.Map TokenName Integer) }
-    deriving stock (Show, Generic)
+    deriving stock (Generic)
     deriving anyclass (ToJSON, FromJSON, Hashable, NFData)
     deriving newtype (Serialise, PlutusTx.IsData)
     deriving Pretty via (PrettyShow Value)
+
+instance Haskell.Show Value where
+    showsPrec d v =
+        Haskell.showParen (d Haskell.== 11) $
+            Haskell.showString "Value " . (Haskell.showParen True (showsMap (showPair (showsMap Haskell.shows)) rep))
+        where Value rep = normalizeValue v
+              showsMap sh m = Haskell.showString "Map " . showList__ sh (Map.toList m)
+              showPair s (x,y) = Haskell.showParen True $ Haskell.shows x . Haskell.showString "," . s y
+
+normalizeValue :: Value -> Value
+normalizeValue = Value . Map.fromList . sort . filterRange (/=Map.empty)
+               . mapRange normalizeTokenMap . Map.toList . getValue
+  where normalizeTokenMap = Map.fromList . sort . filterRange (/=0) . Map.toList
+        filterRange p kvs = [(k,v) | (k,v) <- kvs, p v]
+        mapRange f xys = [(x,f y) | (x,y) <- xys]
+        sort xs = Data.List.sortBy compare xs
 
 -- Orphan instances for 'Map' to make this work
 instance (ToJSON v, ToJSON k) => ToJSON (Map.Map k v) where
@@ -216,6 +277,14 @@ instance Module Integer Value where
     {-# INLINABLE scale #-}
     scale i (Value xs) = Value (fmap (fmap (\i' -> i * i')) xs)
 
+instance JoinSemiLattice Value where
+    {-# INLINABLE (\/) #-}
+    (\/) = unionWith Ord.max
+
+instance MeetSemiLattice Value where
+    {-# INLINABLE (/\) #-}
+    (/\) = unionWith Ord.min
+
 {- note [Currencies]
 
 The 'Value' type represents a collection of amounts of different currencies.
@@ -254,6 +323,16 @@ symbols (Value mp) = Map.keys mp
 singleton :: CurrencySymbol -> TokenName -> Integer -> Value
 singleton c tn i = Value (Map.singleton c (Map.singleton tn i))
 
+{-# INLINABLE assetClassValue #-}
+-- | A 'Value' containing the given amount of the asset class.
+assetClassValue :: AssetClass -> Integer -> Value
+assetClassValue (AssetClass (c, t)) i = singleton c t i
+
+{-# INLINABLE assetClassValueOf #-}
+-- | Get the quantity of the given 'AssetClass' class in the 'Value'.
+assetClassValueOf :: Value -> AssetClass -> Integer
+assetClassValueOf v (AssetClass (c, t)) = valueOf v c t
+
 {-# INLINABLE unionVal #-}
 -- | Combine two 'Value' maps
 unionVal :: Value -> Value -> Map.Map CurrencySymbol (Map.Map TokenName (These Integer Integer))
@@ -276,6 +355,15 @@ unionWith f ls rs =
             That b    -> f 0 b
             These a b -> f a b
     in Value (fmap (fmap unThese) combined)
+
+{-# INLINABLE flattenValue #-}
+-- | Convert a value to a simple list, keeping only the non-zero amounts.
+flattenValue :: Value -> [(CurrencySymbol, TokenName, Integer)]
+flattenValue v = do
+    (cs, m) <- Map.toList $ getValue v
+    (tn, a) <- Map.toList m
+    guard $ a /= 0
+    return (cs, tn, a)
 
 -- Num operations
 
@@ -341,6 +429,7 @@ eq = checkBinRel (==)
 --
 --   @negate (fst (split a)) `plus` (snd (split a)) == a@
 --
+{-# INLINABLE split #-}
 split :: Value -> (Value, Value)
 split (Value mp) = (negate (Value neg), Value pos) where
   (neg, pos) = Map.mapThese splitIntl mp

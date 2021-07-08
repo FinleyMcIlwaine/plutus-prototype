@@ -1,29 +1,33 @@
 module Halogen.ActusBlockly where
 
 import Prelude hiding (div)
-import Blockly (BlockDefinition, ElementId(..), XML, getBlockById)
-import Blockly as Blockly
 import Blockly.Generator (Generator, blockToCode)
+import Blockly.Internal (BlockDefinition, ElementId(..), XML, getBlockById)
+import Blockly.Internal as Blockly
+import Blockly.Toolbox (Toolbox)
 import Blockly.Types as BT
+import Bootstrap (btn)
 import Control.Monad.Except (ExceptT(..), except, runExceptT)
-import Control.Monad.ST as ST
-import Control.Monad.ST.Ref as STRef
 import Data.Bifunctor (lmap)
 import Data.Either (Either(..), note)
 import Data.Lens (Lens', assign, set, use)
 import Data.Lens.Record (prop)
+import Data.List (List)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (unwrap)
 import Data.Symbol (SProxy(..))
 import Data.Traversable (for, for_)
+import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Effect (Effect)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Class (class MonadEffect)
 import Foreign.Generic (encodeJSON)
 import Halogen (ClassName(..), Component, HalogenM, RefLabel(..), liftEffect, mkComponent, modify_, raise)
 import Halogen as H
-import Halogen.BlocklyCommons (blocklyEvents, updateUnsavedChangesActionHandler)
-import Halogen.Classes (aHorizontal, expanded, panelSubHeader, panelSubHeaderMain, sidebarComposer, hide, alignedButtonInTheMiddle, alignedButtonLast)
+import Halogen.BlocklyCommons (blocklyEvents, detectCodeChanges)
+import Halogen.Classes (aHorizontal, alignedButtonInTheMiddle, alignedButtonLast, expanded, flex, flexCol, flexGrow, fontBold, fullHeight, hidden, smallPaddingLeft, smallPaddingY, textInactive)
+import Halogen.Css (classNames)
 import Halogen.HTML (HTML, button, div, text, iframe, aside, section)
 import Halogen.HTML.Core (AttrName(..))
 import Halogen.HTML.Events (onClick)
@@ -39,7 +43,7 @@ type State
     , generator :: Maybe Generator
     , errorMessage :: Maybe String
     , showShiny :: Boolean
-    , useEvents :: Boolean
+    , eventsWhileDragging :: Maybe (List BT.BlocklyEvent)
     }
 
 _actusBlocklyState :: Lens' State (Maybe BT.BlocklyState)
@@ -60,12 +64,15 @@ data Query a
   | GetWorkspace (XML -> a)
   | LoadWorkspace XML a
 
+-- QUESTION:
+-- QUESTION: What are the different ContractFlavour F and FS?
+-- QUESTION:
 data ContractFlavour
   = FS
   | F
 
 data Action
-  = Inject String (Array BlockDefinition)
+  = Inject String (Array BlockDefinition) Toolbox
   | GetTerms ContractFlavour
   | BlocklyEvent BT.BlocklyEvent
   | RunAnalysis
@@ -78,8 +85,15 @@ data Message
 type DSL m a
   = HalogenM State Action () Message m a
 
-blockly :: forall m. MonadAff m => String -> Array BlockDefinition -> Component HTML Query Unit Message m
-blockly rootBlockName blockDefinitions =
+-- FIXME: rename to mkBlockly to avoid shadowing in handleQuery
+blockly ::
+  forall m.
+  MonadAff m =>
+  String ->
+  Array BlockDefinition ->
+  Toolbox ->
+  Component HTML Query Unit Message m
+blockly rootBlockName blockDefinitions toolbox =
   mkComponent
     { initialState:
         const
@@ -87,14 +101,14 @@ blockly rootBlockName blockDefinitions =
           , generator: Nothing
           , errorMessage: Just "(Labs is an experimental feature)"
           , showShiny: false
-          , useEvents: false
+          , eventsWhileDragging: Nothing
           }
     , render
     , eval:
         H.mkEval
           { handleQuery
           , handleAction
-          , initialize: Just $ Inject rootBlockName blockDefinitions
+          , initialize: Just $ Inject rootBlockName blockDefinitions toolbox
           , finalize: Nothing
           , receive: const Nothing
           }
@@ -103,13 +117,8 @@ blockly rootBlockName blockDefinitions =
 handleQuery :: forall m a. MonadEffect m => Query a -> DSL m (Maybe a)
 handleQuery (Resize next) = do
   mState <- use _actusBlocklyState
-  case mState of
-    Just state ->
-      pure
-        $ ST.run do
-            workspaceRef <- STRef.new state.workspace
-            Blockly.resize state.blockly workspaceRef
-    Nothing -> pure unit
+  for_ mState \{ blockly, workspace } ->
+    liftEffect $ Blockly.resize blockly workspace
   pure $ Just next
 
 handleQuery (SetError err next) = do
@@ -119,34 +128,25 @@ handleQuery (SetError err next) = do
 handleQuery (GetWorkspace f) = do
   mState <- use _actusBlocklyState
   for mState \bs -> do
-    let
-      xml = Blockly.workspaceXML bs.blockly bs.workspace
+    xml <- liftEffect $ Blockly.workspaceXML bs.blockly bs.workspace
     pure $ f xml
 
 handleQuery (LoadWorkspace xml next) = do
   mState <- use _actusBlocklyState
-  for_ mState \state ->
-    pure
-      $ ST.run do
-          workspaceRef <- STRef.new state.workspace
-          Blockly.loadWorkspace state.blockly workspaceRef xml
+  for_ mState \{ blockly, workspace } ->
+    liftEffect $ Blockly.loadWorkspace blockly workspace xml
   assign _errorMessage Nothing
   pure $ Just next
 
 handleAction :: forall m. MonadAff m => Action -> DSL m Unit
-handleAction (Inject rootBlockName blockDefinitions) = do
-  blocklyState <- liftEffect $ Blockly.createBlocklyInstance rootBlockName (ElementId "actusBlocklyWorkspace") (ElementId "actusBlocklyToolbox")
-  let
-    _ =
-      ST.run
-        ( do
-            blocklyRef <- STRef.new blocklyState.blockly
-            workspaceRef <- STRef.new blocklyState.workspace
-            Blockly.addBlockTypes blocklyRef blockDefinitions
-            Blockly.initializeWorkspace blocklyState.blockly workspaceRef
-        )
-
-    generator = buildGenerator blocklyState
+handleAction (Inject rootBlockName blockDefinitions toolbox) = do
+  blocklyState /\ generator <-
+    liftEffect do
+      state <- Blockly.createBlocklyInstance rootBlockName (ElementId "actusBlocklyWorkspace") toolbox
+      Blockly.addBlockTypes state.blockly blockDefinitions
+      Blockly.initializeWorkspace state.blockly state.workspace
+      generator <- buildGenerator state.blockly
+      pure $ Tuple state generator
   void $ H.subscribe $ blocklyEvents BlocklyEvent blocklyState.workspace
   modify_
     ( set _actusBlocklyState (Just blocklyState)
@@ -154,16 +154,15 @@ handleAction (Inject rootBlockName blockDefinitions) = do
     )
 
 handleAction (GetTerms flavour) = do
+  mBlocklyState <- use _actusBlocklyState
+  mGenerator <- use _generator
   res <-
-    runExceptT do
-      blocklyState <- ExceptT <<< map (note $ unexpected "BlocklyState not set") $ use _actusBlocklyState
-      generator <- ExceptT <<< map (note $ unexpected "Generator not set") $ use _generator
-      let
-        workspace = blocklyState.workspace
-
-        rootBlockName = blocklyState.rootBlockName
-      block <- except <<< (note $ unexpected ("Can't find root block" <> rootBlockName)) $ getBlockById workspace rootBlockName
-      except <<< lmap (\x -> "This workspace cannot be converted to code: " <> (show x)) $ blockToCode block generator
+    liftEffect
+      $ runExceptT do
+          { workspace, rootBlockName } <- except <<< (note $ unexpected "BlocklyState not set") $ mBlocklyState
+          generator <- except <<< (note $ unexpected "Generator not set") $ mGenerator
+          block <- ExceptT <<< map (note $ unexpected ("Can't find root block" <> rootBlockName)) $ getBlockById workspace rootBlockName
+          ExceptT $ lmap (\x -> "This workspace cannot be converted to code: " <> (show x)) <$> blockToCode block generator
   case res of
     Left e -> assign _errorMessage $ Just e
     Right contract -> do
@@ -184,16 +183,15 @@ handleAction (GetTerms flavour) = do
   unexpected s = "An unexpected error has occurred, please raise a support issue: " <> s
 
 handleAction RunAnalysis = do
+  mBlocklyState <- use _actusBlocklyState
+  mGenerator <- use _generator
   res <-
-    runExceptT do
-      blocklyState <- ExceptT <<< map (note $ unexpected "BlocklyState not set") $ use _actusBlocklyState
-      generator <- ExceptT <<< map (note $ unexpected "Generator not set") $ use _generator
-      let
-        workspace = blocklyState.workspace
-
-        rootBlockName = blocklyState.rootBlockName
-      block <- except <<< (note $ unexpected ("Can't find root block" <> rootBlockName)) $ getBlockById workspace rootBlockName
-      except <<< lmap (\x -> "This workspace cannot be converted to code: " <> (show x)) $ blockToCode block generator
+    liftEffect
+      $ runExceptT do
+          { workspace, rootBlockName } <- except <<< (note $ unexpected "BlocklyState not set") $ mBlocklyState
+          generator <- except <<< (note $ unexpected "Generator not set") $ mGenerator
+          block <- ExceptT <<< map (note $ unexpected ("Can't find root block" <> rootBlockName)) $ getBlockById workspace rootBlockName
+          ExceptT $ lmap (\x -> "This workspace cannot be converted to code: " <> (show x)) <$> blockToCode block generator
   case res of
     Left e -> assign _errorMessage $ Just e
     Right contract -> do
@@ -206,38 +204,35 @@ handleAction RunAnalysis = do
   where
   unexpected s = "An unexpected error has occurred, please raise a support issue: " <> s
 
-handleAction (BlocklyEvent event) = updateUnsavedChangesActionHandler CodeChange event
+handleAction (BlocklyEvent event) = detectCodeChanges CodeChange event
 
 blocklyRef :: RefLabel
 blocklyRef = RefLabel "blockly"
 
 render :: forall p. State -> HTML p Action
 render state =
-  div []
-    [ section [ classes [ panelSubHeader, aHorizontal ] ]
-        [ div [ classes [ panelSubHeaderMain, aHorizontal, ClassName "actus-buttons" ] ]
+  div [ classes [ fullHeight, flex, flexCol ] ]
+    [ section [ classes [ aHorizontal ] ]
+        [ div [ classes [ smallPaddingY, smallPaddingLeft, aHorizontal, fontBold, textInactive ] ]
             [ toCodeButton "Generate reactive contract"
             , toStaticCodeButton "Generate static contract"
             , runAnalysis
             , errorMessage state.errorMessage
             ]
         ]
-    , div [ classes [ ClassName "code-panel" ] ]
-        [ div
-            [ ref blocklyRef
-            , id_ "actusBlocklyWorkspace"
-            , classes [ ClassName "actus-blockly-workspace", ClassName "code-editor" ]
-            ]
-            []
-        , shiny state
+    , div
+        [ ref blocklyRef
+        , id_ "actusBlocklyWorkspace"
+        , classes [ flexGrow ]
         ]
+        []
     ]
 
 shiny ::
   forall p.
   State -> HTML p Action
 shiny state =
-  aside [ classes ([ sidebarComposer, expanded false ] <> if state.showShiny then [] else [ hide ]) ]
+  aside [ classes ([ expanded false ] <> if state.showShiny then [] else [ hidden ]) ]
     [ div [ attr (AttrName "style") "height: 100%;" ]
         [ iframe
             [ src "http://localhost:8081"
@@ -253,6 +248,7 @@ toCodeButton :: forall p. String -> HTML p Action
 toCodeButton key =
   button
     [ onClick $ const $ Just $ GetTerms FS
+    , classNames [ "btn" ]
     ]
     [ text key ]
 
@@ -260,7 +256,7 @@ toStaticCodeButton :: forall p. String -> HTML p Action
 toStaticCodeButton key =
   button
     [ onClick $ const $ Just $ GetTerms F
-    , classes ([ alignedButtonInTheMiddle ])
+    , classes ([ alignedButtonInTheMiddle, btn ])
     ]
     [ text key ]
 
@@ -268,7 +264,7 @@ runAnalysis :: forall p. HTML p Action
 runAnalysis =
   button
     [ onClick $ const $ Just $ RunAnalysis
-    , classes ([ alignedButtonLast, hide ]) --this feature is temporary disabled because shiny is not deployed yet
+    , classes ([ alignedButtonLast, hidden ]) --this feature is temporary disabled because shiny is not deployed yet
     ]
     [ text "Run Analysis" ]
 

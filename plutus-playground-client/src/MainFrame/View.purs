@@ -37,13 +37,20 @@ render :: forall m. MonadAff m => State -> ComponentHTML HAction ChildSlots m
 render state@(State { contractDemos, currentView, editorState, compilationResult, simulations, evaluationResult, blockchainVisualisationState }) =
   div
     [ class_ $ ClassName "frame" ]
-    [ mainHeader
+    [ releaseBanner
+    , mainHeader
     , subHeader state
     , editorMain contractDemos currentView editorState compilationResult
     , simulationsMain state
     , transactionsMain currentView simulations evaluationResult blockchainVisualisationState
     , mainFooter
     ]
+
+releaseBanner :: forall p. HTML p HAction
+releaseBanner =
+  div
+    [ class_ $ ClassName "release-banner" ]
+    [ text "Plutus Refresh - Updated 25th January 2021" ]
 
 mainHeader :: forall p. HTML p HAction
 mainHeader =
@@ -69,9 +76,9 @@ documentationLinksPane =
     (makeNavItem <$> links)
   where
   links =
-    [ text "Getting Started" /\ "https://testnet.iohkdev.io/plutus/get-started/writing-contracts-in-plutus/"
-    , text "Tutorial" /\ "./tutorial/index.html"
-    , text "API" /\ "./tutorial/haddock/index.html"
+    [ text "Getting Started" /\ "https://developers.cardano.org/en/programming-languages/plutus/getting-started/"
+    , text "Tutorials" /\ "./doc/plutus/tutorials/index.html"
+    , text "API" /\ "./doc/haddock/index.html"
     , text "Privacy" /\ "https://static.iohk.io/docs/data-protection/iohk-data-protection-gdpr-policy.pdf"
     ]
 
@@ -263,7 +270,10 @@ mainFooter =
         ]
     , div
         [ classes [ navbarNav, mlAuto ] ]
-        [ makeNavItem $ text "Twitter" /\ "https://twitter.com/hashtag/Plutus" ]
+        [ makeNavItem $ text "GitHub" /\ "https://github.com/input-output-hk/plutus"
+        , makeNavItem $ text "Twitter" /\ "https://twitter.com/hashtag/Plutus"
+        , makeNavItem $ text "Feedback" /\ "https://input-output.typeform.com/to/gQ0t9ep5"
+        ]
     ]
 
 makeNavItem :: forall p i. HTML p i /\ String -> HTML p i

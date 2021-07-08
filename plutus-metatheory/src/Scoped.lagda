@@ -42,6 +42,8 @@ arity equalsInteger = 2
 arity concatenate = 2
 arity takeByteString = 2
 arity dropByteString = 2
+arity lessThanByteString = 2
+arity greaterThanByteString = 2
 arity sha2-256 = 1
 arity sha3-256 = 1
 arity verifySignature = 3
@@ -257,7 +259,7 @@ data ScopeError : Set where
   deBError : ScopeError
   freeVariableError : FreeVariableError → ScopeError
 
-{-# FOREIGN GHC import Language.PlutusCore.DeBruijn #-}
+{-# FOREIGN GHC import PlutusCore.DeBruijn #-}
 {-# FOREIGN GHC import Raw #-}
 {-# COMPILE GHC ScopeError = data ScopeError (DeBError | FreeVariableError) #-}
 

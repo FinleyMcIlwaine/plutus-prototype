@@ -10,37 +10,40 @@
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
 module Main (main) where
 
-import           Prelude                                               hiding (tail)
+import           Prelude                       hiding (tail)
 
 import           Control.Lens.Indexed
 import           Control.Monad.Except
 import           Criterion.Main
-import           Crypto.Hash                                           hiding (Context)
-import qualified Data.ByteArray                                        as BA
-import qualified Data.ByteString                                       as BS
-import qualified Language.PlutusTx.Coordination.Contracts.Future       as FT
-import qualified Language.PlutusTx.Coordination.Contracts.MultiSig     as MS
-import qualified Language.PlutusTx.Coordination.Contracts.PubKey       as PK
-import qualified Language.PlutusTx.Coordination.Contracts.TokenAccount as TA
-import qualified Language.PlutusTx.Prelude                             as P
+import           Crypto.Hash                   hiding (Context)
+import qualified Data.ByteArray                as BA
+import qualified Data.ByteString               as BS
+import           Data.Default                  (Default (def))
 import           Ledger
-import qualified Ledger.Ada                                            as Ada
+import qualified Ledger.Ada                    as Ada
 import           Ledger.Bytes
-import qualified Ledger.Crypto                                         as Crypto
-import qualified Ledger.Typed.Scripts                                  as Scripts
+import qualified Ledger.Crypto                 as Crypto
+import qualified Ledger.TimeSlot               as TimeSlot
+import qualified Ledger.Typed.Scripts          as Scripts
+import           Ledger.Value                  (assetClass, currencySymbol)
+import qualified Plutus.Contracts.Future       as FT
+import qualified Plutus.Contracts.MultiSig     as MS
+import qualified Plutus.Contracts.PubKey       as PK
+import qualified Plutus.Contracts.TokenAccount as TA
+import qualified PlutusTx.Prelude              as P
 import           Wallet
-import           Wallet.Emulator.Types                                 (Wallet (..), walletPubKey)
+import           Wallet.Emulator.Types         (Wallet (..), walletPubKey)
 
-import qualified Language.PlutusCore                                   as PLC
-import qualified Language.PlutusCore.Evaluation.Result                 as PLC
-import qualified Language.PlutusTx                                     as PlutusTx
-import           Language.PlutusTx.Evaluation                          (unsafeEvaluateCek)
-import qualified Language.PlutusTx.Prelude                             as PlutusTx
-import qualified Language.UntypedPlutusCore                            as UPLC
+import qualified PlutusCore                    as PLC
+import qualified PlutusCore.Evaluation.Result  as PLC
+import qualified PlutusTx
+import           PlutusTx.Evaluation           (unsafeEvaluateCek)
+import qualified PlutusTx.Prelude              as PlutusTx
+import qualified UntypedPlutusCore             as UPLC
 
 import           Opt
-import qualified Recursion                                             as Rec
-import qualified Scott                                                 as Scott
+import qualified Recursion                     as Rec
+import qualified Scott
 
 main :: IO ()
 main = defaultMain [ functions, validators, scriptHashes ]
@@ -218,22 +221,22 @@ multisig :: Benchmark
 multisig = bgroup "multisig" [
         bench "1of1" $ nf runScript'
             (validationData2
-            , Scripts.validatorScript $ MS.scriptInstance msScen1of1
+            , Scripts.validatorScript $ MS.typedValidator msScen1of1
             , unitDatum
             , unitRedeemer),
         bench "1of2" $ nf runScript'
             (validationData2
-            , Scripts.validatorScript $ MS.scriptInstance msScen1of2
+            , Scripts.validatorScript $ MS.typedValidator msScen1of2
             , unitDatum
             , unitRedeemer),
         bench "2of2" $ nf runScript'
             (validationData2
-            , Scripts.validatorScript $ MS.scriptInstance msScen2of2
+            , Scripts.validatorScript $ MS.typedValidator msScen2of2
             , unitDatum
             , unitRedeemer),
         bench "typecheck" $ nf runScript'
             (validationData2
-            , Scripts.validatorScript $ MS.scriptInstance msScen1of1
+            , Scripts.validatorScript $ MS.typedValidator msScen1of1
             , unitDatum
             , unitRedeemer)
     ]
@@ -273,38 +276,40 @@ validationData1 :: Context
 validationData1 = Context $ PlutusTx.toData $ mockCtx
 
 validationData2 :: Context
-validationData2 = Context $ PlutusTx.toData $ mockCtx { valCtxTxInfo = (valCtxTxInfo mockCtx) { txInfoSignatories = [pubKeyHash pk1, pubKeyHash pk2] } }
+validationData2 = Context $ PlutusTx.toData $ mockCtx { scriptContextTxInfo = (scriptContextTxInfo mockCtx) { txInfoSignatories = [pubKeyHash pk1, pubKeyHash pk2] } }
 
-mockCtx :: ValidatorCtx
-mockCtx = ValidatorCtx
-    { valCtxTxInfo = TxInfo
+mockCtx :: ScriptContext
+mockCtx = ScriptContext
+    { scriptContextTxInfo = TxInfo
       { txInfoInputs = []
       , txInfoOutputs = []
       , txInfoFee = PlutusTx.zero
       , txInfoForge = PlutusTx.zero
-      , txInfoValidRange = defaultSlotRange
-      , txInfoForgeScripts = []
+      , txInfoValidRange = TimeSlot.slotRangeToPOSIXTimeRange def defaultSlotRange
       , txInfoSignatories = []
       , txInfoId = TxId P.emptyByteString
       , txInfoData = []
+      , txInfoDCert = []
+      , txInfoWdrl = []
       }
-    , valCtxInput = 0
+    , scriptContextPurpose = Minting (currencySymbol "fd2c8c0705d3ca1e7b1aeaa4da85dfe5ac6dde64da9d241011d84c0ee97aac5e")
     }
 
 -- Script hashes
 scriptHashes :: Benchmark
 scriptHashes = bgroup "script hashes" [
-    let si = TA.scriptInstance (TA.Account ("fd2c8c0705d3ca1e7b1aeaa4da85dfe5ac6dde64da9d241011d84c0ee97aac5e", "my token")) in
+    let ac = assetClass "fd2c8c0705d3ca1e7b1aeaa4da85dfe5ac6dde64da9d241011d84c0ee97aac5e" "my token"
+        si = TA.typedValidator (TA.Account ac) in
     bench "token account" $ nf Scripts.validatorScript si
-    , bench "public key" $ nf (Scripts.validatorScript . PK.scriptInstance) (pubKeyHash $ walletPubKey $ Wallet 2)
-    , bench "future" $ nf (Scripts.validatorScript . FT.scriptInstance theFuture) accounts
+    , bench "public key" $ nf (Scripts.validatorScript . PK.typedValidator) (pubKeyHash $ walletPubKey $ Wallet 2)
+    , bench "future" $ nf (Scripts.validatorScript . FT.typedValidator theFuture) accounts
     ]
 
 -- | A futures contract over 187 units with a forward price of 1233 Lovelace,
 --   due at slot #100.
 theFuture :: FT.Future
 theFuture = FT.Future {
-    FT.ftDeliveryDate  = Ledger.Slot 100,
+    FT.ftDeliveryDate  = TimeSlot.slotToBeginPOSIXTime def 100,
     FT.ftUnits         = 187,
     FT.ftUnitPrice     = Ada.lovelaceValueOf 1123,
     FT.ftInitialMargin = Ada.lovelaceValueOf 800,
@@ -316,5 +321,5 @@ accounts :: FT.FutureAccounts
 accounts =
     let cur = "fd2c8c0705d3ca1e7b1aeaa4da85dfe5ac6dde64da9d241011d84c0ee97aac5e" in
     FT.mkAccounts
-            (TA.Account (cur, "long"))
-            (TA.Account (cur, "short"))
+            (TA.Account $ assetClass cur "long")
+            (TA.Account $ assetClass cur "short")

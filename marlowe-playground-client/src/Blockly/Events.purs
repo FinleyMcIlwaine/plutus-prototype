@@ -6,14 +6,17 @@ module Blockly.Events
   , FinishLoadingEvent
   , MoveEvent
   , UIEvent
+  , SelectEvent
+  , element
   , newParentId
   , oldParentId
   , oldInputName
   , newInputName
+  , newElementId
   ) where
 
-import Data.Maybe (Maybe(..))
 import Data.Function.Uncurried (Fn4, runFn4)
+import Data.Maybe (Maybe(..))
 import Web.Event.Event (Event)
 
 class HasEvent a where
@@ -41,6 +44,9 @@ foreign import data UIEvent :: Type
 instance hasEventUIEvent :: HasEvent UIEvent where
   fromEvent :: Event -> Maybe UIEvent
   fromEvent = readBlocklyEventType "ui"
+
+element :: UIEvent -> Maybe String
+element = readProperty "element"
 
 ------------------------------------------------------------
 foreign import data FinishLoadingEvent :: Type
@@ -80,6 +86,16 @@ If needed these properties are also available for MoveEvent
   blockId	string	UUID of block. The block can be found with workspace.getBlockById(event.blockId)
   group	string	UUID of group. Some events are part of an indivisible group, such as inserting a statement in a stack.
 -}
+------------------------------------------------------------
+foreign import data SelectEvent :: Type
+
+instance hasEventSelectEvent :: HasEvent SelectEvent where
+  fromEvent :: Event -> Maybe SelectEvent
+  fromEvent = readBlocklyEventType "selected"
+
+newElementId :: SelectEvent -> Maybe String
+newElementId = readProperty "newElementId"
+
 ------------------------------------------------------------
 -- This function let us check if a blockly event is of the desired type. It was inspired by unsafeReadProtoTagged
 -- and the reason it's unsafe, it's because there could be other objects that have a property called `type` with

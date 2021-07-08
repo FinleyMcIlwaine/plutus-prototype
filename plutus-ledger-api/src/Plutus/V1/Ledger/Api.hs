@@ -5,90 +5,147 @@
 The interface to Plutus V1 for the ledger.
 -}
 module Plutus.V1.Ledger.Api (
+    -- * Scripts
+    SerializedScript
+    , Script
+    , fromCompiledCode
     -- * Validating scripts
-    validateScript
+    , validateScript
     -- * Running scripts
     , evaluateScriptRestricting
     , evaluateScriptCounting
-    -- * Data
-    , Data (..)
-    , IsData (..)
-    -- ** Costing-related types
-    , ExBudget (..)
-    , ExCPU (..)
-    , ExMemory (..)
-    , CostModelParameters
     -- ** Verbose mode and log output
     , VerboseMode (..)
     , LogOutput
+    -- * Serialising scripts
+    , plutusScriptEnvelopeType
+    , plutusDatumEnvelopeType
+    , plutusRedeemerEnvelopeType
+    -- * Costing-related types
+    , ExBudget (..)
+    , ExCPU (..)
+    , ExMemory (..)
+    -- ** Cost model
+    , validateCostModelParams
+    , defaultCostModelParams
+    , CostModelParams
     -- * Context types
-    , ValidatorCtx (..)
-    , PolicyCtx (..)
+    , ScriptContext(..)
+    , ScriptPurpose(..)
     -- ** Supporting types used in the context types
     -- *** Bytes
     , LedgerBytes (..)
     , fromBytes
+    -- *** Certificates
+    , DCert(..)
+    -- *** Credentials
+    , StakingCredential(..)
+    , Credential(..)
+    -- *** Value
+    , Value (..)
+    , CurrencySymbol (..)
+    , TokenName (..)
+    , singleton
+    , unionWith
+    , adaSymbol
+    , adaToken
+    -- *** Time
+    , POSIXTime (..)
+    , POSIXTimeRange
     -- *** Types for representing transactions
     , Address (..)
     , PubKeyHash (..)
+    , TxId (..)
     , TxInfo (..)
     , TxOut(..)
     , TxOutRef(..)
-    , TxOutType(..)
     , TxInInfo(..)
-    , TxOutInfo
-    , Slot (..)
-    , SlotRange
     -- *** Intervals
     , Interval (..)
     , Extended (..)
     , Closure
     , UpperBound (..)
     , LowerBound (..)
+    , always
+    , from
+    , to
+    , lowerBound
+    , upperBound
+    , strictLowerBound
+    , strictUpperBound
     -- *** Newtypes for script/datum types and hash types
     , Validator (..)
+    , mkValidatorScript
+    , unValidatorScript
     , ValidatorHash (..)
-    , MonetaryPolicy (..)
-    , MonetaryPolicyHash (..)
+    , validatorHash
+    , MintingPolicy (..)
+    , mkMintingPolicyScript
+    , unMintingPolicyScript
+    , MintingPolicyHash (..)
+    , mintingPolicyHash
     , Redeemer (..)
     , RedeemerHash (..)
+    , redeemerHash
     , Datum (..)
     , DatumHash (..)
+    , datumHash
+    -- * Data
+    , Data (..)
+    , IsData (..)
     -- * Errors
     , EvaluationError (..)
 ) where
 
+import qualified Codec.Serialise                                  as CBOR
 import           Control.Monad.Except
 import           Control.Monad.Writer
-import           Data.Aeson                                         (Result (..), fromJSON, toJSON)
 import           Data.Bifunctor
+import           Data.ByteString.Lazy                             (fromStrict)
 import           Data.ByteString.Short
 import           Data.Either
-import           Data.Map
-import qualified Data.Text                                          as Text
+import           Data.Maybe                                       (isJust)
+import           Data.Text                                        (Text)
+import qualified Data.Text                                        as Text
 import           Data.Text.Prettyprint.Doc
 import           Data.Tuple
-import qualified Flat
-import qualified Language.PlutusCore                                as PLC
-import qualified Language.PlutusCore.Constant                       as PLC
-import qualified Language.PlutusCore.DeBruijn                       as PLC
-import           Language.PlutusCore.Evaluation.Machine.ExBudgeting (CostModel, ExBudget (..))
-import qualified Language.PlutusCore.Evaluation.Machine.ExBudgeting as PLC
-import           Language.PlutusCore.Evaluation.Machine.ExMemory    (ExCPU (..), ExMemory (..))
-import qualified Language.PlutusCore.MkPlc                          as PLC
-import           Language.PlutusCore.Pretty
-import           Language.PlutusTx                                  (Data (..), IsData (..))
-import qualified Language.PlutusTx.Lift                             as PlutusTx
-import qualified Language.UntypedPlutusCore                         as UPLC
-import qualified Language.UntypedPlutusCore.Evaluation.Machine.Cek  as UPLC
+import           Plutus.V1.Ledger.Ada
 import           Plutus.V1.Ledger.Address
 import           Plutus.V1.Ledger.Bytes
 import           Plutus.V1.Ledger.Contexts
+import           Plutus.V1.Ledger.Credential
 import           Plutus.V1.Ledger.Crypto
-import           Plutus.V1.Ledger.Interval
-import           Plutus.V1.Ledger.Scripts                           hiding (Script)
-import qualified Plutus.V1.Ledger.Scripts                           as Scripts
-import           Plutus.V1.Ledger.Slot
+import           Plutus.V1.Ledger.DCert
+import           Plutus.V1.Ledger.Interval                        hiding (singleton)
+import           Plutus.V1.Ledger.Scripts
+import           Plutus.V1.Ledger.Time
+import           Plutus.V1.Ledger.TxId
+import           Plutus.V1.Ledger.Value
+import           PlutusCore                                       as PLC
+import qualified PlutusCore.DeBruijn                              as PLC
+import           PlutusCore.Evaluation.Machine.CostModelInterface (CostModelParams, applyCostModelParams)
+import           PlutusCore.Evaluation.Machine.ExBudget           (ExBudget (..))
+import qualified PlutusCore.Evaluation.Machine.ExBudget           as PLC
+import           PlutusCore.Evaluation.Machine.ExMemory           (ExCPU (..), ExMemory (..))
+import           PlutusCore.Evaluation.Machine.MachineParameters
+import qualified PlutusCore.MkPlc                                 as PLC
+import           PlutusCore.Pretty
+import           PlutusTx                                         (Data (..), IsData (..))
+import qualified PlutusTx.Lift                                    as PlutusTx
+import qualified UntypedPlutusCore                                as UPLC
+import qualified UntypedPlutusCore.Evaluation.Machine.Cek         as UPLC
+
+plutusScriptEnvelopeType :: Text
+plutusScriptEnvelopeType = "PlutusV1Script"
+
+-- | It was discussed with the Ledger team that the envelope types for 'Datum'
+-- and 'Redeemer' should be in plutus-ledger-api.
+--
+-- For now, those types will be generic and versioning might be included in
+-- the future.
+plutusDatumEnvelopeType, plutusRedeemerEnvelopeType  :: Text
+plutusDatumEnvelopeType = "ScriptDatum"
+plutusRedeemerEnvelopeType = "ScriptRedeemer"
 
 {- Note [Abstract types in the ledger API]
 We need to support old versions of the ledger API as we update the code that it depends on. You
@@ -108,34 +165,28 @@ anything, we're just going to create new versions.
 
 -- | Check if a 'Script' is "valid". At the moment this just means "deserialises correctly", which in particular
 -- implies that it is (almost certainly) an encoded script and cannot be interpreted as some other kind of encoded data.
-validateScript :: Script -> Bool
-validateScript = isRight . Flat.unflat @Scripts.Script . fromShort
+validateScript :: SerializedScript -> Bool
+validateScript = isRight . CBOR.deserialiseOrFail @Script . fromStrict . fromShort
 
--- | Convenience constructor for a 'CostModel' from a map giving the parameters.
-mkCostModel :: Map String Integer -> Either EvaluationError CostModel
--- TODO: this is a bit of a hack, replace it with something more principled
-mkCostModel m = case fromJSON $ toJSON m of
-    Success a -> pure a
-    Error e   -> throwError $ CostModelParameterMismatch e
+validateCostModelParams :: CostModelParams -> Bool
+validateCostModelParams = isJust . applyCostModelParams PLC.defaultCekCostModel
 
 data VerboseMode = Verbose | Quiet
+    deriving (Eq)
 
-type LogOutput = [Text.Text]
-
--- | The cost model parameters are modelled coarsely as a set of named, integer parameters. Conversion to the
--- "real" model type can fail if those don't line up with the parameters that we expect.
-type CostModelParameters = Map String Integer
+type LogOutput = [Text]
 
 -- | Scripts to the ledger are serialised bytestrings.
-type Script = ShortByteString
+type SerializedScript = ShortByteString
 
 -- | Errors that can be thrown when evaluating a Plutus script.
 data EvaluationError =
     CekError (UPLC.CekEvaluationException PLC.DefaultUni PLC.DefaultFun) -- ^ An error from the evaluator itself
     | DeBruijnError PLC.FreeVariableError -- ^ An error in the pre-evaluation step of converting from de-Bruijn indices
-    | CodecError Flat.DecodeException -- ^ A serialisation error
+    | CodecError CBOR.DeserialiseFailure -- ^ A serialisation error
     | IncompatibleVersionError (PLC.Version ()) -- ^ An error indicating a version tag that we don't support
-    | CostModelParameterMismatch String -- ^ An error indicating that the cost model parameters didn't match what we expected
+    -- TODO: make this error more informative when we have more information about what went wrong
+    | CostModelParameterMismatch -- ^ An error indicating that the cost model parameters didn't match what we expected
     deriving stock (Show, Eq)
 
 instance Pretty EvaluationError where
@@ -143,12 +194,12 @@ instance Pretty EvaluationError where
     pretty (DeBruijnError e) = pretty e
     pretty (CodecError e) = viaShow e
     pretty (IncompatibleVersionError actual) = "This version of the Plutus Core interface does not support the version indicated by the AST:" <+> pretty actual
-    pretty (CostModelParameterMismatch e) = pretty e
+    pretty CostModelParameterMismatch = "Cost model parameters were not as we expected"
 
--- | Shared helper for the evaluation functions, deserializes the 'Script' , applies it to its arguments, and un-deBruijn-ifies it.
-mkTermToEvaluate :: (MonadError EvaluationError m) => Script -> [Data] -> m (UPLC.Term UPLC.Name PLC.DefaultUni PLC.DefaultFun ())
+-- | Shared helper for the evaluation functions, deserializes the 'SerializedScript' , applies it to its arguments, and un-deBruijn-ifies it.
+mkTermToEvaluate :: (MonadError EvaluationError m) => SerializedScript -> [Data] -> m (UPLC.Term UPLC.Name PLC.DefaultUni PLC.DefaultFun ())
 mkTermToEvaluate bs args = do
-    (Scripts.Script (UPLC.Program _ v t)) <- liftEither $ first CodecError $ Flat.unflat $ fromShort bs
+    (Script (UPLC.Program _ v t)) <- liftEither $ first CodecError $ CBOR.deserialiseOrFail $ fromStrict $ fromShort bs
     unless (v == PLC.defaultVersion ()) $ throwError $ IncompatibleVersionError v
     let namedTerm = UPLC.termMapNames PLC.fakeNameDeBruijn t
         -- This should go away when Data is a builtin
@@ -156,41 +207,55 @@ mkTermToEvaluate bs args = do
         applied = PLC.mkIterApp () namedTerm termArgs
     liftEither $ first DeBruijnError $ PLC.runQuoteT $ UPLC.unDeBruijnTerm applied
 
--- TODO: actually implement log output
--- | Evaluates a script, with a budget that restricts how many resources it can use.
+-- | Evaluates a script, with a cost model and a budget that restricts how many
+-- resources it can use according to the cost model.  There's a default cost
+-- model in  'UPLC.defaultBuiltinCostModel' and a budget called 'enormousBudget' in
+-- 'UntypedPlutusCore.Evaluation.Machine.Cek.ExBudgetMode' which should be large
+-- enough to evaluate any sensible program.
 evaluateScriptRestricting
-    :: VerboseMode -- ^ Whether to produce log output
-    -> CostModelParameters -- ^ The cost model to use
-    -> ExBudget -- ^ The resource budget which must not be exceeded during evaluation
-    -> Script -- ^ The script to evaluate
-    -> [Data] -- ^ The arguments to the script
+    :: VerboseMode     -- ^ Whether to produce log output
+    -> CostModelParams -- ^ The cost model to use
+    -> ExBudget        -- ^ The resource budget which must not be exceeded during evaluation
+    -> SerializedScript          -- ^ The script to evaluate
+    -> [Data]          -- ^ The arguments to the script
     -> (LogOutput, Either EvaluationError ())
-evaluateScriptRestricting _verbose costParams budget p args = swap $ runWriter @LogOutput $ runExceptT $ do
+evaluateScriptRestricting verbose cmdata budget p args = swap $ runWriter @LogOutput $ runExceptT $ do
     appliedTerm <- mkTermToEvaluate p args
-    model <- liftEither $ mkCostModel costParams
+    model <- case applyCostModelParams PLC.defaultCekCostModel cmdata of
+        Just model -> pure model
+        Nothing    -> throwError CostModelParameterMismatch
 
-    let (res, _) = UPLC.runCek
-          (PLC.toBuiltinsRuntime PLC.defDefaultFunDyn model)
-          (PLC.Restricting $ PLC.ExRestrictingBudget budget)
-          appliedTerm
+    let (res, _, logs) =
+            UPLC.runCek
+                (toMachineParameters model)
+                (UPLC.restricting $ PLC.ExRestrictingBudget budget)
+                (verbose == Verbose)
+                appliedTerm
 
+    tell $ Prelude.map Text.pack logs
     liftEither $ first CekError $ void res
 
--- | Evaluates a script, returning the budget that the script would need to evaluate successfully.
+-- | Evaluates a script, returning the minimum budget that the script would need
+-- to evaluate successfully.
 evaluateScriptCounting
-    :: VerboseMode -- ^ Whether to produce log output
-    -> CostModelParameters -- ^ The cost model to use
-    -> Script -- ^ The script to evaluate
-    -> [Data] -- ^ The arguments to the script
+    :: VerboseMode     -- ^ Whether to produce log output
+    -> CostModelParams -- ^ The cost model to use
+    -> SerializedScript          -- ^ The script to evaluate
+    -> [Data]          -- ^ The arguments to the script
     -> (LogOutput, Either EvaluationError ExBudget)
-evaluateScriptCounting _verbose costParams p args = swap $ runWriter @LogOutput $ runExceptT $ do
+evaluateScriptCounting verbose cmdata p args = swap $ runWriter @LogOutput $ runExceptT $ do
     appliedTerm <- mkTermToEvaluate p args
-    model <- liftEither $ mkCostModel costParams
+    model <- case applyCostModelParams PLC.defaultCekCostModel cmdata of
+        Just model -> pure model
+        Nothing    -> throwError CostModelParameterMismatch
 
-    let (res, final) = UPLC.runCek
-          (PLC.toBuiltinsRuntime PLC.defDefaultFunDyn model)
-          PLC.Counting
-          appliedTerm
+    let (res, UPLC.CountingSt final, logs) =
+            UPLC.runCek
+                (toMachineParameters model)
+                UPLC.counting
+                (verbose == Verbose)
+                appliedTerm
 
+    tell $ Prelude.map Text.pack logs
     liftEither $ first CekError $ void res
-    pure $ PLC._exBudgetStateBudget final
+    pure final

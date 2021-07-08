@@ -1,52 +1,51 @@
-{ pkgs, nix-gitignore, set-git-rev, haskell, webCommon, webCommonMarlowe, webCommonPlayground, buildPursPackage, buildNodeModules }:
+{ pkgs, gitignore-nix, haskell, webCommon, webCommonMarlowe, webCommonPlayground, buildPursPackage, buildNodeModules, filterNpm }:
 let
-  playground-exe = set-git-rev haskell.packages.marlowe-playground-server.components.exes.marlowe-playground-server;
+  playground-exe = haskell.packages.marlowe-playground-server.components.exes.marlowe-playground-server;
 
-  server-invoker =
-    let
-      # the playground uses ghc at runtime so it needs one packaged up with the dependencies it needs in one place
-      runtimeGhc = haskell.project.ghcWithPackages (ps: [
-        ps.marlowe
-        ps.marlowe-playground-server
-      ]);
-    in
-    pkgs.runCommand "marlowe-server-invoker" { buildInputs = [ pkgs.makeWrapper ]; } ''
-      # We need to provide the ghc interpreter with the location of the ghc lib dir and the package db
-      mkdir -p $out/bin
-      ln -s ${playground-exe}/bin/marlowe-playground-server $out/bin/marlowe-playground
-      wrapProgram $out/bin/marlowe-playground \
-        --set GHC_LIB_DIR "${runtimeGhc}/lib/ghc-${runtimeGhc.version}" \
-        --set GHC_BIN_DIR "${runtimeGhc}/bin" \
-        --set GHC_PACKAGE_PATH "${runtimeGhc}/lib/ghc-${runtimeGhc.version}/package.conf.d" \
-        --set GHC_RTS "-M2G"
-    '';
+  build-playground-exe = "$(nix-build --quiet --no-build-output ../default.nix -A plutus.haskell.packages.marlowe-playground-server.components.exes.marlowe-playground-server)";
 
+  build-ghc-with-marlowe = "$(nix-build --quiet --no-build-output -E '(import ./.. {}).plutus.haskell.project.ghcWithPackages(ps: [ ps.marlowe ])')";
+
+  # Output containing the purescript bridge code
   generated-purescript = pkgs.runCommand "marlowe-playground-purescript" { } ''
     mkdir $out
     ${playground-exe}/bin/marlowe-playground-server psgenerator $out
   '';
 
-  # For dev usage
-  generate-purescript = pkgs.writeShellScript "marlowe-playground-generate-purescript" ''
+  # generate-purescript: script to create purescript bridge code
+  generate-purescript = pkgs.writeShellScriptBin "marlowe-playground-generate-purs" ''
     rm -rf ./generated
-    ${server-invoker}/bin/marlowe-playground-server psgenerator generated
+    ${build-playground-exe}/bin/marlowe-playground-server psgenerator generated
   '';
 
+  # start-backend: script to start the plutus-playground-server
+  #
+  # Note-1: We need to add ghc to the path because the server provides /runghc
+  # which needs ghc and dependencies.
+  # Note-2: We want to avoid to pull the huge closure in so we use $(nix-build) instead
+  start-backend = pkgs.writeShellScriptBin "marlowe-playground-server" ''
+    echo "marlowe-playground-server: for development use only"
+    GHC_WITH_PKGS=${build-ghc-with-marlowe}
+    export PATH=$GHC_WITH_PKGS/bin:$PATH
+    export FRONTEND_URL=https://localhost:8009
+
+    ${build-playground-exe}/bin/marlowe-playground-server webserver
+  '';
+
+  cleanSrc = gitignore-nix.gitignoreSource ./.;
+
   nodeModules = buildNodeModules {
-    projectDir = nix-gitignore.gitignoreSource [ "/*.nix" "/*.md" ] ./.;
+    projectDir = filterNpm cleanSrc;
     packageJson = ./package.json;
     packageLockJson = ./package-lock.json;
     githubSourceHashMap = {
       shmish111.nearley-webpack-loader."939360f9d1bafa9019b6ff8739495c6c9101c4a1" = "1brx669dgsryakf7my00m25xdv7a02snbwzhzgc9ylmys4p8c10x";
-      # Note: for some unknown reason, it is necessary to add libxmljs to package.json even though it is a transitive dependency
-      # failure to do this meant that node_modules was being built without it there, even though it is in package-lock.json
-      znerol.libxmljs."0517e063347ea2532c9fdf38dc47878c628bf0ae" = "0g3kgwnqfr6v2xp1i7dfbm4z45inz1019ln06lfxl9mwxlc31wfg";
     };
   };
 
   client = buildPursPackage {
     inherit pkgs nodeModules;
-    src = ./.;
+    src = cleanSrc;
     checkPhase = ''
       ${pkgs.nodejs}/bin/npm run test
     '';
@@ -62,5 +61,6 @@ let
   };
 in
 {
-  inherit client server-invoker generated-purescript generate-purescript;
+  inherit client generate-purescript start-backend;
+  server = playground-exe;
 }

@@ -11,44 +11,29 @@
 
 module Plutus.PAB.Types where
 
-import           Cardano.BM.Data.Tracer.Extras  (StructuredLog (..))
-import qualified Cardano.ChainIndex.Types       as ChainIndex
-import qualified Cardano.Metadata.Types         as Metadata
-import qualified Cardano.Node.Server            as NodeServer
-import qualified Cardano.SigningProcess.Server  as SigningProcess
-import qualified Cardano.Wallet.Server          as WalletServer
-import           Control.Lens.TH                (makePrisms)
-import           Data.Aeson                     (FromJSON, ToJSON (..))
-import qualified Data.HashMap.Strict            as HM
-import           Data.Map.Strict                (Map)
-import qualified Data.Map.Strict                as Map
-import           Data.Text                      (Text)
-import           Data.Text.Prettyprint.Doc      (Pretty, pretty, viaShow, (<+>))
-import           Data.Time.Units                (Second)
-import           Data.UUID                      (UUID)
-import qualified Data.UUID.Extras               as UUID
-import           GHC.Generics                   (Generic)
-import           Language.Plutus.Contract.Trace (EndpointError (..))
-import           Language.Plutus.Contract.Types (ContractError)
-import           Ledger                         (Block, Blockchain, Tx, TxId, txId)
-import           Ledger.Index                   as UtxoIndex
-import           Plutus.PAB.Events              (ContractInstanceId)
-import           Plutus.PAB.Instances           ()
-import           Servant.Client                 (BaseUrl, ClientError)
-import           Wallet.API                     (WalletAPIError)
-
-newtype ContractExe =
-    ContractExe
-        { contractPath :: FilePath
-        }
-    deriving (Show, Eq, Ord, Generic)
-    deriving anyclass (ToJSON, FromJSON)
-
-instance StructuredLog ContractExe where
-    toStructuredLog e = HM.singleton "contract" (toJSON e)
-
-instance Pretty ContractExe where
-    pretty ContractExe {contractPath} = "Path:" <+> pretty contractPath
+import qualified Cardano.ChainIndex.Types  as ChainIndex
+import qualified Cardano.Metadata.Types    as Metadata
+import           Cardano.Node.Types        (MockServerConfig (..))
+import qualified Cardano.Wallet.Types      as Wallet
+import           Control.Lens.TH           (makePrisms)
+import           Data.Aeson                (FromJSON, ToJSON (..))
+import           Data.Default              (Default, def)
+import           Data.Map.Strict           (Map)
+import qualified Data.Map.Strict           as Map
+import           Data.Text                 (Text)
+import           Data.Text.Prettyprint.Doc (Pretty, pretty, viaShow, (<+>))
+import           Data.Time.Units           (Second)
+import           Data.UUID                 (UUID)
+import qualified Data.UUID.Extras          as UUID
+import           GHC.Generics              (Generic)
+import           Ledger                    (Block, Blockchain, Tx, TxId, eitherTx, txId)
+import           Ledger.Index              as UtxoIndex
+import           Plutus.Contract.Types     (ContractError)
+import           Plutus.PAB.Instances      ()
+import           Servant.Client            (BaseUrl (..), ClientError, Scheme (Http))
+import           Wallet.API                (WalletAPIError)
+import           Wallet.Emulator.Wallet    (Wallet)
+import           Wallet.Types              (ContractInstanceId (..), NotificationError)
 
 data PABError
     = FileNotFound FilePath
@@ -57,14 +42,18 @@ data PABError
     | PABContractError ContractError
     | WalletClientError ClientError
     | NodeClientError ClientError
+    | RandomTxClientError ClientError
     | MetadataError Metadata.MetadataError
-    | SigningProcessError ClientError
     | ChainIndexError ClientError
     | WalletError WalletAPIError
-    | ContractCommandError Int Text
+    | ContractCommandError Int Text -- ?
     | InvalidUUIDError  Text
-    | OtherError Text
-    | EndpointCallError ContractInstanceId EndpointError
+    | OtherError Text -- ?
+    | EndpointCallError NotificationError
+    | InstanceAlreadyStopped ContractInstanceId -- ^ Attempt to stop the instance failed because it was not running
+    | WalletNotFound Wallet
+    | MissingConfigFileOption
+    | ContractStateNotFound ContractInstanceId
     deriving stock (Show, Eq, Generic)
     deriving anyclass (ToJSON, FromJSON)
 
@@ -76,14 +65,18 @@ instance Pretty PABError where
         PABContractError e         -> "Contract error:" <+> pretty e
         WalletClientError e        -> "Wallet client error:" <+> viaShow e
         NodeClientError e          -> "Node client error:" <+> viaShow e
+        RandomTxClientError e      -> "Random tx client error:" <+> viaShow e
         MetadataError e            -> "Metadata error:" <+> viaShow e
-        SigningProcessError e      -> "Signing process error:" <+> viaShow e
         ChainIndexError e          -> "Chain index error:" <+> viaShow e
         WalletError e              -> "Wallet error:" <+> pretty e
         ContractCommandError i t   -> "Contract command error:" <+> pretty i <+> pretty t
         InvalidUUIDError t         -> "Invalid UUID:" <+> pretty t
         OtherError t               -> "Other error:" <+> pretty t
-        EndpointCallError i e      -> "Endpoint call failed:" <+> pretty i <+> pretty e
+        EndpointCallError n        -> "Endpoint call failed:" <+> pretty n
+        InstanceAlreadyStopped i   -> "Instance already stopped:" <+> pretty i
+        WalletNotFound w           -> "Wallet not found:" <+> pretty w
+        MissingConfigFileOption    -> "The --config-file option is required"
+        ContractStateNotFound i    -> "State for contract instance not found:" <+> pretty i
 
 data DbConfig =
     DbConfig
@@ -98,13 +91,13 @@ data DbConfig =
 data Config =
     Config
         { dbConfig                :: DbConfig
-        , walletServerConfig      :: WalletServer.Config
-        , nodeServerConfig        :: NodeServer.MockServerConfig
+        , walletServerConfig      :: Wallet.WalletConfig
+        , nodeServerConfig        :: MockServerConfig
         , metadataServerConfig    :: Metadata.MetadataConfig
         , pabWebserverConfig      :: WebserverConfig
         , chainIndexConfig        :: ChainIndex.ChainIndexConfig
-        , signingProcessConfig    :: SigningProcess.SigningProcessConfig
         , requestProcessingConfig :: RequestProcessingConfig
+        , endpointTimeout         :: Maybe Second
         }
     deriving (Show, Eq, Generic, FromJSON)
 
@@ -117,27 +110,35 @@ newtype RequestProcessingConfig =
 
 data WebserverConfig =
     WebserverConfig
-        { baseUrl   :: BaseUrl
-        , staticDir :: FilePath
+        { baseUrl              :: BaseUrl
+        , staticDir            :: Maybe FilePath
+        , permissiveCorsPolicy :: Bool -- ^ If true; use a very permissive CORS policy (any website can interact.)
         }
     deriving (Show, Eq, Generic)
     deriving anyclass (FromJSON, ToJSON)
 
+-- | Default config for debugging.
+defaultWebServerConfig :: WebserverConfig
+defaultWebServerConfig =
+  WebserverConfig
+    { baseUrl              = BaseUrl Http "localhost" 8080 "/"
+    , staticDir            = Nothing
+    , permissiveCorsPolicy = False
+    }
+
+instance Default WebserverConfig where
+  def = defaultWebServerConfig
+
+-- | The source of a PAB event, used for sharding of the event stream
 data Source
-    = ContractEventSource
-    | WalletEventSource
-    | UserEventSource
-    | NodeEventSource
+    = PABEventSource
+    | InstanceEventSource ContractInstanceId
     deriving (Show, Eq)
 
 toUUID :: Source -> UUID
-toUUID source =
-    UUID.sequenceIdToMockUUID $
-    case source of
-        ContractEventSource -> 1
-        WalletEventSource   -> 2
-        UserEventSource     -> 3
-        NodeEventSource     -> 4
+toUUID = \case
+    InstanceEventSource (ContractInstanceId i) -> i
+    PABEventSource                             -> UUID.sequenceIdToMockUUID 1
 
 data ChainOverview =
     ChainOverview
@@ -157,8 +158,8 @@ mkChainOverview = foldl reducer emptyChainOverview
                           , chainOverviewUtxoIndex = oldUtxoIndex
                           } txs =
         let unprunedTxById =
-                foldl (\m tx -> Map.insert (txId tx) tx m) oldTxById txs
-            newTxById = id unprunedTxById -- TODO Prune spent keys.
+                foldl (\m -> eitherTx (const m) (\tx -> Map.insert (txId tx) tx m)) oldTxById txs
+            newTxById = unprunedTxById -- TODO Prune spent keys.
             newUtxoIndex = UtxoIndex.insertBlock txs oldUtxoIndex
          in ChainOverview
                 { chainOverviewBlockchain = txs : oldBlockchain

@@ -14,14 +14,14 @@
 
 module Plutus.Benchmark.LastPiece where
 
-import           Data.Char                    (isSpace)
-import           Language.PlutusCore.Builtins
-import qualified Language.PlutusCore.Pretty   as PLC
-import           Language.PlutusCore.Universe
-import           Language.PlutusTx            as PlutusTx
-import           Language.PlutusTx.Builtins   as Tx
-import           Language.PlutusTx.Prelude    as PLC hiding (Semigroup (..), check, foldMap, showList)
-import           Language.UntypedPlutusCore
+import           Data.Char          (isSpace)
+import           PlutusCore.Default
+import qualified PlutusCore.Pretty  as PLC
+import           PlutusTx           as PlutusTx
+import           PlutusTx.Builtins  as Tx
+import           PlutusTx.Prelude   as PLC hiding (Semigroup (..), check, foldMap)
+import qualified Prelude            as Haskell
+import           UntypedPlutusCore
 
 -------------------------------------
 --      Pieces
@@ -29,7 +29,7 @@ type Offset  = (Integer, Integer)
 type Square  = (Integer, Integer)
      -- (1,1) is bottom LH corner
 
-type PieceId = Char
+type PieceId = Haskell.Char
 
 type Board = [(Square, PieceId)]  -- Was Map.Map Square PieceId
 
@@ -42,7 +42,7 @@ data Piece = P PieceId
 data Solution = Soln Board
               | Choose [Solution]       -- Non-empty
               | Fail  -- Board Square
-                deriving (Show)
+                deriving (Haskell.Show)
 
 data Sex = Male | Female
 
@@ -290,8 +290,8 @@ bPiece = P 'b'  [ [(0,1),(0,2),(1,2)],
                   [(0,1),(1,0),(2,0)] ]
                 [ [(1,0),(1,1),(1,2)] ]
 
-unindent :: PLC.Doc ann -> [PLC.String]
-unindent d = map (dropWhile isSpace) $ (lines . show $ d)
+unindent :: PLC.Doc ann -> [Haskell.String]
+unindent d = map (Haskell.dropWhile isSpace) $ (Haskell.lines . Haskell.show $ d)
 
 runLastPiece :: Solution
 runLastPiece = search (1,2) Female initialBoard initialPieces

@@ -20,6 +20,8 @@ module Plutus.Trace.Emulator.Types(
     , EmulatorThreads(..)
     , instanceIdThreads
     , EmulatorAgentThreadEffs
+    , EmulatedWalletEffects
+    , EmulatedWalletEffects'
     , ContractInstanceTag(..)
     , walletInstanceTag
     , ContractHandle(..)
@@ -27,8 +29,10 @@ module Plutus.Trace.Emulator.Types(
     , ContractConstraints
     -- * Instance state
     , ContractInstanceState(..)
+    , ContractInstanceStateInternal(..)
     , emptyInstanceState
     , addEventInstanceState
+    , toInstanceState
     -- * Logging
     , ContractInstanceLog(..)
     , cilId
@@ -50,35 +54,43 @@ module Plutus.Trace.Emulator.Types(
 
 import           Control.Lens
 import           Control.Monad.Freer.Coroutine
-import           Control.Monad.Freer.Log            (LogMsg)
-import           Control.Monad.Freer.Reader         (Reader)
-import           Data.Aeson                         (FromJSON, ToJSON)
-import qualified Data.Aeson                         as JSON
-import           Data.Map                           (Map)
-import qualified Data.Row.Internal                  as V
-import           Data.Sequence                      (Seq)
-import           Data.String                        (IsString (..))
-import           Data.Text                          (Text)
-import           Data.Text.Prettyprint.Doc          (Pretty (..), braces, colon, fillSep, hang, parens, viaShow, vsep,
-                                                     (<+>))
-import           GHC.Generics                       (Generic)
-import           Language.Plutus.Contract           (Contract (..))
-import           Language.Plutus.Contract.Resumable (Request (..), Requests (..), Response (..))
-import qualified Language.Plutus.Contract.Resumable as State
-import           Language.Plutus.Contract.Schema    (Event, Handlers, Input, Output)
-import           Language.Plutus.Contract.Types     (ResumableResult (..))
-import qualified Language.Plutus.Contract.Types     as Contract.Types
-import           Ledger.Slot                        (Slot (..))
-import           Ledger.Tx                          (Tx)
-import           Plutus.Trace.Scheduler             (SystemCall, ThreadId)
-import           Wallet.Emulator.Wallet             (Wallet (..))
-import           Wallet.Types                       (ContractInstanceId, EndpointDescription, Notification (..),
-                                                     NotificationError)
+import           Control.Monad.Freer.Error
+import           Control.Monad.Freer.Extras.Log (LogMessage, LogMsg, LogObserve)
+import           Control.Monad.Freer.Reader     (Reader)
+import           Data.Aeson                     (FromJSON, ToJSON)
+import qualified Data.Aeson                     as JSON
+import           Data.Map                       (Map)
+import           Data.Row                       (Row)
+import qualified Data.Row.Internal              as V
+import           Data.Sequence                  (Seq)
+import           Data.String                    (IsString (..))
+import           Data.Text                      (Text)
+import qualified Data.Text                      as T
+import           Data.Text.Prettyprint.Doc      (Pretty (..), braces, colon, fillSep, hang, parens, squotes, viaShow,
+                                                 vsep, (<+>))
+import           GHC.Generics                   (Generic)
+import           Ledger.Blockchain              (Block)
+import           Ledger.Slot                    (Slot (..))
+import           Plutus.Contract                (Contract (..), WalletAPIError)
+import           Plutus.Contract.Effects        (PABReq, PABResp)
+import           Plutus.Contract.Resumable      (Request (..), Requests (..), Response (..))
+import qualified Plutus.Contract.Resumable      as State
+import           Plutus.Contract.Schema         (Input, Output)
+import           Plutus.Contract.Types          (ResumableResult (..), SuspendedContract (..))
+import qualified Plutus.Contract.Types          as Contract.Types
+import           Plutus.Trace.Scheduler         (AgentSystemCall, ThreadId)
+import qualified Wallet.API                     as WAPI
+import qualified Wallet.Effects                 as Wallet
+import           Wallet.Emulator.LogMessages    (RequestHandlerLogMsg, TxBalanceMsg)
+import           Wallet.Emulator.Wallet         (Wallet (..))
+import           Wallet.Types                   (ContractInstanceId, EndpointDescription, Notification (..),
+                                                 NotificationError)
 
 type ContractConstraints s =
     ( V.Forall (Output s) V.Unconstrained1
     , V.Forall (Input s) V.Unconstrained1
     , V.AllUniqueLabels (Input s)
+    , V.AllUniqueLabels (Output s)
     , V.Forall (Input s) JSON.FromJSON
     , V.Forall (Input s) JSON.ToJSON
     , V.Forall (Output s) JSON.FromJSON
@@ -87,7 +99,7 @@ type ContractConstraints s =
 
 -- | Messages sent to, and received by, threads in the emulator.
 data EmulatorMessage =
-    NewSlot [[Tx]] Slot -- ^ A new slot has begun and some blocks were added.
+    NewSlot [Block] Slot -- ^ A new slot has begun and some blocks were added.
     | EndpointCall ThreadId EndpointDescription JSON.Value -- ^ Call to an endpoint
     | Freeze -- ^ Tell the contract instance to freeze itself (see note [Freeze and Thaw])
     | ContractInstanceStateRequest ThreadId -- ^ Request for the current state of a contract instance
@@ -102,20 +114,40 @@ newtype EmulatorThreads =
 
 makeLenses ''EmulatorThreads
 
--- | Effects available to emulator agent threads.
+-- | Effects that are used to handle requests by contract instances.
+--   In the emulator these effects are handled by 'Wallet.Emulator.MultiAgent'.
+--   In the PAB they are handled by the actual wallet/node/chain index,
+--   mediated by the PAB runtime.
+type EmulatedWalletEffects' effs =
+        Wallet.WalletEffect
+        ': Error WAPI.WalletAPIError
+        ': Wallet.NodeClientEffect
+        ': Wallet.ChainIndexEffect
+        ': LogObserve (LogMessage T.Text)
+        ': LogMsg RequestHandlerLogMsg
+        ': LogMsg TxBalanceMsg
+        ': LogMsg T.Text
+        ': effs
+
+type EmulatedWalletEffects = EmulatedWalletEffects' '[]
+
+-- | Effects available to emulator agent threads. Includes emulated wallet
+--   effects and effects related to threading / waiting for messages.
 type EmulatorAgentThreadEffs effs =
     LogMsg ContractInstanceLog
-    ': Reader Wallet
-    ': Reader ThreadId
-    ': Yield (SystemCall effs EmulatorMessage) (Maybe EmulatorMessage)
-    ': effs
+
+    ': EmulatedWalletEffects' (
+        Yield (AgentSystemCall EmulatorMessage) (Maybe EmulatorMessage)
+        ': Reader ThreadId
+        ': effs
+        )
 
 data Emulator
 
 -- | A reference to a running contract in the emulator.
-data ContractHandle s e =
+data ContractHandle w s e =
     ContractHandle
-        { chContract    :: Contract s e ()
+        { chContract    :: Contract w s e ()
         , chInstanceId  :: ContractInstanceId
         , chInstanceTag :: ContractInstanceTag
         }
@@ -123,22 +155,26 @@ data ContractHandle s e =
 data EmulatorRuntimeError =
     ThreadIdNotFound ContractInstanceId
     | InstanceIdNotFound Wallet
-    | JSONDecodingError String
-    deriving stock (Eq, Ord, Show, Generic)
+    | EmulatorJSONDecodingError String JSON.Value
+    | GenericError String
+    | EmulatedWalletError WalletAPIError
+    deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSON, FromJSON)
 
 instance Pretty EmulatorRuntimeError where
     pretty = \case
-        ThreadIdNotFound i   -> "Thread ID not found:" <+> pretty i
-        InstanceIdNotFound w -> "Instance ID not found:" <+> pretty w
-        JSONDecodingError e  -> "JSON decoding error:" <+> pretty e
+        ThreadIdNotFound i            -> "Thread ID not found:" <+> pretty i
+        InstanceIdNotFound w          -> "Instance ID not found:" <+> pretty w
+        EmulatorJSONDecodingError e v -> "Emulator JSON decoding error:" <+> pretty e <+> parens (viaShow v)
+        GenericError e                -> pretty e
+        EmulatedWalletError e         -> pretty e
 
 -- | A user-defined tag for a contract instance. Used to find the instance's
 --   log messages in the emulator log.
 newtype ContractInstanceTag = ContractInstanceTag { unContractInstanceTag :: Text }
     deriving stock (Eq, Ord, Show, Generic)
     deriving anyclass (ToJSON, FromJSON)
-    deriving newtype (IsString, Pretty)
+    deriving newtype (IsString, Pretty, Semigroup, Monoid)
 
 -- | The 'ContractInstanceTag' for the contract instance of a wallet. See note
 --   [Wallet contract instances]
@@ -162,7 +198,7 @@ data ContractInstanceMsg =
     Started
     | StoppedNoError
     | StoppedWithError String
-    | ReceiveEndpointCall JSON.Value
+    | ReceiveEndpointCall EndpointDescription JSON.Value
     | ReceiveEndpointCallSuccess
     | ReceiveEndpointCallFailure NotificationError
     | NoRequestsHandled
@@ -183,7 +219,7 @@ instance Pretty ContractInstanceMsg where
         Started -> "Contract instance started"
         StoppedNoError -> "Contract instance stopped (no errors)"
         StoppedWithError e -> "Contract instance stopped with error:" <+> pretty e
-        ReceiveEndpointCall v -> "Receive endpoint call:" <+> viaShow v
+        ReceiveEndpointCall d v -> "Receive endpoint call on" <+> squotes (pretty d) <+> "for" <+> viaShow v
         ReceiveEndpointCallSuccess -> "Endpoint call succeeded"
         ReceiveEndpointCallFailure f -> "Endpoint call failed:" <+> pretty f
         NoRequestsHandled -> "No requests handled"
@@ -213,37 +249,67 @@ instance Pretty ContractInstanceLog where
     pretty ContractInstanceLog{_cilMessage, _cilId, _cilTag} =
         hang 2 $ vsep [pretty _cilId <+> braces (pretty _cilTag) <> colon, pretty _cilMessage]
 
--- | The state of a running contract instance with schema @s@ and error type @e@
-data ContractInstanceState s e a =
+-- | State of the contract instance, internal to the contract instance thread.
+--   It contains both the serialisable state of the contract instance and the
+--   non-serialisable continuations in 'SuspendedContract'.
+data ContractInstanceStateInternal w (s :: Row *) e a =
+    ContractInstanceStateInternal
+        { cisiSuspState       :: SuspendedContract w e PABResp PABReq a
+        , cisiEvents          :: Seq (Response PABResp)
+        , cisiHandlersHistory :: Seq [State.Request PABReq]
+        }
+
+-- | Extract the serialisable 'ContractInstanceState' from the
+--   'ContractInstanceStateInternal'. We need to do this when
+--   we want to send the instance state to another thread.
+toInstanceState :: ContractInstanceStateInternal w (s :: Row *) e a -> ContractInstanceState w s e a
+toInstanceState ContractInstanceStateInternal{cisiSuspState=SuspendedContract{_resumableResult}, cisiEvents, cisiHandlersHistory} =
     ContractInstanceState
-        { instContractState   :: ResumableResult e (Event s) (Handlers s) a
-        , instEvents          :: Seq (Response (Event s))
-        , instHandlersHistory :: Seq [State.Request (Handlers s)]
+        { instContractState = _resumableResult
+        , instEvents = cisiEvents
+        , instHandlersHistory = cisiHandlersHistory
+        }
+
+-- | The state of a running contract instance with schema @s@ and error type @e@
+--   Serialisable to JSON.
+data ContractInstanceState w (s :: Row *) e a =
+    ContractInstanceState
+        { instContractState   :: ResumableResult w e PABResp PABReq a
+        , instEvents          :: Seq (Response PABResp) -- ^ Events received by the contract instance. (Used for debugging purposes)
+        , instHandlersHistory :: Seq [State.Request PABReq] -- ^ Requests issued by the contract instance (Used for debugging purposes)
         }
         deriving stock Generic
 
-deriving anyclass instance  (V.Forall (Input s) JSON.ToJSON, V.Forall (Output s) JSON.ToJSON, JSON.ToJSON e, JSON.ToJSON a) => JSON.ToJSON (ContractInstanceState s e a)
-deriving anyclass instance  (V.Forall (Input s) JSON.FromJSON, V.Forall (Output s) JSON.FromJSON, JSON.FromJSON e, JSON.FromJSON a, V.AllUniqueLabels (Input s), V.AllUniqueLabels (Output s)) => JSON.FromJSON (ContractInstanceState s e a)
+deriving anyclass instance  (JSON.ToJSON e, JSON.ToJSON a, JSON.ToJSON w) => JSON.ToJSON (ContractInstanceState w s e a)
+deriving anyclass instance  (JSON.FromJSON e, JSON.FromJSON a, JSON.FromJSON w) => JSON.FromJSON (ContractInstanceState w s e a)
 
-emptyInstanceState :: Contract s e a -> ContractInstanceState s e a
+emptyInstanceState ::
+    forall w (s :: Row *) e a.
+    Monoid w
+    => Contract w s e a
+    -> ContractInstanceStateInternal w s e a
 emptyInstanceState (Contract c) =
-    ContractInstanceState
-        { instContractState = Contract.Types.runResumable [] mempty c
-        , instEvents = mempty
-        , instHandlersHistory = mempty
+    ContractInstanceStateInternal
+        { cisiSuspState = Contract.Types.suspend mempty c
+        , cisiEvents = mempty
+        , cisiHandlersHistory = mempty
         }
 
-addEventInstanceState :: forall s e a.
-    Contract s e a
-    -> Response (Event s)
-    -> ContractInstanceState s e a
-    -> ContractInstanceState s e a
-addEventInstanceState (Contract c) event s@ContractInstanceState{instContractState, instEvents, instHandlersHistory} =
-    let ResumableResult{wcsResponses,wcsRequests=Requests{unRequests},wcsCheckpointStore} = instContractState
-        state' = Contract.Types.insertAndUpdate c wcsCheckpointStore wcsResponses event
-        events' = instEvents |> event
-        history' = instHandlersHistory |> unRequests
-    in s { instContractState = state', instEvents = events', instHandlersHistory = history'}
+addEventInstanceState :: forall w s e a.
+    Monoid w
+    => Response PABResp
+    -> ContractInstanceStateInternal w s e a
+    -> Maybe (ContractInstanceStateInternal w s e a)
+addEventInstanceState event ContractInstanceStateInternal{cisiSuspState, cisiEvents, cisiHandlersHistory} =
+    case Contract.Types.runStep cisiSuspState event of
+        Nothing -> Nothing
+        Just newState ->
+            let SuspendedContract{_resumableResult=ResumableResult{_requests=Requests rq}} = cisiSuspState in
+            Just ContractInstanceStateInternal
+                { cisiSuspState = newState
+                , cisiEvents = cisiEvents |> event
+                , cisiHandlersHistory = cisiHandlersHistory |> rq
+                }
 
 makeLenses ''ContractInstanceLog
 makePrisms ''ContractInstanceMsg

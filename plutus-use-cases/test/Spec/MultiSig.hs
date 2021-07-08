@@ -4,21 +4,20 @@
 {-# LANGUAGE TypeApplications #-}
 module Spec.MultiSig(tests, failingTrace, succeedingTrace) where
 
-import           Control.Monad                                     (void)
-import           Language.Plutus.Contract                          (Contract, ContractError)
-import           Language.Plutus.Contract.Test
-import qualified Language.PlutusTx                                 as PlutusTx
-import           Language.PlutusTx.Coordination.Contracts.MultiSig as MS
+import           Control.Monad             (void)
 import qualified Ledger
-import qualified Ledger.Ada                                        as Ada
-import           Ledger.Index                                      (ValidationError (ScriptFailure))
-import           Ledger.Scripts                                    (ScriptError (EvaluationError))
-import           Plutus.Trace.Emulator                             (EmulatorTrace)
-import qualified Plutus.Trace.Emulator                             as Trace
-import           Prelude                                           hiding (not)
-import qualified Spec.Lib                                          as Lib
+import qualified Ledger.Ada                as Ada
+import           Ledger.Index              (ValidationError (ScriptFailure))
+import           Ledger.Scripts            (ScriptError (EvaluationError))
+import           Plutus.Contract           (Contract, ContractError)
+import           Plutus.Contract.Test
+import           Plutus.Contracts.MultiSig as MS
+import           Plutus.Trace.Emulator     (EmulatorTrace)
+import qualified Plutus.Trace.Emulator     as Trace
+import qualified PlutusTx                  as PlutusTx
+import           Prelude                   hiding (not)
 import           Test.Tasty
-import           Wallet.Emulator.Wallet                            (signWallets)
+import           Wallet.Emulator.Wallet    (signWallets)
 
 tests :: TestTree
 tests = testGroup "multisig"
@@ -30,7 +29,7 @@ tests = testGroup "multisig"
         assertNoFailedTransactions
         succeedingTrace
 
-    , Lib.goldenPir "test/Spec/multisig.pir" $$(PlutusTx.compile [|| MS.validate ||])
+    , goldenPir "test/Spec/multisig.pir" $$(PlutusTx.compile [|| MS.validate ||])
     ]
 
 -- | Lock some funds, then attempt to unlock them with a transaction
@@ -60,7 +59,7 @@ w1 = Wallet 1
 w2 = Wallet 2
 w3 = Wallet 3
 
-theContract :: Contract MultiSigSchema ContractError ()
+theContract :: Contract () MultiSigSchema ContractError ()
 theContract = MS.contract
 
 -- a 'MultiSig' contract that requires three out of five signatures

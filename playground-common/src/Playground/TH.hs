@@ -9,30 +9,20 @@
 module Playground.TH
     ( mkFunction
     , mkFunctions
-    , mkIotsDefinitions
     , ensureKnownCurrencies
-    , ensureIotsDefinitions
     , mkSchemaDefinitions
     , mkSingleFunction
     , mkKnownCurrencies
     ) where
 
-import           Data.Row                                        (type (.\\))
-import           IOTS                                            (HList (HCons, HNil), Tagged (Tagged))
-import qualified IOTS
-import           Language.Haskell.TH                             (Body (NormalB), Clause (Clause),
-                                                                  Dec (FunD, SigD, TySynD, ValD),
-                                                                  Exp (ListE, LitE, VarE), Info (TyConI, VarI),
-                                                                  Lit (StringL), Name, Pat (VarP), Q,
-                                                                  Type (AppT, ArrowT, ConT, ForallT, ListT, TupleT, VarT),
-                                                                  appTypeE, conE, litT, lookupValueName, mkName,
-                                                                  nameBase, normalB, reify, sigD, strTyLit, valD, varE,
-                                                                  varP)
-import           Language.Plutus.Contract                        (BlockchainActions)
-import           Language.Plutus.Contract.Effects.ExposeEndpoint (EndpointDescription (EndpointDescription))
-import           Playground.Schema                               (endpointsToSchemas)
-import           Playground.Types                                (FunctionSchema (FunctionSchema), adaCurrency)
-import           Schema                                          (FormSchema, toSchema)
+import           Language.Haskell.TH (Body (NormalB), Clause (Clause), Dec (FunD, SigD, TySynD, ValD),
+                                      Exp (ListE, VarE), Info (TyConI, VarI), Name, Pat (VarP), Q,
+                                      Type (AppT, ArrowT, ConT, ForallT, ListT, TupleT, VarT), lookupValueName, mkName,
+                                      nameBase, normalB, reify, sigD, valD, varP)
+import           Playground.Schema   (endpointsToSchemas)
+import           Playground.Types    (FunctionSchema (FunctionSchema), adaCurrency)
+import           Schema              (FormSchema, toSchema)
+import           Wallet.Types        (EndpointDescription (EndpointDescription))
 
 mkFunctions :: [Name] -> Q [Dec]
 mkFunctions names = do
@@ -46,25 +36,12 @@ mkFunctions names = do
 registeredKnownCurrenciesBindingName :: String
 registeredKnownCurrenciesBindingName = "registeredKnownCurrencies"
 
-iotsBindingName :: String
-iotsBindingName = "iotsDefinitions"
-
-mkIotsDefinitions :: [Name] -> Q [Dec]
-mkIotsDefinitions names = do
-    iotsDefinition <- [|IOTS.export $(mkTaggedList names)|]
-    pure [ValD (VarP (mkName iotsBindingName)) (NormalB iotsDefinition) []]
-
 unlessBound :: String -> (Name -> Q [Dec]) -> Q [Dec]
 unlessBound bindingName definition = do
     bound <- lookupValueName bindingName
     case bound of
         Just _  -> pure []
         Nothing -> definition $ mkName bindingName
-
-ensureIotsDefinitions :: Q [Dec]
-ensureIotsDefinitions =
-    unlessBound iotsBindingName $ \name ->
-        pure [ValD (VarP name) (NormalB (LitE (StringL ""))) []]
 
 ensureKnownCurrencies :: Q [Dec]
 ensureKnownCurrencies =
@@ -83,7 +60,7 @@ mkSchemaDefinitions ts = do
     info <- reify ts
     case info of
         TyConI (TySynD _ [] t) -> do
-            schemas <- [|endpointsToSchemas @($(pure t) .\\ BlockchainActions)|]
+            schemas <- [|endpointsToSchemas @($(pure t)) |]
             unlessBound schemaBindingName $ \name -> do
                 sig <- sigD name [t|[FunctionSchema FormSchema]|]
                 body <- valD (varP name) (normalB (pure schemas)) []
@@ -93,13 +70,7 @@ mkSchemaDefinitions ts = do
             "Incorrect Name type provided to mkSchemaDefinitions. Got: " <>
             show other
 
-mkTaggedList :: [Name] -> Q Exp
-mkTaggedList [] = [|HNil|]
-mkTaggedList (x:xs) =
-    let nameTag = appTypeE (conE 'Tagged) (litT (strTyLit (nameBase x)))
-     in [|HCons ($nameTag $(varE x)) $(mkTaggedList xs)|]
-
-{-# ANN mkFunction ("HLint: ignore" :: String) #-}
+{-{- HLINT ignore mkFunction -}-}
 
 mkFunction :: Name -> Q [Dec]
 mkFunction _ =
@@ -129,7 +100,7 @@ mkFunction' name = do
     expression <- mkFunctionExp name fn
     pure $ FunD newName [Clause [] (NormalB expression) []]
 
-{-# ANN mkFunctionExp ("HLint: ignore" :: String) #-}
+{-{- HLINT ignore mkFunctionExp -}-}
 
 mkFunctionExp :: Name -> EndpointDescription -> Q Exp
 mkFunctionExp name fn = do
@@ -140,14 +111,14 @@ mkFunctionExp name fn = do
              in toSchemas fn ts
         _ -> error "Incorrect Name type provided to mkFunction"
 
-{-# ANN toSchemas ("HLint: ignore Redundant bracket" :: String) #-}
+{- HLINT ignore toSchemas "Redundant bracket" -}
 
 toSchemas :: EndpointDescription -> [Type] -> Q Exp
 toSchemas fn ts = do
     es <- foldr (\t e -> [|toSchema @($(pure t)) : $e|]) [|[]|] ts
     [|FunctionSchema fn $(pure es)|]
 
-{-# ANN args ("HLint: ignore" :: String) #-}
+{-{- HLINT ignore args -}-}
 
 args :: Type -> [Type]
 args (AppT (AppT ArrowT t1) as) = t1 : args as

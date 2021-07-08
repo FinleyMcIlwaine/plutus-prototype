@@ -5,26 +5,23 @@ import Data.Lens (assign, (^.))
 import Data.Maybe (Maybe(..))
 import Effect.Aff.Class (class MonadAff)
 import Halogen (ClassName(..), ComponentHTML, HalogenM)
-import Halogen.Classes (activeBorderBlue700, border, borderBlue300, btn, btnSecondary, fontSemibold, fullWidth, modalContent, noMargins, spaceBottom, spaceLeft, spaceRight, spaceTop, textBase, textRight, textSm, uppercase)
+import Halogen.Classes (border, borderBlue300, btn, btnSecondary, fontSemibold, fullWidth, modalContent, noMargins, spaceBottom, spaceLeft, spaceRight, spaceTop, textBase, textRight, textSm, uppercase)
 import Halogen.HTML (button, div, h2, input, text)
 import Halogen.HTML.Events (onClick, onValueInput)
 import Halogen.HTML.Properties (class_, classes, disabled, placeholder, value)
 import Icons (Icon(..), icon)
 import MainFrame.Types (ChildSlots)
-import Marlowe (SPParams_)
 import Network.RemoteData (RemoteData(..), isFailure, isLoading)
 import Prim.TypeError (class Warn, Text)
 import SaveAs.Types (Action(..), State, _projectName, _status)
-import Servant.PureScript.Settings (SPSettings_)
 
 handleAction ::
   forall m.
   MonadAff m =>
-  SPSettings_ SPParams_ ->
   Action -> HalogenM State Action ChildSlots Void m Unit
-handleAction settings (ChangeInput newName) = assign _projectName newName
+handleAction (ChangeInput newName) = assign _projectName newName
 
-handleAction settings _ = pure unit
+handleAction _ = pure unit
 
 render ::
   forall m.
@@ -39,7 +36,7 @@ render state =
         ]
     , div [ classes [ modalContent, ClassName "save-as-modal" ] ]
         [ input
-            [ classes [ spaceBottom, fullWidth, textSm, border, borderBlue300, activeBorderBlue700 ]
+            [ classes [ spaceBottom, fullWidth, textSm, border, borderBlue300 ]
             , value (state ^. _projectName)
             , onValueInput (Just <<< ChangeInput)
             , placeholder "Type a name for your project"

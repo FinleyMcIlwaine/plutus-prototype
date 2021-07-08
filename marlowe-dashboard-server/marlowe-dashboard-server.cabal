@@ -37,6 +37,7 @@ library
         servant-server -any,
         servant-websockets -any,
         text -any,
+        wai-app-static -any,
         wai-cors -any,
         websockets -any,
         uuid -any
@@ -61,6 +62,7 @@ executable marlowe-dashboard-server
         monad-logger -any,
         mtl -any,
         playground-common -any,
+        plutus-ledger-api -any,
         prometheus >=2,
         purescript-bridge -any,
         optparse-applicative -any,

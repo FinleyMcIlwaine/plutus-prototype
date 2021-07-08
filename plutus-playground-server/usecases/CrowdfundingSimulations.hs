@@ -1,6 +1,6 @@
-{-# LANGUAGE NamedFieldPuns    #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeOperators     #-}
+{-# LANGUAGE NamedFieldPuns     #-}
+{-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings  #-}
 
 module CrowdfundingSimulations where
 
@@ -19,7 +19,7 @@ simulations = [basicCrowdfunding]
     wallet3 = Wallet {getWallet = 3}
     wallet4 = Wallet {getWallet = 4}
     simulationWallets =
-        simulatorWallet registeredKnownCurrencies 30 <$>
+        simulatorWallet registeredKnownCurrencies 100_000_000 <$>
         [wallet1, wallet2, wallet3, wallet4]
     basicCrowdfunding =
         Simulation
@@ -28,9 +28,9 @@ simulations = [basicCrowdfunding]
             , simulationWallets
             , simulationActions =
                   [ scheduleCollection wallet1
-                  , contribute wallet2 11
-                  , contribute wallet3 10
-                  , contribute wallet4 9
+                  , contribute wallet2 11_000_000
+                  , contribute wallet3 10_000_000
+                  , contribute wallet4 90_000_000
                   , AddBlocksUntil 41
                   ]
             }

@@ -36,23 +36,23 @@ import qualified Codec.Serialise                       as Serialise
 import           Language.Haskell.Interpreter          (Extension (OverloadedStrings), MonadInterpreter,
                                                         OptionVal ((:=)), as, interpret, languageExtensions,
                                                         runInterpreter, set, setImports)
-import           Language.Plutus.Contract.Test         as T
-import qualified Language.PlutusTx.AssocMap            as AssocMap
-import           Language.PlutusTx.Lattice
+import           Plutus.Contract.Test                  as T
 import qualified Plutus.Trace.Emulator                 as Trace
+import qualified PlutusTx.AssocMap                     as AssocMap
+import           PlutusTx.Lattice
 
-import qualified Language.PlutusTx.Prelude             as P
 import           Ledger                                hiding (Value)
 import qualified Ledger
 import           Ledger.Ada                            (lovelaceValueOf)
-import           Ledger.Typed.Scripts                  (scriptHash, validatorScript)
+import           Ledger.Typed.Scripts                  (validatorScript)
+import qualified PlutusTx.Prelude                      as P
 import           Spec.Marlowe.Common
 import           Test.Tasty
 import           Test.Tasty.HUnit
 import           Test.Tasty.QuickCheck
 
-{-# ANN module ("HLint: ignore Reduce duplication" :: String) #-}
-{-# ANN module ("HLint: ignore Redundant if" :: String) #-}
+{- HLINT ignore "Reduce duplication" -}
+{- HLINT ignore "Redundant if" -}
 
 tests :: TestTree
 tests = testGroup "Marlowe Auto Execution"
@@ -68,6 +68,9 @@ alice = Wallet 1
 bob = Wallet 2
 carol = Wallet 3
 
+-- Leave some lovelace for fees
+almostAll :: Ledger.Value
+almostAll = defaultLovelaceAmount <> P.inv (lovelaceValueOf 50)
 
 autoexecZCBTest :: TestTree
 autoexecZCBTest = checkPredicate "ZCB Auto Execute Contract"
@@ -75,12 +78,12 @@ autoexecZCBTest = checkPredicate "ZCB Auto Execute Contract"
     -- /\ emulatorLog (const False) ""
     T..&&. assertNotDone (marlowePlutusContract) (Trace.walletInstanceTag alice) "contract should not have any errors"
     T..&&. assertNotDone (marlowePlutusContract) (Trace.walletInstanceTag bob) "contract should not have any errors"
-    T..&&. walletFundsChange alice (lovelaceValueOf (150))
+    T..&&. walletFundsChange alice (lovelaceValueOf 150)
     T..&&. walletFundsChange bob (lovelaceValueOf (-150))
     ) $ do
 
-    bobHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError bob marlowePlutusContract
-    aliceHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError alice marlowePlutusContract
+    bobHdl <- Trace.activateContractWallet bob marlowePlutusContract
+    aliceHdl <- Trace.activateContractWallet alice marlowePlutusContract
 
     -- Bob will wait for the contract to appear on chain
     Trace.callEndpoint @"auto" bobHdl (params, bobPk, contractLifespan)
@@ -90,18 +93,18 @@ autoexecZCBTest = checkPredicate "ZCB Auto Execute Contract"
     Trace.waitNSlots 1
 
     -- Move all Alice's money to Carol, so she can't make a payment
-    Trace.payToWallet alice carol defaultLovelaceAmount
+    Trace.payToWallet alice carol almostAll
     Trace.waitNSlots 1
 
     Trace.callEndpoint @"auto" aliceHdl (params, alicePk, contractLifespan)
     Trace.waitNSlots 1
 
     -- Return money to Alice
-    Trace.payToWallet carol alice defaultLovelaceAmount
+    Trace.payToWallet carol alice almostAll
     Trace.waitNSlots 1
 
     -- Now Alice should be able to retry and pay to Bob
-    void $ Trace.waitNSlots 1
+    void $ Trace.waitNSlots 2
 
 
 autoexecZCBTestAliceWalksAway :: TestTree
@@ -111,11 +114,11 @@ autoexecZCBTestAliceWalksAway = checkPredicate
     -- /\ emulatorLog (const False) ""
     T..&&. assertNotDone (marlowePlutusContract) (Trace.walletInstanceTag alice) "contract should not have any errors"
     T..&&. assertNotDone (marlowePlutusContract) (Trace.walletInstanceTag bob) "contract should not have any errors"
-    T..&&. walletFundsChange alice (P.inv defaultLovelaceAmount)
-    T..&&. walletFundsChange carol defaultLovelaceAmount
+    T..&&. walletFundsChange alice (P.inv almostAll)
+    T..&&. walletFundsChange carol (almostAll)
     ) $ do
-    bobHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError bob marlowePlutusContract
-    aliceHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError alice marlowePlutusContract
+    bobHdl <- Trace.activateContractWallet bob marlowePlutusContract
+    aliceHdl <- Trace.activateContractWallet alice marlowePlutusContract
 
     -- Bob will wait for the contract to appear on chain
     Trace.callEndpoint @"auto" bobHdl (params, bobPk, contractLifespan)
@@ -125,7 +128,7 @@ autoexecZCBTestAliceWalksAway = checkPredicate
     Trace.waitNSlots 1
 
     -- Move all Alice's money to Carol, so she can't make a payment
-    Trace.payToWallet alice carol defaultLovelaceAmount
+    Trace.payToWallet alice carol almostAll
     Trace.waitNSlots 1
 
     Trace.callEndpoint @"auto" aliceHdl (params, alicePk, contractLifespan)
@@ -143,10 +146,10 @@ autoexecZCBTestBobWalksAway = checkPredicate
     T..&&. assertNotDone (marlowePlutusContract) (Trace.walletInstanceTag alice) "contract should not have any errors"
     T..&&. assertNotDone (marlowePlutusContract) (Trace.walletInstanceTag bob) "contract should not have any errors"
     T..&&. walletFundsChange alice (lovelaceValueOf (-850))
-    T..&&. walletFundsChange carol defaultLovelaceAmount
+    T..&&. walletFundsChange carol (almostAll)
     ) $ do
-    bobHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError bob marlowePlutusContract
-    aliceHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError alice marlowePlutusContract
+    bobHdl <- Trace.activateContractWallet bob marlowePlutusContract
+    aliceHdl <- Trace.activateContractWallet alice marlowePlutusContract
 
     -- Bob will wait for the contract to appear on chain
     Trace.callEndpoint @"auto" bobHdl (params, bobPk, contractLifespan)
@@ -155,7 +158,7 @@ autoexecZCBTestBobWalksAway = checkPredicate
     Trace.callEndpoint @"create" aliceHdl (AssocMap.empty, zeroCouponBond)
     Trace.waitNSlots 1
 
-    Trace.payToWallet bob carol defaultLovelaceAmount
+    Trace.payToWallet bob carol almostAll
     Trace.waitNSlots 1
 
     Trace.callEndpoint @"auto" aliceHdl (params, alicePk, contractLifespan)
@@ -172,8 +175,8 @@ awaitUntilTimeoutTest = checkPredicate "Party waits for contract to appear on ch
     T..&&. assertNotDone marlowePlutusContract (Trace.walletInstanceTag bob) "contract should close"
     ) $ do
 
-    bobHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError bob marlowePlutusContract
-    aliceHdl <- Trace.activateContractWallet @MarloweSchema @MarloweError alice marlowePlutusContract
+    bobHdl <- Trace.activateContractWallet bob marlowePlutusContract
+    aliceHdl <- Trace.activateContractWallet alice marlowePlutusContract
 
     -- Bob will wait for the contract to appear on chain
     Trace.callEndpoint @"auto" bobHdl (params, bobPk, contractLifespan)

@@ -16,10 +16,10 @@ import           Data.Aeson                (FromJSON, FromJSONKey, ToJSON, ToJSO
 import qualified Data.ByteString           as BS
 import           Data.Text.Prettyprint.Doc (Pretty)
 import           GHC.Generics              (Generic)
-import qualified Language.PlutusTx         as PlutusTx
-import qualified Language.PlutusTx.Prelude as PlutusTx
 import           Plutus.V1.Ledger.Bytes    (LedgerBytes (..))
 import           Plutus.V1.Ledger.Orphans  ()
+import qualified PlutusTx                  as PlutusTx
+import qualified PlutusTx.Prelude          as PlutusTx
 
 -- | A transaction ID, using a SHA256 hash as the transaction id.
 newtype TxId = TxId { getTxId :: BS.ByteString }
@@ -29,4 +29,4 @@ newtype TxId = TxId { getTxId :: BS.ByteString }
     deriving (Show, Pretty) via LedgerBytes
 
 PlutusTx.makeLift ''TxId
-PlutusTx.makeIsData ''TxId
+PlutusTx.makeIsDataIndexed ''TxId [('TxId,0)]

@@ -8,58 +8,33 @@
 
 module Cardano.Node.Client where
 
-import           Cardano.Node.API          (API)
-import           Cardano.Node.Follower     (NodeFollowerEffect (..))
-import           Cardano.Node.RandomTx     (GenRandomTx (..))
-import           Cardano.Node.Types        (FollowerID)
-import           Control.Monad             (void)
 import           Control.Monad.Freer
-import           Control.Monad.Freer.Error
-import           Control.Monad.Freer.Log   (LogMessage)
+import           Control.Monad.Freer.Reader     (Reader, ask)
 import           Control.Monad.IO.Class
-import           Data.Proxy                (Proxy (Proxy))
-import           Ledger                    (Block, Slot, Tx)
-import           Servant                   (NoContent, (:<|>) (..))
-import           Servant.Client            (ClientEnv, ClientError, ClientM, client, runClientM)
-import           Wallet.Effects            (NodeClientEffect (..))
-import           Wallet.Emulator.Chain     (ChainEvent)
+import           Data.Proxy                     (Proxy (Proxy))
+import           Ledger                         (Tx)
+import           Servant                        (NoContent, (:<|>) (..))
+import           Servant.Client                 (ClientEnv, ClientError, ClientM, client, runClientM)
+
+import           Cardano.Node.API               (API)
+import           Cardano.Node.RandomTx          (GenRandomTx (..))
+import           Cardano.Node.Types             (MockServerLogMsg)
+import qualified Cardano.Protocol.Socket.Client as Client
+import           Control.Monad.Freer.Error
+import           Control.Monad.Freer.Extras.Log (LogMessage)
+import           Wallet.Effects                 (NodeClientEffect (..))
 
 healthcheck :: ClientM NoContent
-getCurrentSlot :: ClientM Slot
-addTx :: Tx -> ClientM NoContent
 randomTx :: ClientM Tx
-consumeEventHistory :: ClientM [LogMessage ChainEvent]
-newFollower :: ClientM FollowerID
-getBlocks :: FollowerID -> ClientM [Block]
-(healthcheck, addTx, getCurrentSlot, randomTx, consumeEventHistory, newFollower, getBlocks) =
+consumeEventHistory :: ClientM [LogMessage MockServerLogMsg]
+(healthcheck, randomTx, consumeEventHistory) =
     ( healthcheck_
-    , addTx_
-    , getCurrentSlot_
     , randomTx_
     , consumeEventHistory_
-    , newFollower_
-    , getBlocks_
     )
   where
-    healthcheck_ :<|> addTx_ :<|> getCurrentSlot_ :<|> (randomTx_ :<|> consumeEventHistory_) :<|> (newFollower_ :<|> getBlocks_) =
+    healthcheck_ :<|> (randomTx_ :<|> consumeEventHistory_) =
         client (Proxy @API)
-
-handleNodeFollowerClient ::
-    forall m effs.
-    ( LastMember m effs
-    , MonadIO m
-    , Member (Error ClientError) effs)
-    => ClientEnv
-    -> Eff (NodeFollowerEffect ': effs)
-    ~> Eff effs
-handleNodeFollowerClient clientEnv =
-    let
-        runClient :: forall a. ClientM a -> Eff effs a
-        runClient a = (sendM $ liftIO $ runClientM a clientEnv) >>= either throwError pure in
-    interpret $ \case
-    NewFollower   -> runClient newFollower
-    GetBlocks fid -> runClient (getBlocks fid)
-    GetSlot       -> runClient getCurrentSlot
 
 handleRandomTxClient ::
     forall m effs.
@@ -67,28 +42,28 @@ handleRandomTxClient ::
     , MonadIO m
     , Member (Error ClientError) effs)
     => ClientEnv
-    -> Eff (GenRandomTx ': effs)
+    -> GenRandomTx
     ~> Eff effs
 handleRandomTxClient clientEnv =
     let
         runClient :: forall a. ClientM a -> Eff effs a
-        runClient a = (sendM $ liftIO $ runClientM a clientEnv) >>= either throwError pure in
-    interpret $ \case
+        runClient a = (sendM $ liftIO $ runClientM a clientEnv) >>= either throwError pure
+    in \case
         GenRandomTx -> runClient randomTx
 
 handleNodeClientClient ::
     forall m effs.
     ( LastMember m effs
     , MonadIO m
-    , Member (Error ClientError) effs
+    , Member (Reader Client.TxSendHandle) effs
+    , Member (Reader Client.ChainSyncHandle) effs
     )
-    => ClientEnv
-    -> Eff (NodeClientEffect ': effs)
+    => NodeClientEffect
     ~> Eff effs
-handleNodeClientClient clientEnv =
-    let
-        runClient :: forall a. ClientM a -> Eff effs a
-        runClient a = (sendM $ liftIO $ runClientM a clientEnv) >>= either throwError pure in
-    interpret $ \case
-        PublishTx tx  -> void (runClient (addTx tx))
-        GetClientSlot -> runClient getCurrentSlot
+handleNodeClientClient e = do
+    txSendHandle <- ask @Client.TxSendHandle
+    chainSyncHandle <- ask @Client.ChainSyncHandle
+    case e of
+        PublishTx tx  ->
+            liftIO $ Client.queueTx txSendHandle tx
+        GetClientSlot -> liftIO $ Client.getCurrentSlot chainSyncHandle

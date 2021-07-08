@@ -17,11 +17,21 @@ source-repository head
 
 library
     exposed-modules:
-        Server
+        -- src
         API
-        Lambda
-        Marlowe.Contracts
         Marlowe.Config
+        Marlowe.Contracts
+        Marlowe.Mermaid
+        Server
+        -- contracts
+        ContractForDifferences
+        ContractForDifferencesWithOracle
+        CouponBondGuaranteed
+        Escrow
+        EscrowWithCollateral
+        Example
+        Swap
+        ZeroCouponBond
     -- Include 'contracts' so haskell.nix knows to include the files that we embed with TH
     hs-source-dirs:
         src
@@ -37,9 +47,8 @@ library
         directory -any,
         exceptions -any,
         file-embed -any,
-        aws-lambda-haskell-runtime -any,
-        aws-lambda-haskell-runtime-wai -any,
         filepath -any,
+        hashable -any,
         http-client -any,
         http-client-tls -any,
         http-conduit -any,
@@ -77,12 +86,14 @@ executable marlowe-playground-server
         PSGenerator
         Types
         Escrow
+        EscrowWithCollateral
         Example
         CouponBondGuaranteed
         ZeroCouponBond
         Swap
         Option
-        ContractForDifference
+        ContractForDifferences
+        ContractForDifferencesWithOracle
     hs-source-dirs: app contracts
     default-language: Haskell2010
     ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
@@ -123,6 +134,30 @@ executable marlowe-playground-server
         web-ghc -any,
         yaml -any,
         time -any
+
+executable flow-chart-generator
+    main-is: FlowChartGenerator.hs
+    other-modules:
+        Types
+        Escrow
+        EscrowWithCollateral
+        Example
+        CouponBondGuaranteed
+        ZeroCouponBond
+        Swap
+        Option
+        ContractForDifferences
+        ContractForDifferencesWithOracle
+    hs-source-dirs: app contracts
+    default-language: Haskell2010
+    ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+                 -Wincomplete-uni-patterns -Wincomplete-record-updates
+    build-depends:
+        aeson -any,
+        base -any,
+        playground-common -any,
+        marlowe -any,
+        marlowe-playground-server -any
 
 test-suite marlowe-playground-server-test
     type: exitcode-stdio-1.0

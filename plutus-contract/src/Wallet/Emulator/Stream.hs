@@ -16,7 +16,7 @@ module Wallet.Emulator.Stream(
     , InitialChainState
     , initialChainState
     , initialDist
-    , defaultEmulatorConfig
+    , initialState
     , runTraceStream
     -- * Stream manipulation
     , takeUntilSlot
@@ -31,18 +31,19 @@ import           Control.Lens                           (filtered, makeLenses, p
 import           Control.Monad.Freer                    (Eff, Member, interpret, reinterpret, run, subsume, type (~>))
 import           Control.Monad.Freer.Coroutine          (Yield, yield)
 import           Control.Monad.Freer.Error              (Error, runError)
-import           Control.Monad.Freer.Extras             (raiseEnd6, wrapError)
-import           Control.Monad.Freer.Log                (LogLevel, LogMessage (..), LogMsg (..), logMessageContent,
+import           Control.Monad.Freer.Extras             (raiseEnd, wrapError)
+import           Control.Monad.Freer.Extras.Log         (LogLevel, LogMessage (..), LogMsg (..), logMessageContent,
                                                          mapMLog)
+import           Control.Monad.Freer.Extras.Stream      (runStream)
 import           Control.Monad.Freer.State              (State, gets, runState)
-import           Control.Monad.Freer.Stream             (runStream)
 import           Data.Bifunctor                         (first)
+import           Data.Default                           (Default (..))
 import           Data.Map                               (Map)
 import qualified Data.Map                               as Map
 import           Data.Maybe                             (fromMaybe)
 import qualified Data.Set                               as Set
 import qualified Ledger.AddressMap                      as AM
-import           Ledger.Blockchain                      (Block)
+import           Ledger.Blockchain                      (Block, OnChainTx (..))
 import           Ledger.Slot                            (Slot)
 import           Ledger.Value                           (Value)
 import           Streaming                              (Stream)
@@ -53,12 +54,12 @@ import           Wallet.API                             (WalletAPIError)
 import           Wallet.Emulator                        (EmulatorEvent, EmulatorEvent')
 import qualified Wallet.Emulator                        as EM
 import           Wallet.Emulator.Chain                  (ChainControlEffect, ChainEffect, _SlotAdd)
-import           Wallet.Emulator.MultiAgent             (EmulatorState, EmulatorTimeEvent (..), MultiAgentEffect,
-                                                         chainEvent, eteEvent)
+import           Wallet.Emulator.MultiAgent             (EmulatorState, EmulatorTimeEvent (..), MultiAgentControlEffect,
+                                                         MultiAgentEffect, chainEvent, eteEvent)
 import           Wallet.Emulator.Wallet                 (Wallet (..), walletAddress)
 
 -- TODO: Move these two to 'Wallet.Emulator.XXX'?
-import           Language.Plutus.Contract.Trace         (InitialDistribution, defaultDist)
+import           Plutus.Contract.Trace                  (InitialDistribution, defaultDist)
 import           Plutus.Trace.Emulator.ContractInstance (EmulatorRuntimeError)
 
 {- Note [Emulator event stream]
@@ -109,6 +110,7 @@ runTraceStream :: forall effs.
     -> Eff '[ State EmulatorState
             , LogMsg EmulatorEvent'
             , MultiAgentEffect
+            , MultiAgentControlEffect
             , ChainEffect
             , ChainControlEffect
             , Error EmulatorRuntimeError
@@ -128,29 +130,28 @@ runTraceStream conf =
     . EM.processEmulated
     . subsume
     . subsume @(State EmulatorState)
-    . raiseEnd6
+    . raiseEnd
 
 data EmulatorConfig =
     EmulatorConfig
         { _initialChainState      :: InitialChainState -- ^ State of the blockchain at the beginning of the simulation. Can be given as a map of funds to wallets, or as a block of transactions.
         } deriving (Eq, Show)
 
-type InitialChainState = Either InitialDistribution Block
+type InitialChainState = Either InitialDistribution EM.TxPool
 
 -- | The wallets' initial funds
 initialDist :: InitialChainState -> InitialDistribution
-initialDist = either id walletFunds where
+initialDist = either id (walletFunds . map Valid) where
     walletFunds :: Block -> Map Wallet Value
     walletFunds theBlock =
         let values = AM.values $ AM.fromChain [theBlock]
             getFunds wllt = fromMaybe mempty $ Map.lookup (walletAddress wllt) values
         in Map.fromSet getFunds (Set.fromList $ Wallet <$> [1..10])
 
-defaultEmulatorConfig :: EmulatorConfig
-defaultEmulatorConfig =
-    EmulatorConfig
-        { _initialChainState = Left defaultDist
-        }
+instance Default EmulatorConfig where
+  def = EmulatorConfig
+          { _initialChainState = Left defaultDist
+          }
 
 initialState :: EmulatorConfig -> EM.EmulatorState
 initialState EmulatorConfig{_initialChainState} =

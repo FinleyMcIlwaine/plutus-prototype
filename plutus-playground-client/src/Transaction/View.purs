@@ -29,7 +29,7 @@ import Halogen.HTML (ClassName(ClassName), HTML, button, br_, code_, div, div_, 
 import Halogen.HTML.Events (onClick)
 import Halogen.HTML.Properties (class_, classes)
 import Icons (Icon(..), icon)
-import Language.PlutusTx.AssocMap as AssocMap
+import PlutusTx.AssocMap as AssocMap
 import MainFrame.Lenses (_balancesChartSlot)
 import MainFrame.Types (ChildSlots, HAction(..), View(..))
 import Playground.Lenses (_tokenName, _contractInstanceTag)
@@ -103,7 +103,7 @@ emulatorEventPane (ChainIndexEvent _ (HandlingAddressChangeRequest rq _)) =
   div_
     [ text $ "Handling address change request: " <> show rq ]
 
-emulatorEventPane (ClientEvent _ (TxSubmit (TxId txId))) =
+emulatorEventPane (ClientEvent _ (TxSubmit (TxId txId) _)) =
   div_
     [ text $ "Submitting transaction: " <> txId.getTxId ]
 
@@ -115,7 +115,7 @@ emulatorEventPane (NotificationEvent notificationEvent) =
   div_
     [ text $ "Notification event: " <> show notificationEvent ]
 
-emulatorEventPane (ChainEvent (TxnValidationFail (TxId txId) _ error _)) =
+emulatorEventPane (ChainEvent (TxnValidationFail _ (TxId txId) _ error _)) =
   div [ class_ $ ClassName "error" ]
     [ text $ "Validation failed: " <> txId.getTxId
     , br_

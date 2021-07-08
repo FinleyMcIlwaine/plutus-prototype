@@ -145,6 +145,8 @@ ISIG equalsInteger = ∅ ,, ∅ , con integer , con integer ,, con bool
 ISIG concatenate = ∅ ,, ∅ , con bytestring , con bytestring ,, con bytestring
 ISIG takeByteString = ∅ ,, ∅ , con integer , con bytestring ,, con bytestring
 ISIG dropByteString = ∅ ,, ∅ , con integer , con bytestring ,, con bytestring
+ISIG lessThanByteString = ∅ ,, ∅ , con bytestring , con bytestring ,, con bool
+ISIG greaterThanByteString = ∅ ,, ∅ , con bytestring , con bytestring ,, con bool
 ISIG sha2-256 = ∅ ,, ∅ , con bytestring ,, con bytestring
 ISIG sha3-256 = ∅ ,, ∅ , con bytestring ,, con bytestring
 ISIG verifySignature = ∅ ,, ∅ , con bytestring , con bytestring , con bytestring ,, con bool
@@ -163,6 +165,8 @@ itype b = let Φ ,, Γ ,, C = ISIG b in subNf (λ()) (isig2type Φ Γ C)
 
 postulate itype-ren : ∀{Φ Ψ} b (ρ : ⋆.Ren Φ Ψ) → itype b ≡ renNf ρ (itype b)
 postulate itype-sub : ∀{Φ Ψ} b (ρ : SubNf Φ Ψ) → itype b ≡ subNf ρ (itype b)
+
+infixl 7 _·⋆_
 
 data _⊢_ {Φ} (Γ : Ctx Φ) : Φ ⊢Nf⋆ * → Set where
 
@@ -215,7 +219,6 @@ data _⊢_ {Φ} (Γ : Ctx Φ) : Φ ⊢Nf⋆ * → Set where
   ibuiltin : (b :  Builtin) → Γ ⊢ itype b
 
   error : (A : Φ ⊢Nf⋆ *) → Γ ⊢ A
-
 \end{code}
 
 Utility functions

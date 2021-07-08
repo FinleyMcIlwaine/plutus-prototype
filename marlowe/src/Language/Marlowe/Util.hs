@@ -9,9 +9,9 @@ import qualified Data.Set                   as Set
 import           Data.String
 
 import           Language.Marlowe.Semantics
-import qualified Language.PlutusTx.Prelude  as P
 import           Ledger.Ada                 (adaSymbol, adaToken)
 import qualified Ledger.Value               as Val
+import qualified PlutusTx.Prelude           as P
 
 instance IsString Party where
     fromString s = Role (fromString s)
@@ -48,8 +48,8 @@ getAccountsDiff :: [Payment] -> [Input] -> AccountsDiff
 getAccountsDiff payments inputs =
     foldl' (\acc (p, m) -> addAccountsDiff p m acc) emptyAccountsDiff (incomes ++ outcomes)
   where
-    incomes  = [ (p,  Val.singleton cur tok m) | IDeposit _ p (Token cur tok) m <- inputs ]
-    outcomes = [ (p, P.negate m) | Payment p m  <- payments ]
+    incomes  = [ (p, Val.singleton cur tok m) | IDeposit _ p (Token cur tok) m <- inputs ]
+    outcomes = [ (p, P.negate m) | Payment _ (Party p) m  <- payments ]
 
 
 foldMapContract :: Monoid m

@@ -19,6 +19,7 @@ import           Control.Monad.IO.Class                         (MonadIO, liftIO
 import           Control.Monad.Logger                           (MonadLogger, logInfoN)
 import           Data.Default.Class                             (def)
 import           Data.Proxy                                     (Proxy (Proxy))
+import           Data.Time.Units                                (Second, TimeUnit, convertUnit)
 import           Network.Wai                                    (Application)
 import           Network.Wai.Handler.Warp                       (Settings, runSettings)
 import           Network.Wai.Middleware.Cors                    (cors, corsRequestHeaders, simpleCorsResourcePolicy)
@@ -27,22 +28,22 @@ import           Network.Wai.Middleware.RequestLogger           (logStdout)
 import           Servant                                        (serve)
 import           Servant.Prometheus                             (monitorEndpoints)
 import           System.Metrics.Prometheus.Concurrent.RegistryT (runRegistryT)
-import           System.Metrics.Prometheus.Http.Scrape          (serveHttpTextMetricsT)
+import           System.Metrics.Prometheus.Http.Scrape          (serveMetricsT)
 import           Webghc.Server                                  (API, server)
 
 
-app :: Application
-app =
-  gzip def . logStdout . cors (const $ Just policy) . serve (Proxy @API) $ server
+app :: Second -> Application
+app timeOutSecs =
+  gzip def . logStdout . cors (const $ Just policy) . serve (Proxy @API) $ server timeOutSecs
   where
     policy =
       simpleCorsResourcePolicy
         { corsRequestHeaders = ["content-type", "set-cookie"]
         }
 
-run :: (MonadLogger m, MonadIO m) => Settings -> m ()
-run settings = runRegistryT $ do
+run :: (MonadLogger m, TimeUnit t, MonadIO m) => Settings -> t -> m ()
+run settings timeOutSecs = runRegistryT $ do
   appMonitor <- monitorEndpoints (Proxy @API)
   logInfoN "Starting webserver."
-  void . liftIO . forkIO . runSettings settings . appMonitor $ app
-  serveHttpTextMetricsT 9091 ["metrics"]
+  void . liftIO . forkIO . runSettings settings . appMonitor $ app (convertUnit timeOutSecs)
+  serveMetricsT 9091 ["metrics"]

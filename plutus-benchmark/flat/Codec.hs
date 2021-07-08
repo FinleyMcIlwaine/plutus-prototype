@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingVia       #-}
+{-# LANGUAGE FlexibleContexts  #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PackageImports    #-}
 
@@ -15,10 +16,9 @@ import qualified Data.ByteString                    as BS
 import qualified Data.ByteString.Lazy               as LBS
 import           Data.Text                          (Text)
 
-import           Language.PlutusCore                (DefaultFun (..))
-import           Language.PlutusCore.CBOR           (InvisibleUnit (..))
-import           Language.PlutusCore.Universe
-import           Language.UntypedPlutusCore         hiding (OmitUnitAnnotations, restoreUnitAnnotations)
+import           PlutusCore.CBOR                    (InvisibleUnit (..))
+import           PlutusCore.Default
+import           UntypedPlutusCore                  hiding (OmitUnitAnnotations, restoreUnitAnnotations)
 
 import           "pure-zlib" Codec.Compression.Zlib as PureZlib
 import           "zlib" Codec.Compression.Zlib      as Zlib
@@ -36,14 +36,14 @@ fromDecoded :: Show error => Either error a -> a
 fromDecoded (Left err) = error $ show err
 fromDecoded (Right  v) = v
 
-flatCodec :: Flat name => Codec (Tm name)
+flatCodec :: (Flat (Binder name), Flat name) => Codec (Tm name)
 flatCodec = Codec
   { serialize   = flat
   , deserialize = fromDecoded . unflat
   }
 
 {- CBOR serialisation omitting units: see Note [Serialising unit annotations] in
- Language.PlutusCore.CBOR -}
+ PlutusCore.CBOR -}
 newtype OmitUnitAnnotations name  = OmitUnitAnnotations { restoreUnitAnnotations :: Tm name }
     deriving Serialise via Term name DefaultUni DefaultFun InvisibleUnit
 
@@ -71,7 +71,7 @@ withPureZlib codec = Codec
   , deserialize = (deserialize codec) . LBS.toStrict . fromDecoded . PureZlib.decompress . LBS.fromStrict
   }
 
-codecs    :: (Flat name, Serialise name) => [ (Text, Codec (Tm name)) ]
+codecs    :: (Flat (Binder name), Flat name, Serialise name) => [ (Text, Codec (Tm name)) ]
 codecs    =
   [ ("flat", flatCodec)
   , ("flat-zlib", withZlib flatCodec)

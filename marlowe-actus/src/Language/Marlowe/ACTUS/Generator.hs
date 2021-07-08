@@ -8,7 +8,7 @@ module Language.Marlowe.ACTUS.Generator
     )
 where
 
-import qualified Data.List                                                as L (zip6)
+import qualified Data.List                                                as L (foldl', zip6)
 import           Data.Maybe                                               (fromMaybe, isNothing, maybeToList)
 import           Data.Monoid
 import           Data.String                                              (IsString (fromString))
@@ -24,8 +24,9 @@ import           Language.Marlowe                                         (Actio
 import           Language.Marlowe.ACTUS.Analysis                          (genProjectedCashflows, genZeroRiskAssertions)
 import           Language.Marlowe.ACTUS.Definitions.BusinessEvents        (EventType (..))
 import           Language.Marlowe.ACTUS.Definitions.ContractTerms         (AssertionContext (..), Assertions (..),
-                                                                           ContractTerms (constraints, ct_CURS, ct_SD),
-                                                                           TermValidationError (..))
+                                                                           ContractTerms (collateralAmount, constraints, ct_CURS, ct_SD),
+                                                                           TermValidationError (..),
+                                                                           setDefaultContractTermValues)
 import           Language.Marlowe.ACTUS.Definitions.Schedule              (CashFlow (..))
 import           Language.Marlowe.ACTUS.MarloweCompat                     (constnt, dayToSlotNumber,
                                                                            toMarloweFixedPoint)
@@ -36,7 +37,23 @@ import           Language.Marlowe.ACTUS.Model.STF.StateTransitionFs       (state
 import           Ledger.Value                                             (TokenName (TokenName))
 
 
+receiveCollateral :: String -> Integer -> Integer -> Contract -> Contract
+receiveCollateral from amount timeout continue =
+    if amount == 0
+        then continue
+        else
+            let party = Role $ TokenName $ fromString from
+            in  When
+                    [ Case
+                        (Deposit party party ada (Constant amount))
+                            continue
+                    ]
+                    (Slot timeout)
+                    Close
 
+-- Any collateral-related code is commented out, until implemented properly
+-- invoice :: String -> String -> Value Observation -> Value Observation -> Slot -> Contract -> Contract
+-- invoice from to amount collateralAmount timeout continue =
 invoice :: String -> String -> Value Observation -> Slot -> Contract -> Contract
 invoice from to amount timeout continue =
     let party        = Role $ TokenName $ fromString from
@@ -50,10 +67,16 @@ invoice from to amount timeout continue =
                         amount
                         continue
                     )
-
             ]
             timeout
             Close
+            -- Any collateral-related code is commented out, until implemented properly
+            -- (Pay party
+            --     (Party counterparty)
+            --     ada
+            --     collateralAmount
+            --     Close
+            -- )
 
 maxPseudoDecimalValue :: Integer
 maxPseudoDecimalValue = 100000000000000
@@ -104,34 +127,42 @@ inquiryFs ev ct timePosfix date oracle context continue =
     in
         riskFactorsInquiryEv ev continue
 
-
-{- Note [ContractTerms and Maybe]
-Throughout the contract generation, ContractTerms fields are commonly accessed
-with what appears to be an unchecked `fromJust`. There's not much backing up
-the assertion that one of those won't fail other than the applicability model
-right now. The applicability model (validateTerms) enforces that certain fields
-(e.g ContractType, Notional, etc.) are required, and contract generation will
-fail if they aren't provided.
-
-The plans for better type safety were also outlined in this comment:
-https://github.com/input-output-hk/plutus/pull/2440#issuecomment-722329158
--}
-
 genStaticContract :: ContractTerms -> Validation [TermValidationError] Contract
 genStaticContract terms =
     case validateTerms terms of
         Failure errs -> Failure errs
-        Success t ->
+        Success _ ->
             let
+                t = setDefaultContractTermValues terms
                 cfs = genProjectedCashflows t
                 gen CashFlow {..}
                     | amount == 0.0 = id
                     | amount > 0.0
-                    = invoice "party" "counterparty" (Constant $ round amount) (Slot $ dayToSlotNumber cashPaymentDay)
+                    = invoice
+                        "party"
+                        "counterparty"
+                        (Constant $ round amount)
+                        -- Any collateral-related code is commented out, until implemented properly
+                        -- (Constant 0)
+                        (Slot $ dayToSlotNumber cashPaymentDay)
                     | otherwise
-                    = invoice "counterparty" "party" (Constant $ round $ - amount) (Slot $ dayToSlotNumber cashPaymentDay)
-            in Success $ foldl (flip gen) Close cfs
-
+                    = invoice
+                        "counterparty"
+                        "party"
+                        (Constant $ round $ - amount)
+                        -- Any collateral-related code is commented out, until implemented properly
+                        -- (Constant $ collateralAmount t)
+                        (Slot $ dayToSlotNumber cashPaymentDay)
+                -- Any collateral-related code is commented out, until implemented properly
+                -- withCollateral cont =
+                --     receiveCollateral
+                --         "counterparty"
+                --         (collateralAmount t)
+                --         (dayToSlotNumber $ ct_SD t)
+                --         cont
+            -- Any collateral-related code is commented out, until implemented properly
+            -- in Success . withCollateral $ foldr gen Close cfs
+            in Success $ L.foldl' (flip gen) Close $ reverse cfs
 
 genFsContract :: ContractTerms -> Validation [TermValidationError] Contract
 genFsContract terms =
@@ -139,29 +170,47 @@ genFsContract terms =
         Failure errs -> Failure errs
         Success _ ->
             let
+                terms' = setDefaultContractTermValues terms
                 postProcess cont =
-                    let ctr = constraints terms
-                        toAssert = genZeroRiskAssertions terms <$> (assertions =<< maybeToList ctr)
+                    let ctr = constraints terms'
+                        toAssert = genZeroRiskAssertions terms' <$> (assertions =<< maybeToList ctr)
                         compose = appEndo . mconcat . map Endo
                     in compose toAssert cont
 
                 payoffAt t = ValueId $ fromString $ "payoff_" ++ show t
-                schedCfs = genProjectedCashflows terms
+                schedCfs = genProjectedCashflows terms'
                 schedEvents = cashEvent <$> schedCfs
                 schedDates = Slot . dayToSlotNumber . cashPaymentDay <$> schedCfs
-                previousDates = ct_SD terms : (cashCalculationDay <$> schedCfs)
+                previousDates = ct_SD terms' : (cashCalculationDay <$> schedCfs)
                 cfsDirections = amount <$> schedCfs
-                ctx = context <$> constraints terms
+                ctx = context <$> constraints terms'
 
                 gen :: (CashFlow, Day, EventType, Slot, Double, Integer) -> Contract -> Contract
                 gen (cf, prevDate, ev, date, r, t) cont =
-                    inquiryFs ev terms ("_" ++ show t) date "oracle" ctx
-                    $ stateTransitionFs ev terms t prevDate (cashCalculationDay cf)
+                    inquiryFs ev terms' ("_" ++ show t) date "oracle" ctx
+                    $ stateTransitionFs ev terms' t prevDate (cashCalculationDay cf)
                     $ Let (payoffAt t) (fromMaybe (constnt 0.0) pof)
                     $ if isNothing pof then cont
-                    else if  r > 0.0   then invoice "party" "counterparty" (UseValue $ payoffAt t) date cont
-                    else                    invoice "counterparty" "party" (NegValue $ UseValue $ payoffAt t) date cont
-                    where pof = payoffFs ev terms t (t - 1) prevDate (cashCalculationDay cf)
+                    else if  r > 0.0   then
+                        invoice
+                            "party"
+                            "counterparty"
+                            (UseValue $ payoffAt t)
+                            -- Any collateral-related code is commented out, until implemented properly
+                            -- (Constant 0)
+                            date
+                            cont
+                    else
+                        invoice
+                            "counterparty"
+                            "party"
+                            (NegValue $ UseValue $ payoffAt t)
+                            -- Any collateral-related code is commented out, until implemented properly
+                            -- (Constant $ collateralAmount terms)
+                            date
+                            cont
+                    where pof = payoffFs ev terms' t (t - 1) prevDate (cashCalculationDay cf)
                 scheduleAcc = foldr gen (postProcess Close) $
                     L.zip6 schedCfs previousDates schedEvents schedDates cfsDirections [1..]
-            in Success $ inititializeStateFs terms scheduleAcc
+                withCollateral cont = receiveCollateral "counterparty" (collateralAmount terms') (dayToSlotNumber $ ct_SD terms') cont
+            in Success . withCollateral $ inititializeStateFs terms' scheduleAcc

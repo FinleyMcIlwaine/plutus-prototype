@@ -22,12 +22,14 @@ import           Control.Monad.Freer.Coroutine
 import           Data.Foldable                 (traverse_)
 import           Data.Maybe                    (maybeToList)
 import           Wallet.Effects                (startWatching)
-import           Wallet.Emulator.Chain         (ChainControlEffect, ChainEffect, getCurrentSlot, processBlock)
-import           Wallet.Emulator.MultiAgent    (MultiAgentEffect, walletAction, walletControlAction)
+import           Wallet.Emulator.Chain         (ChainControlEffect, modifySlot, processBlock)
+import           Wallet.Emulator.MultiAgent    (MultiAgentControlEffect, MultiAgentEffect, walletAction,
+                                                walletControlAction)
 
 import           Data.String                   (IsString (..))
 import           Plutus.Trace.Emulator.Types   (EmulatorMessage (..))
-import           Plutus.Trace.Scheduler        (Priority (..), SysCall (..), SystemCall, Tag, fork, mkSysCall, sleep)
+import           Plutus.Trace.Scheduler        (EmSystemCall, MessageCall (..), Priority (..), Tag, fork, mkSysCall,
+                                                sleep)
 import           Wallet.Emulator.ChainIndex    (chainIndexNotify)
 import           Wallet.Emulator.NodeClient    (ChainClientNotification (..), clientNotify)
 import           Wallet.Emulator.Wallet        (Wallet (..), walletAddress)
@@ -67,10 +69,10 @@ just arrive later.
 launchSystemThreads :: forall effs.
     ( Member ChainControlEffect effs
     , Member MultiAgentEffect effs
-    , Member ChainEffect effs
+    , Member MultiAgentControlEffect effs
     )
     => [Wallet]
-    -> Eff (Yield (SystemCall effs EmulatorMessage) (Maybe EmulatorMessage) ': effs) ()
+    -> Eff (Yield (EmSystemCall effs EmulatorMessage) (Maybe EmulatorMessage) ': effs) ()
 launchSystemThreads wallets = do
     _ <- sleep @effs @EmulatorMessage Sleeping
     -- 1. Threads for updating the agents' states. See note [Simulated Agents]
@@ -89,22 +91,22 @@ blockMakerTag = "block maker"
 -- | The block maker thread. See note [Simulator Time]
 blockMaker :: forall effs effs2.
     ( Member ChainControlEffect effs2
-    , Member ChainEffect effs2
-    , Member (Yield (SystemCall effs EmulatorMessage) (Maybe EmulatorMessage)) effs2
+    , Member (Yield (EmSystemCall effs EmulatorMessage) (Maybe EmulatorMessage)) effs2
     )
     => Eff effs2 ()
 blockMaker = go where
     go = do
         newBlock <- processBlock
-        newSlot <- getCurrentSlot
-        _ <- mkSysCall @effs Sleeping $ Broadcast $ NewSlot [newBlock] newSlot
+        newSlot <- modifySlot succ
+        _ <- mkSysCall @effs Sleeping $ Left $ Broadcast $ NewSlot [newBlock] newSlot
         _ <- sleep @effs @EmulatorMessage @effs2 Sleeping
         go
 
 -- | Thread for a simulated agent. See note [Simulated Agents]
 agentThread :: forall effs effs2.
     ( Member MultiAgentEffect effs2
-    , Member (Yield (SystemCall effs EmulatorMessage) (Maybe EmulatorMessage)) effs2
+    , Member MultiAgentControlEffect effs2
+    , Member (Yield (EmSystemCall effs EmulatorMessage) (Maybe EmulatorMessage)) effs2
     )
     => Wallet
     -> Eff effs2 ()

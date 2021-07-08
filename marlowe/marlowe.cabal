@@ -1,4 +1,4 @@
-cabal-version: 2.0
+cabal-version: 2.2
 name: marlowe
 version: 0.1.0.0
 license: Apache-2.0
@@ -28,13 +28,32 @@ flag defer-plugin-errors
     default: False
     manual: True
 
+common lang
+  default-language: Haskell2010
+  default-extensions: ExplicitForAll ScopedTypeVariables
+                      DeriveGeneric StandaloneDeriving DeriveLift
+                      DeriveFunctor DeriveFoldable
+                      DeriveTraversable
+  ghc-options:
+    -Wall -Wnoncanonical-monad-instances
+    -Wincomplete-uni-patterns -Wincomplete-record-updates
+    -Wredundant-constraints -Widentities
+
+  if !(impl(ghcjs) || os(ghcjs))
+    build-depends: plutus-tx-plugin -any
+
+  if flag(defer-plugin-errors)
+    ghc-options: -fplugin-opt PlutusTx.Plugin:defer-errors
+
 library
+  import: lang
   hs-source-dirs: src
   build-depends:
     aeson -any,
     base -any,
     bytestring,
     containers -any,
+    data-default -any,
     deriving-aeson -any,
     lens,
     mtl,
@@ -50,35 +69,20 @@ library
     sbv >= 8.4,
     scientific -any,
     wl-pprint -any,
-    freer-simple -any
-  default-language: Haskell2010
-  default-extensions: ExplicitForAll ScopedTypeVariables
-                      DeriveGeneric StandaloneDeriving DeriveLift
-                      DeriveFunctor DeriveFoldable
-                      DeriveTraversable
+    freer-simple -any,
+    semigroups -any
   exposed-modules:
     Language.Marlowe
+    Language.Marlowe.Extended
     Language.Marlowe.Semantics
     Language.Marlowe.Client
     Language.Marlowe.Util
     Language.Marlowe.Pretty
     Language.Marlowe.Analysis.FSSemantics
   other-modules:
-  ghc-options:
-    -Wall -Wnoncanonical-monad-instances
-    -Wincomplete-uni-patterns -Wincomplete-record-updates
-    -Wredundant-constraints -Widentities
-    -pgmL unlit -optL--ghc -optL--language=haskell -optL--from=asciidoc
-
-  if !(impl(ghcjs) || os(ghcjs))
-    build-depends: plutus-tx-plugin -any
-
-  if flag(defer-plugin-errors)
-    ghc-options: -fplugin-opt Language.PlutusTx.Plugin:defer-errors
-  build-tool-depends: unlit:unlit -any
 
 test-suite marlowe-test
-    default-language: Haskell2010
+    import: lang
     hs-source-dirs: test
     type: exitcode-stdio-1.0
     main-is: Spec.hs
@@ -90,6 +94,7 @@ test-suite marlowe-test
         aeson -any,
         base >=4.9 && <5,
         containers -any,
+        data-default  -any,
         hint -any,
         lens -any,
         memory -any,
@@ -109,7 +114,55 @@ test-suite marlowe-test
         QuickCheck,
         template-haskell -any,
         streaming -any
+
+-- | The Marlowe app, an executable that can be run in the PAB
+executable marlowe-app
+  import: lang
+  main-is: Main.hs
+  hs-source-dirs: app
+  build-depends:
+    base >= 4.9 && < 5,
+    plutus-pab -any,
+    plutus-contract -any,
+    marlowe
+
+-- | The Marlowe Companion app, an executable that can be run in the PAB
+executable marlowe-companion-app
+  import: lang
+  main-is: Main.hs
+  hs-source-dirs: companion
+  build-depends:
+    base >= 4.9 && < 5,
+    plutus-pab -any,
+    plutus-contract -any,
+    marlowe
+
+executable marlowe-follow-app
+  import: lang
+  main-is: Main.hs
+  hs-source-dirs: follow
+  build-depends:
+    base >= 4.9 && < 5,
+    plutus-pab -any,
+    plutus-contract -any,
+    marlowe
+
+-- | The PAB Specialised to the marlowe contract(s)
+executable marlowe-pab
+  import: lang
+  main-is: Main.hs
+  hs-source-dirs: pab
   ghc-options:
-    -Wall -Wnoncanonical-monad-instances
-    -Wincomplete-uni-patterns -Wincomplete-record-updates
-    -Wredundant-constraints -Widentities
+    -threaded
+  build-depends:
+    base >= 4.9 && < 5,
+    plutus-pab -any,
+    plutus-contract -any,
+    marlowe,
+    aeson -any,
+    freer-simple -any,
+    prettyprinter -any,
+    freer-extras -any,
+    plutus-ledger -any,
+    plutus-tx -any,
+    containers -any

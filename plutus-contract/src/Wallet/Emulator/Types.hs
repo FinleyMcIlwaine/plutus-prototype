@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -58,21 +57,21 @@ module Wallet.Emulator.Types(
     selectCoin
     ) where
 
-import           Control.Lens               hiding (index)
+import           Control.Lens                   hiding (index)
 import           Control.Monad.Freer
-import           Control.Monad.Freer.Error  (Error)
-import qualified Control.Monad.Freer.Extras as Eff
-import           Control.Monad.Freer.Log    (LogMsg, mapLog)
-import           Control.Monad.Freer.State  (State)
+import           Control.Monad.Freer.Error      (Error)
+import qualified Control.Monad.Freer.Extras     as Eff
+import           Control.Monad.Freer.Extras.Log (LogMsg, mapLog)
+import           Control.Monad.Freer.State      (State)
 
 import           Ledger
-import           Wallet.API                 (WalletAPIError (..))
+import           Wallet.API                     (WalletAPIError (..))
 
-import           Wallet.Emulator.Chain      as Chain
+import           Wallet.Emulator.Chain          as Chain
 import           Wallet.Emulator.MultiAgent
 import           Wallet.Emulator.NodeClient
 import           Wallet.Emulator.Wallet
-import           Wallet.Types               (AsAssertionError (..), AssertionError (..))
+import           Wallet.Types                   (AsAssertionError (..), AssertionError (..))
 
 type EmulatorEffs = '[MultiAgentEffect, ChainEffect, ChainControlEffect]
 
@@ -82,11 +81,12 @@ processEmulated :: forall effs.
     , Member (State EmulatorState) effs
     , Member (LogMsg EmulatorEvent') effs
     )
-    => Eff (MultiAgentEffect ': ChainEffect ': ChainControlEffect ': effs)
+    => Eff (MultiAgentEffect ': MultiAgentControlEffect ': ChainEffect ': ChainControlEffect ': effs)
     ~> Eff effs
 processEmulated act =
     act
         & handleMultiAgent
+        & handleMultiAgentControl
         & reinterpret2 @ChainEffect @(State ChainState) @(LogMsg ChainEvent) handleChain
         & interpret (Eff.handleZoomedState chainState)
         & interpret (mapLog (review chainEvent))

@@ -14,27 +14,29 @@
 {-# LANGUAGE TypeOperators         #-}
 module Wallet.Emulator.NodeClient where
 
-import           Control.Lens              hiding (index)
+import           Control.Lens                   hiding (index)
 import           Control.Monad.Freer
-import           Control.Monad.Freer.Log   (LogMsg, logInfo)
+import           Control.Monad.Freer.Extras.Log (LogMsg, logInfo)
 import           Control.Monad.Freer.State
 import           Control.Monad.Freer.TH
-import           Data.Aeson                (FromJSON, ToJSON)
-import           Data.Text.Prettyprint.Doc hiding (annotate)
-import           GHC.Generics              (Generic)
+import           Data.Aeson                     (FromJSON, ToJSON)
+import           Data.Text.Prettyprint.Doc      hiding (annotate)
+import           GHC.Generics                   (Generic)
 import           Ledger
-import qualified Ledger.AddressMap         as AM
-import           Wallet.Effects            (NodeClientEffect (..))
+import qualified Ledger.AddressMap              as AM
+import           Wallet.Effects                 (NodeClientEffect (..))
 import           Wallet.Emulator.Chain
 
 data NodeClientEvent =
-    TxSubmit TxId
-    -- ^ A transaction has been added to the pool of pending transactions.
+    TxSubmit TxId Value
+    -- ^ A transaction has been added to the pool of pending transactions. The value is the fee of the transaction.
     deriving stock (Eq, Show, Generic)
     deriving anyclass (FromJSON, ToJSON)
 
 instance Pretty NodeClientEvent where
-    pretty (TxSubmit tx) = "TxSubmit:" <+> pretty tx
+    pretty (TxSubmit tx _) = "TxSubmit:" <+> pretty tx
+
+makePrisms ''NodeClientEvent
 
 data NodeClientState = NodeClientState {
     _clientSlot  :: Slot,
@@ -68,6 +70,5 @@ handleNodeClient
     :: (Members NodeClientEffs effs)
     => Eff (NodeClientEffect ': effs) ~> Eff effs
 handleNodeClient = interpret $ \case
-    PublishTx tx  -> queueTx tx >> logInfo (TxSubmit (txId tx))
+    PublishTx tx  -> queueTx tx >> logInfo (TxSubmit (txId tx) (txFee tx))
     GetClientSlot -> gets _clientSlot
-

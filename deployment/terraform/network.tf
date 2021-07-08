@@ -1,11 +1,13 @@
+# This file sets up a basic network with private and public subnets and bastion machines to enable ssh access to the private subnets
+
 # VPC
 resource "aws_vpc" "plutus" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
 
   tags = {
-    Name        = "${var.project}_${var.env}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -20,8 +22,8 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name        = "${var.project}_${var.env}_public_${var.azs[count.index]}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_public_${var.azs[count.index]}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -31,8 +33,8 @@ resource "aws_internet_gateway" "plutus" {
   vpc_id = aws_vpc.plutus.id
 
   tags = {
-    Name        = "${var.project}_${var.env}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -51,8 +53,8 @@ resource "aws_eip" "nat" {
   count      = length(var.azs)
 
   tags = {
-    Name        = "${var.project}_${var.env}_${var.azs[count.index]}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_${var.azs[count.index]}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -65,8 +67,8 @@ resource "aws_nat_gateway" "plutus" {
   depends_on    = [aws_internet_gateway.plutus]
 
   tags = {
-    Name        = "${var.project}_${var.env}_${var.azs[count.index]}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_${var.azs[count.index]}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -86,8 +88,8 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnet_cidrs[count.index]
 
   tags = {
-    Name        = "${var.project}_${var.env}_private_${var.azs[count.index]}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_private_${var.azs[count.index]}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -98,8 +100,8 @@ resource "aws_route_table" "private" {
   vpc_id = aws_vpc.plutus.id
 
   tags = {
-    Name        = "${var.project}_${var.env}_private_${var.azs[count.index]}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_private_${var.azs[count.index]}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -119,29 +121,11 @@ resource "aws_route_table_association" "private" {
   route_table_id = aws_route_table.private.*.id[count.index]
 }
 
-# Bastion hosts
-data "template_file" "bastion_ssh_keys" {
-  template = "$${ssh_key}"
-  count    = "${length(var.bastion_ssh_keys["${var.env}"])}"
-
-  vars = {
-    ssh_key = "${var.ssh_keys["${element(var.bastion_ssh_keys["${var.env}"], count.index)}"]}"
-  }
-}
-
-data "template_file" "bastion_user_data" {
-  template = "${file("${path.module}/templates/bastion_configuration.nix")}"
-
-  vars = {
-    ssh_keys   = "${join(" ", formatlist("\"command=\\\"echo 'this host is for forwarding only'\\\",no-X11-forwarding,no-user-rc %s\"", data.template_file.bastion_ssh_keys.*.rendered))}"
-    network_id = "canbeanything"
-  }
-}
 
 resource "aws_instance" "bastion" {
   count                       = length(var.azs)
-  ami                         = lookup(var.aws_amis, var.aws_region)
-  instance_type               = "t2.nano"
+  ami                         = module.nixos_image.ami
+  instance_type               = var.bastion_instance_type
   associate_public_ip_address = true
   user_data                   = data.template_file.bastion_user_data.rendered
   source_dest_check           = false
@@ -157,8 +141,8 @@ resource "aws_instance" "bastion" {
   }
 
   tags = {
-    Name        = "${var.project}_${var.env}_bastion_${var.azs[count.index]}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_bastion_${var.azs[count.index]}"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -218,8 +202,8 @@ resource "aws_security_group" "bastion" {
   }
 
   tags = {
-    Name        = "${var.project}_${var.env}_bastion"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_bastion"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -228,24 +212,63 @@ resource "aws_route53_zone" "plutus_private_zone" {
   vpc {
     vpc_id = aws_vpc.plutus.id
   }
-  name   = "internal.${var.env}.${var.plutus_tld}"
+  name = "internal.${var.env}.${var.plutus_tld}"
 
   tags = {
-    Name        = "${var.project}_${var.env}"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}"
+    Project     = local.project
     Environment = var.env
   }
 }
 
-locals {
-  network = {
-    publicCidrBlockA = var.public_subnet_cidrs[0]
-    publicCidrBlockB = var.public_subnet_cidrs[1]
-    publicCidrBlockC = var.public_subnet_cidrs[2]
+resource "aws_route53_zone" "marlowe_finance_io_zone" {
+  count = (var.env == "production" ? 1 : 0)
+  name  = "marlowe-finance.io"
+}
+
+resource "aws_route53_record" "marlowe_finance_top_level" {
+  count   = (var.env == "production" ? 1 : 0)
+  zone_id = aws_route53_zone.marlowe_finance_io_zone[0].zone_id
+  name    = "marlowe-finance.io"
+  type    = "A"
+  ttl     = 300
+  records = [var.marlowe_finance_production_ip]
+}
+
+resource "aws_route53_record" "marlowe_finance_play" {
+  count   = (var.env == "production" ? 1 : 0)
+  zone_id = aws_route53_zone.marlowe_finance_io_zone[0].zone_id
+  name    = "play.marlowe-finance.io"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["production.marlowe.iohkdev.io"]
+}
+
+resource "aws_route53_record" "marlowe_finance_run" {
+  count   = (var.env == "production" ? 1 : 0)
+  zone_id = aws_route53_zone.marlowe_finance_io_zone[0].zone_id
+  name    = "run.marlowe-finance.io"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["production.marlowe-dash.iohkdev.io"]
+}
+
+resource "aws_route53_record" "marlowe_finance_webinar" {
+  count   = (var.env == "production" ? 1 : 0)
+  zone_id = aws_route53_zone.marlowe_finance_io_zone[0].zone_id
+  name    = "webinar.marlowe-finance.io"
+  type    = "CNAME"
+  ttl     = 300
+  records = ["wy8k2fnarz0v.wpeproxy.com"]
+}
+
+# Bastion hosts
+data "template_file" "bastion_user_data" {
+  template = "${file("${path.module}/templates/bastion_configuration.nix")}"
+
+  vars = {
+    ssh_keys   = "${join(" ", formatlist("\"command=\\\"echo 'this host is for forwarding only'\\\",no-X11-forwarding,no-user-rc %s\"", local.bastion_ssh_keys))}"
+    network_id = "canbeanything"
   }
 }
 
-resource "local_file" "network" {
-  content  = jsonencode(local.network)
-  filename = "${pathexpand(var.nixops_root)}/network.json"
-}

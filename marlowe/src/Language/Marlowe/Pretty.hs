@@ -12,10 +12,10 @@ import           Data.Text               (Text)
 import qualified Data.Text               as Text
 import           GHC.Generics            (C, Constructor, D, Generic, K1 (K1), M1 (M1), Rep, S, U1, conName, from,
                                           (:*:) ((:*:)), (:+:) (L1, R1))
-import qualified Language.PlutusTx.Ratio as P
 import           Ledger                  (PubKeyHash (..), Slot (..))
 import           Ledger.Ada              (Ada, getLovelace)
 import           Ledger.Value
+import qualified PlutusTx.Ratio          as P
 import           Text.PrettyPrint.Leijen (Doc, comma, encloseSep, hang, lbracket, line, lparen, parens, rbracket,
                                           rparen, space, text)
 
@@ -78,8 +78,8 @@ instance (Pretty1 a, Pretty1 b) => Pretty1 (a :*: b) where
     pretty1 topLevel (f :*: g) = pretty1 topLevel f <> pretty1 topLevel g
     isNullary _ = False
 
-instance Pretty String where
-  prettyFragment = text
+instance {-# OVERLAPPING #-} Pretty [Char] where
+  prettyFragment = text . show
 
 instance Pretty Text where
   prettyFragment = text . show . Text.unpack

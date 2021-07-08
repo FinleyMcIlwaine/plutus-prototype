@@ -1,16 +1,16 @@
 { lib
-, fetchFromGitHub
-, fetchFromGitLab
+, sources
 , agdaWithStdlib
-, plutusMusl
 , stdenv
 , haskell-nix
 , buildPackages
+, writeShellScript
 , checkMaterialization
-, nix-gitignore
+, gitignore-nix
 , R
 , rPackages
 , z3
+, enableHaskellProfiling
 }:
 let
   # The Hackage index-state from cabal.project
@@ -30,40 +30,36 @@ let
   # The compiler that we are using. We are using a patched version so we need to specify it explicitly.
   # This version has the experimental core interface files patch, and a fix for unboxed tuples in
   # GHCi, which helps with HLS.
-  compiler-nix-name = "ghc810220201118";
+  compiler-nix-name = "ghc810420210212";
 
   # The haskell project created by haskell-nix.stackProject'
-  project = import ./haskell.nix {
-    inherit lib stdenv haskell-nix buildPackages nix-gitignore R rPackages z3;
-    inherit agdaWithStdlib checkMaterialization compiler-nix-name;
-  };
+  baseProject =
+    { deferPluginErrors }:
+    import ./haskell.nix {
+      inherit lib stdenv haskell-nix buildPackages R rPackages z3;
+      inherit agdaWithStdlib checkMaterialization compiler-nix-name gitignore-nix;
+      inherit enableHaskellProfiling;
+      inherit deferPluginErrors;
+    };
+  project = baseProject { deferPluginErrors = false; };
+  # The same as above, but this time with we defer plugin errors so that we
+  # can build "all" (the interesting) haddocks that would otherwise fail.
+  projectAllHaddock = baseProject { deferPluginErrors = true; };
 
   # All the packages defined by our project, including dependencies
   packages = project.hsPkgs;
 
   # Just the packages in the project
-  projectPackages = haskell-nix.haskellLib.selectProjectPackages packages
-    # Need to list this manually to work around https://github.com/input-output-hk/haskell.nix/issues/464
-    // { inherit (packages) plutus-metatheory; };
-
-
-  # The haskell project created by haskell-nix.stackProject' (musl version)
-  muslProject = import ./haskell.nix {
-    inherit (plutusMusl) lib stdenv haskell-nix buildPackages nix-gitignore R rPackages z3;
-    inherit agdaWithStdlib checkMaterialization compiler-nix-name;
-  };
-
-  # All the packages defined by our project, built for musl
-  muslPackages = muslProject.hsPkgs;
+  projectPackages = haskell-nix.haskellLib.selectProjectPackages packages;
+  projectPackagesAllHaddock = haskell-nix.haskellLib.selectProjectPackages projectAllHaddock.hsPkgs;
 
   extraPackages = import ./extra.nix {
-    inherit stdenv lib haskell-nix fetchFromGitHub fetchFromGitLab buildPackages;
+    inherit stdenv lib haskell-nix sources buildPackages writeShellScript;
     inherit index-state checkMaterialization compiler-nix-name;
   };
 
 in
 rec {
-  inherit index-state project projectPackages packages;
-  inherit muslProject muslPackages;
+  inherit index-state compiler-nix-name project projectAllHaddock projectPackages projectPackagesAllHaddock packages;
   inherit extraPackages;
 }

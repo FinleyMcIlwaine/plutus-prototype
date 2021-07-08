@@ -28,7 +28,6 @@ import           Data.Text                                        (Text)
 import qualified Data.Text                                        as Text
 import qualified Data.Validation                                  as Validation
 import           GHC.Generics                                     (Generic)
-import           Git                                              (gitRev)
 import           Language.Marlowe.ACTUS.Definitions.ContractTerms (ContractTerms)
 import           Language.Marlowe.ACTUS.Generator                 (genFsContract, genStaticContract)
 import           Language.Marlowe.Pretty                          (pretty)
@@ -75,11 +74,8 @@ mkHandlers AppConfig {..} = do
   githubEndpoints <- liftIO Auth.mkGithubEndpoints
   pure (mhandlers :<|> liftedAuthServer githubEndpoints authConfig)
 
-version :: Applicative m => m Text
-version = pure gitRev
-
 mhandlers :: Server API
-mhandlers = oracle :<|> version :<|> genActusContract :<|> genActusContractStatic
+mhandlers = oracle :<|> genActusContract :<|> genActusContractStatic
 
 app :: Server Web -> Application
 app handlers =
@@ -90,23 +86,34 @@ app handlers =
 
 newtype AppConfig = AppConfig {authConfig :: Auth.Config}
 
-initializeContext :: IO AppConfig
-initializeContext = do
+initializeServerContext :: Maybe FilePath -> IO AppConfig
+initializeServerContext secrets = do
+  putStrLn "Initializing Context"
+  authConfig <- mkAuthConfig secrets
+  pure $ AppConfig authConfig
+
+mkAuthConfig :: MonadIO m => Maybe FilePath -> m Auth.Config
+mkAuthConfig (Just path) = do
+  mConfig <- liftIO $ decodeFileStrict path
+  case mConfig of
+    Just config -> pure config
+    Nothing -> do
+      liftIO $ putStrLn $ "failed to decode " <> path
+      mkAuthConfig Nothing
+mkAuthConfig Nothing = liftIO $ do
   putStrLn "Initializing Context"
   githubClientId <- getEnvOrEmpty "GITHUB_CLIENT_ID"
   githubClientSecret <- getEnvOrEmpty "GITHUB_CLIENT_SECRET"
   jwtSignature <- getEnvOrEmpty "JWT_SIGNATURE"
   frontendURL <- getEnvOrEmpty "FRONTEND_URL"
   cbPath <- getEnvOrEmpty "GITHUB_CALLBACK_PATH"
-  let authConfig =
-        Auth.Config
+  pure Auth.Config
           { _configJWTSignature = JWT.hmacSecret jwtSignature,
             _configFrontendUrl = frontendURL,
             _configGithubCbPath = cbPath,
             _configGithubClientId = OAuthClientId githubClientId,
             _configGithubClientSecret = OAuthClientSecret githubClientSecret
           }
-  pure $ AppConfig authConfig
 
 getEnvOrEmpty :: String -> IO Text
 getEnvOrEmpty name = do

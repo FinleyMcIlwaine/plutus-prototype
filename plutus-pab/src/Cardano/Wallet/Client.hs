@@ -8,55 +8,62 @@
 
 module Cardano.Wallet.Client where
 
-import           Cardano.Wallet.API        (API)
-import           Control.Monad             (void)
+import           Cardano.Wallet.API          (API)
+import           Cardano.Wallet.Types        (WalletInfo (..))
+import           Control.Monad               (void)
 import           Control.Monad.Freer
-import           Control.Monad.Freer.Error (Error, throwError)
-import           Control.Monad.IO.Class    (MonadIO (..))
-import           Data.Proxy                (Proxy (Proxy))
-import           Ledger                    (PubKey, Value)
-import           Ledger.AddressMap         (UtxoMap)
-import           Ledger.Slot               (Slot)
-import           Ledger.Tx                 (Tx)
-import           Servant                   ((:<|>) (..))
-import           Servant.Client            (ClientEnv, ClientError, ClientM, client, runClientM)
-import           Wallet.Effects            (Payment (..), WalletEffect (..))
+import           Control.Monad.Freer.Error   (Error, throwError)
+import           Control.Monad.Freer.Reader  (Reader, ask)
+import           Control.Monad.IO.Class      (MonadIO (..))
+import           Data.Proxy                  (Proxy (Proxy))
+import           Ledger                      (Value)
+import           Ledger.Constraints.OffChain (UnbalancedTx)
+import           Ledger.Tx                   (Tx)
+import           Servant                     ((:<|>) (..))
+import           Servant.Client              (ClientEnv, ClientError, ClientM, client, runClientM)
+import           Wallet.Effects              (WalletEffect (..))
+import           Wallet.Emulator.Error       (WalletAPIError)
+import           Wallet.Emulator.Wallet      (Wallet (..))
 
-submitTxn :: Tx -> ClientM ()
-ownPublicKey :: ClientM PubKey
-updatePaymentWithChange :: (Value, Payment) -> ClientM Payment
-walletSlot :: ClientM Slot
-ownOutputs :: ClientM UtxoMap
-(submitTxn, ownPublicKey, updatePaymentWithChange, walletSlot, ownOutputs) =
-  ( fmap void submitTxn_
-  , ownPublicKey_
-  , updatePaymentWithChange_
-  , walletSlot_
-  , ownOutputs_)
+createWallet :: ClientM WalletInfo
+submitTxn :: Wallet -> Tx -> ClientM ()
+ownPublicKey :: Wallet -> ClientM WalletInfo
+balanceTx :: Wallet -> UnbalancedTx -> ClientM (Either WalletAPIError Tx)
+totalFunds :: Wallet -> ClientM Value
+sign :: Wallet -> Tx -> ClientM Tx
+(createWallet, submitTxn, ownPublicKey, balanceTx, totalFunds, sign) =
+  ( createWallet_
+  , \(Wallet wid) tx -> void (submitTxn_ wid tx)
+  , ownPublicKey_ . getWallet
+  , \(Wallet w) -> balanceTx_ w
+  , totalFunds_ . getWallet
+  , \(Wallet w) -> sign_ w)
   where
-    ( submitTxn_
+    ( createWallet_
+      :<|> (submitTxn_
       :<|> ownPublicKey_
-      :<|> updatePaymentWithChange_
-      :<|> walletSlot_
-      :<|> ownOutputs_) = client (Proxy @API)
+      :<|> balanceTx_
+      :<|> totalFunds_
+      :<|> sign_)) = client (Proxy @(API Integer))
 
 handleWalletClient ::
   forall m effs.
   ( LastMember m effs
   , MonadIO m
   , Member (Error ClientError) effs
+  , Member (Reader ClientEnv) effs
   )
-  => ClientEnv
-  -> Eff (WalletEffect ': effs)
+  => Wallet
+  -> WalletEffect
   ~> Eff effs
-handleWalletClient clientEnv =
+handleWalletClient wallet event = do
+    clientEnv <- ask @ClientEnv
     let
         runClient :: forall a. ClientM a -> Eff effs a
         runClient a = (sendM $ liftIO $ runClientM a clientEnv) >>= either throwError pure
-    in
-      interpret $ \case
-        SubmitTxn t                    -> runClient (submitTxn t)
-        OwnPubKey                      -> runClient ownPublicKey
-        UpdatePaymentWithChange vl pmt -> runClient $ updatePaymentWithChange (vl, pmt)
-        WalletSlot                     -> runClient walletSlot
-        OwnOutputs                     -> runClient ownOutputs
+    case event of
+        SubmitTxn t           -> runClient (submitTxn wallet t)
+        OwnPubKey             -> wiPubKey <$> runClient (ownPublicKey wallet)
+        BalanceTx utx         -> runClient (balanceTx wallet utx)
+        WalletAddSignature tx -> runClient $ sign wallet tx
+        TotalFunds            -> runClient (totalFunds wallet)

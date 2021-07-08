@@ -35,12 +35,12 @@ import           Data.Aeson                       (FromJSON, ToJSON)
 import           Data.Tagged
 import           Data.Text.Prettyprint.Doc.Extras
 import           GHC.Generics                     (Generic)
-import qualified Language.PlutusTx                as PlutusTx
-import           Language.PlutusTx.Lift           (makeLift)
-import           Language.PlutusTx.Prelude        hiding (divide)
-import qualified Language.PlutusTx.Prelude        as P
 import           Plutus.V1.Ledger.Value           (CurrencySymbol, TokenName, Value)
 import qualified Plutus.V1.Ledger.Value           as TH
+import qualified PlutusTx                         as PlutusTx
+import           PlutusTx.Lift                    (makeLift)
+import           PlutusTx.Prelude                 hiding (divide)
+import qualified PlutusTx.Prelude                 as P
 
 {-# INLINABLE adaSymbol #-}
 -- | The 'CurrencySymbol' of the 'Ada' currency.
@@ -56,10 +56,10 @@ adaToken = TH.tokenName emptyByteString
 --   1M Lovelace is one Ada.
 --   See note [Currencies] in 'Ledger.Validation.Value.TH'.
 newtype Ada = Lovelace { getLovelace :: Integer }
-    deriving (Enum)
-    deriving stock (Haskell.Eq, Haskell.Ord, Show, Generic)
+    deriving (Haskell.Enum)
+    deriving stock (Haskell.Eq, Haskell.Ord, Haskell.Show, Generic)
     deriving anyclass (ToJSON, FromJSON)
-    deriving newtype (Eq, Ord, Haskell.Num, AdditiveSemigroup, AdditiveMonoid, AdditiveGroup, MultiplicativeSemigroup, MultiplicativeMonoid, Integral, Real, Serialise, PlutusTx.IsData)
+    deriving newtype (Eq, Ord, Haskell.Num, AdditiveSemigroup, AdditiveMonoid, AdditiveGroup, MultiplicativeSemigroup, MultiplicativeMonoid, Haskell.Integral, Haskell.Real, Serialise, PlutusTx.IsData)
     deriving Pretty via (Tagged "Lovelace:" Integer)
 
 instance Haskell.Semigroup Ada where

@@ -21,7 +21,7 @@ import           Control.Monad                              (void)
 import           Control.Monad.Catch                        (MonadMask)
 import           Control.Monad.Except                       (MonadError, runExceptT)
 import           Control.Monad.Except.Extras                (mapError)
-import qualified Control.Monad.Freer.Log                    as Log
+import qualified Control.Monad.Freer.Extras.Log             as Log
 import           Control.Monad.IO.Class                     (MonadIO)
 import qualified Crowdfunding
 import qualified CrowdfundingSimulations
@@ -45,13 +45,11 @@ import qualified Interpreter                                as Webghc
 import           Language.Haskell.Interpreter               (CompilationError, InterpreterError,
                                                              InterpreterResult (InterpreterResult),
                                                              SourceCode (SourceCode), Warning, result, warnings)
-import           Language.Plutus.Contract.Checkpoint        (CheckpointKey, CheckpointLogMsg)
 import           Language.PureScript.Bridge                 (BridgePart, Language (Haskell), SumType, buildBridge,
                                                              equal, genericShow, mkSumType, order, writePSTypesWith)
 import           Language.PureScript.Bridge.CodeGenSwitches (ForeignOptions (ForeignOptions), genForeign,
                                                              unwrapSingleConstructors)
 import           Language.PureScript.Bridge.TypeParameters  (A)
-import           Ledger.Constraints.OffChain                (UnbalancedTx)
 import qualified PSGenerator.Common
 import qualified Playground.API                             as API
 import qualified Playground.Interpreter                     as PI
@@ -62,10 +60,11 @@ import           Playground.Types                           (CompilationResult (
                                                              Simulation (Simulation), SimulatorAction, SimulatorWallet,
                                                              contractDemoContext, contractDemoEditorContents,
                                                              contractDemoName, contractDemoSimulations, functionSchema,
-                                                             iotsSpec, knownCurrencies, program, simulationActions,
+                                                             knownCurrencies, program, simulationActions,
                                                              simulationWallets, sourceCode, wallets)
 import           Playground.Usecases                        (crowdFunding, errorHandling, game, starter, vesting)
 import qualified Playground.Usecases                        as Usecases
+import           Plutus.Contract.Checkpoint                 (CheckpointKey, CheckpointLogMsg)
 import           Schema                                     (FormSchema, formArgumentToJson)
 import           Servant                                    ((:<|>))
 import           Servant.PureScript                         (HasBridge, Settings, _generateSubscriberAPI, apiModuleName,
@@ -77,7 +76,6 @@ import           System.FilePath                            ((</>))
 import qualified Vesting
 import qualified VestingSimulations
 import           Wallet.API                                 (WalletAPIError)
-import           Wallet.Effects                             (AddressChangeRequest)
 import qualified Wallet.Emulator.Chain                      as EM
 import qualified Wallet.Emulator.ChainIndex                 as EM
 import           Wallet.Emulator.ChainIndex.Index           (ChainIndexItem)
@@ -122,7 +120,6 @@ myTypes =
     , (genericShow <*> mkSumType) (Proxy @Evaluation)
     , (genericShow <*> mkSumType) (Proxy @EvaluationResult)
     , (genericShow <*> mkSumType) (Proxy @ChainIndexItem)
-    , (genericShow <*> mkSumType) (Proxy @AddressChangeRequest)
     , (genericShow <*> mkSumType) (Proxy @EM.EmulatorEvent')
     , (genericShow <*> mkSumType) (Proxy @(EM.EmulatorTimeEvent A))
     , (genericShow <*> mkSumType) (Proxy @EM.ChainEvent)
@@ -144,7 +141,6 @@ myTypes =
     , (genericShow <*> mkSumType) (Proxy @CheckpointKey)
     , (genericShow <*> mkSumType) (Proxy @EM.RequestHandlerLogMsg)
     , (genericShow <*> mkSumType) (Proxy @EM.TxBalanceMsg)
-    , (genericShow <*> mkSumType) (Proxy @UnbalancedTx)
     , (genericShow <*> mkSumType) (Proxy @EmulatorNotifyLogMsg)
     ]
 
@@ -312,6 +308,6 @@ mkContractDemo contractDemoName contractDemoEditorContents contractDemoSimulatio
                   { warnings = []
                   , result =
                         CompilationResult
-                            {functionSchema, knownCurrencies, iotsSpec = ""}
+                            {functionSchema, knownCurrencies}
                   }
         }

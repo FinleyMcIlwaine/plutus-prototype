@@ -6,13 +6,13 @@ module Raw where
 
 import           GHC.Natural
 
-import           Data.ByteString              as BS
-import qualified Data.Text                    as T
-import           Language.PlutusCore
-import           Language.PlutusCore.Builtins
-import           Language.PlutusCore.DeBruijn
-import           Language.PlutusCore.Parser
-import           Language.PlutusCore.Pretty
+import           Data.ByteString     as BS
+import qualified Data.Text           as T
+import           PlutusCore
+import           PlutusCore.DeBruijn
+import           PlutusCore.Default
+import           PlutusCore.Parser
+import           PlutusCore.Pretty
 
 import           Data.Either
 
@@ -25,7 +25,7 @@ data RType = RTyVar Integer
            | RTyPi RKind RType
            | RTyLambda RKind RType
            | RTyApp RType RType
-           | RTyCon (Some (TypeIn DefaultUni))
+           | RTyCon (SomeTypeIn DefaultUni)
            | RTyMu RType RType
            deriving Show
 
@@ -75,6 +75,7 @@ convC (Some (ValueOf DefaultUniString     s)) = RConStr (T.pack s)
 convC (Some (ValueOf DefaultUniChar       c)) = RConChar c
 convC (Some (ValueOf DefaultUniUnit       u)) = RConUnit
 convC (Some (ValueOf DefaultUniBool       b)) = RConBool b
+convC (Some (ValueOf uni                  _)) = error $ "convC: " ++ show uni ++ " is not supported"
 
 conv :: Term NamedTyDeBruijn NamedDeBruijn DefaultUni DefaultFun a -> RTerm
 conv (Var _ x)           = RVar (unIndex (ndbnIndex x))
@@ -143,7 +144,7 @@ data ERROR = TypeError T.Text
            | ParseError (ParseError ())
            | ScopeError ScopeError
            | RuntimeError RuntimeError
+           deriving Show
 
-data ScopeError = DeBError|FreeVariableError FreeVariableError
-
-data RuntimeError = GasError
+data ScopeError = DeBError|FreeVariableError FreeVariableError deriving Show
+data RuntimeError = GasError | UserError | RuntimeTypeError deriving Show

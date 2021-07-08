@@ -3,6 +3,7 @@ module MainFrame.Types where
 import Prelude hiding (div)
 import Analytics (class IsEvent, defaultEvent, toEvent)
 import Auth (AuthStatus)
+import BlocklyComponent.Types as Blockly
 import BlocklyEditor.Types as BE
 import ConfirmUnsavedNavigation.Types as ConfirmUnsavedNavigation
 import Data.Either (Either)
@@ -11,20 +12,23 @@ import Data.Generic.Rep.Show (genericShow)
 import Data.Lens (Lens', has, (^.))
 import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype)
 import Data.Symbol (SProxy(..))
 import Demos.Types as Demos
+import Foreign.Class (class Decode, class Encode)
+import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
 import Gist (Gist, GistId)
 import Gists.Types (GistAction)
 import Halogen (ClassName)
 import Halogen as H
 import Halogen.ActusBlockly as AB
-import Halogen.Blockly as Blockly
 import Halogen.Classes (activeClass)
 import Halogen.Monaco (KeyBindings)
 import Halogen.Monaco as Monaco
 import HaskellEditor.Types as HE
 import JavascriptEditor.Types (CompilationState)
 import JavascriptEditor.Types as JS
+import Marlowe.Extended.Metadata (MetaData)
 import MarloweEditor.Types as ME
 import Network.RemoteData (_Loading)
 import NewProject.Types as NewProject
@@ -34,12 +38,9 @@ import Rename.Types as Rename
 import Router (Route)
 import SaveAs.Types as SaveAs
 import SimulationPage.Types as Simulation
+import Tooltip.Types (ReferenceId)
 import Types (WebData)
-import WalletSimulation.Types as Wallet
 import Web.UIEvent.KeyboardEvent (KeyboardEvent)
-import Foreign.Class (class Decode, class Encode)
-import Foreign.Generic (defaultOptions, genericDecode, genericEncode)
-import Data.Newtype (class Newtype)
 
 data ModalView
   = NewProject
@@ -82,8 +83,6 @@ data Action
   | ConfirmUnsavedNavigationAction Action ConfirmUnsavedNavigation.Action
   -- blockly
   | HandleActusBlocklyMessage AB.Message
-  -- Wallet Actions
-  | HandleWalletMessage Wallet.Message
   | ProjectsAction Projects.Action
   | NewProjectAction NewProject.Action
   | DemosAction Demos.Action
@@ -107,7 +106,6 @@ instance actionIsEvent :: IsEvent Action where
   toEvent (BlocklyEditorAction action) = toEvent action
   toEvent (JavascriptAction action) = toEvent action
   toEvent (MarloweEditorAction action) = toEvent action
-  toEvent (HandleWalletMessage action) = Just $ defaultEvent "HandleWalletMessage"
   toEvent (ChangeView view) = Just $ (defaultEvent "View") { label = Just (show view) }
   toEvent (HandleActusBlocklyMessage _) = Just $ (defaultEvent "HandleActusBlocklyMessage") { category = Just "ActusBlockly" }
   toEvent (ShowBottomPanel _) = Just $ defaultEvent "ShowBottomPanel"
@@ -132,7 +130,6 @@ data View
   | Simulation
   | BlocklyEditor
   | ActusBlocklyEditor
-  | WalletEmulator
 
 derive instance eqView :: Eq View
 
@@ -149,7 +146,8 @@ type ChildSlots
     , simulationSlot :: H.Slot Simulation.Query Blockly.Message Unit
     , simulatorEditorSlot :: H.Slot Monaco.Query Monaco.Message Unit
     , marloweEditorPageSlot :: H.Slot Monaco.Query Monaco.Message Unit
-    , walletSlot :: H.Slot Wallet.Query Wallet.Message Unit
+    , tooltipSlot :: forall query. H.Slot query Void ReferenceId
+    , hintSlot :: forall query. H.Slot query Void String
     )
 
 _haskellEditorSlot :: SProxy "haskellEditorSlot"
@@ -190,6 +188,7 @@ type State
     , marloweEditorState :: ME.State
     , blocklyEditorState :: BE.State
     , simulationState :: Simulation.State
+    , contractMetadata :: MetaData
     , projects :: Projects.State
     , newProject :: NewProject.State
     , rename :: Rename.State
@@ -238,6 +237,9 @@ _javascriptState = prop (SProxy :: SProxy "javascriptState")
 
 _simulationState :: Lens' State Simulation.State
 _simulationState = prop (SProxy :: SProxy "simulationState")
+
+_contractMetadata :: Lens' State MetaData
+_contractMetadata = prop (SProxy :: SProxy "contractMetadata")
 
 _projects :: Lens' State Projects.State
 _projects = prop (SProxy :: SProxy "projects")
@@ -320,6 +322,7 @@ newtype Session
   { projectName :: String
   , gistId :: Maybe GistId
   , workflow :: Maybe Lang
+  , contractMetadata :: MetaData
   }
 
 derive instance newtypeSession :: Newtype Session _
@@ -338,11 +341,13 @@ stateToSession :: State -> Session
 stateToSession { projectName
 , gistId
 , workflow
+, contractMetadata
 } =
   Session
     { projectName
     , gistId
     , workflow
+    , contractMetadata
     }
 
 sessionToState :: Session -> State -> State
@@ -351,4 +356,5 @@ sessionToState (Session sessionData) defaultState =
     { projectName = sessionData.projectName
     , gistId = sessionData.gistId
     , workflow = sessionData.workflow
+    , contractMetadata = sessionData.contractMetadata
     }

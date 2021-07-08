@@ -9,22 +9,21 @@
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns -fno-warn-unused-do-bind #-}
 module Spec.Vesting(tests, retrieveFundsTrace, vesting) where
 
-import           Control.Monad                                    (void)
+import           Control.Monad            (void)
+import           Data.Default             (Default (def))
 import           Test.Tasty
-import qualified Test.Tasty.HUnit                                 as HUnit
+import qualified Test.Tasty.HUnit         as HUnit
 
-import           Spec.Lib                                         as Lib
-
-import qualified Language.PlutusTx                                as PlutusTx
-import           Language.PlutusTx.Coordination.Contracts.Vesting
-import qualified Language.PlutusTx.Numeric                        as Numeric
 import qualified Ledger
-import qualified Ledger.Ada                                       as Ada
-
-import           Language.Plutus.Contract.Test
-import           Plutus.Trace.Emulator                            (EmulatorTrace)
-import qualified Plutus.Trace.Emulator                            as Trace
-import           Prelude                                          hiding (not)
+import qualified Ledger.Ada               as Ada
+import qualified Ledger.TimeSlot          as TimeSlot
+import           Plutus.Contract.Test
+import           Plutus.Contracts.Vesting
+import           Plutus.Trace.Emulator    (EmulatorTrace)
+import qualified Plutus.Trace.Emulator    as Trace
+import qualified PlutusTx
+import qualified PlutusTx.Numeric         as Numeric
+import           Prelude                  hiding (not)
 
 w1, w2 :: Wallet
 w1 = Wallet 1
@@ -70,8 +69,8 @@ tests =
             Trace.callEndpoint @"retrieve funds" hdl1 (totalAmount vesting)
             void $ Trace.waitNSlots 2
 
-    , Lib.goldenPir "test/Spec/vesting.pir" $$(PlutusTx.compile [|| validate ||])
-    , HUnit.testCase "script size is reasonable" (Lib.reasonable (vestingScript vesting) 33000)
+    , goldenPir "test/Spec/vesting.pir" $$(PlutusTx.compile [|| validate ||])
+    , HUnit.testCaseSteps "script size is reasonable" $ \step -> reasonable' step (vestingScript vesting) 33000
     ]
 
 -- | The scenario used in the property tests. It sets up a vesting scheme for a
@@ -80,8 +79,8 @@ tests =
 vesting :: VestingParams
 vesting =
     VestingParams
-        { vestingTranche1 = VestingTranche (Ledger.Slot 10) (Ada.lovelaceValueOf 20)
-        , vestingTranche2 = VestingTranche (Ledger.Slot 20) (Ada.lovelaceValueOf 40)
+        { vestingTranche1 = VestingTranche (TimeSlot.slotToBeginPOSIXTime def 10) (Ada.lovelaceValueOf 20)
+        , vestingTranche2 = VestingTranche (TimeSlot.slotToBeginPOSIXTime def 20) (Ada.lovelaceValueOf 40)
         , vestingOwner    = Ledger.pubKeyHash $ walletPubKey w1 }
 
 retrieveFundsTrace :: EmulatorTrace ()

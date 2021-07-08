@@ -29,35 +29,39 @@ resource "aws_security_group" "public_alb" {
   }
 
   egress {
-    from_port   = local.nixops_nginx_port
-    to_port     = local.nixops_nginx_port
+    from_port   = 80
+    to_port     = 80
+    protocol    = "TCP"
+    cidr_blocks = var.private_subnet_cidrs
+  }
+
+  egress {
+    # both PAB and plutus playground use the same port
+    from_port   = local.plutus_playground_port
+    to_port     = local.plutus_playground_port
+    protocol    = "TCP"
+    cidr_blocks = var.private_subnet_cidrs
+  }
+
+  egress {
+    from_port   = local.marlowe_playground_port
+    to_port     = local.marlowe_playground_port
+    protocol    = "TCP"
+    cidr_blocks = var.private_subnet_cidrs
+  }
+
+  egress {
+    from_port   = local.marlowe_web_port
+    to_port     = local.marlowe_web_port
     protocol    = "TCP"
     cidr_blocks = var.private_subnet_cidrs
   }
 
   tags = {
-    Name        = "${var.project}_${var.env}_public_alb"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_public_alb"
+    Project     = local.project
     Environment = var.env
   }
-}
-
-data "aws_acm_certificate" "plutus_private" {
-  domain      = "*.${var.plutus_tld}"
-  statuses    = ["ISSUED"]
-  most_recent = true
-}
-
-data "aws_acm_certificate" "marlowe_private" {
-  domain      = "*.${var.marlowe_tld}"
-  statuses    = ["ISSUED"]
-  most_recent = true
-}
-
-data "aws_acm_certificate" "monitoring_private" {
-  domain      = "*.${var.monitoring_tld}"
-  statuses    = ["ISSUED"]
-  most_recent = true
 }
 
 resource "aws_alb" "plutus" {
@@ -66,8 +70,8 @@ resource "aws_alb" "plutus" {
   internal        = false
 
   tags = {
-    Name        = "${var.project}_${var.env}_public_alb"
-    Project     = var.project
+    Name        = "${local.project}_${var.env}_public_alb"
+    Project     = local.project
     Environment = var.env
   }
 }
@@ -88,28 +92,11 @@ resource "aws_lb_listener" "redirect" {
   }
 }
 
-resource "aws_alb_listener_rule" "runghc" {
-  depends_on   = [aws_alb_target_group.webghc]
-  listener_arn = aws_lb_listener.redirect.arn
-  priority     = 100
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_alb_target_group.webghc.id
-  }
-
-  condition {
-    path_pattern {
-      values = ["/runghc"]
-    }
-  }
-}
-
 resource "aws_alb_listener" "playground" {
   load_balancer_arn = aws_alb.plutus.arn
   port              = "443"
   protocol          = "HTTPS"
-  certificate_arn   = data.aws_acm_certificate.plutus_private.arn
+  certificate_arn   = aws_acm_certificate.plutus_private.arn
 
   default_action {
     target_group_arn = aws_alb_target_group.webghc.arn
@@ -117,36 +104,64 @@ resource "aws_alb_listener" "playground" {
   }
 }
 
+resource "aws_lb_listener_certificate" "marlowe_finance_io" {
+  listener_arn    = aws_alb_listener.playground.arn
+  certificate_arn = aws_acm_certificate.marlowe_finance_io.arn
+}
+
+resource "aws_lb_listener_certificate" "marlowe_web" {
+  listener_arn    = aws_alb_listener.playground.arn
+  certificate_arn = aws_acm_certificate.marlowe_web_private.arn
+}
+
 resource "aws_lb_listener_certificate" "marlowe" {
   listener_arn    = aws_alb_listener.playground.arn
-  certificate_arn = data.aws_acm_certificate.marlowe_private.arn
+  certificate_arn = aws_acm_certificate.marlowe_private.arn
 }
 
-resource "aws_lb_listener_certificate" "monitoring" {
+resource "aws_lb_listener_certificate" "marlowe_dash" {
   listener_arn    = aws_alb_listener.playground.arn
-  certificate_arn = data.aws_acm_certificate.monitoring_private.arn
+  certificate_arn = aws_acm_certificate.marlowe_dash_private.arn
 }
 
-# FIXME: This needs to stay here until aws_alb_listener.playground no longer depends on it
-# This has been changed but it needs to be deployed everywhere first so this should be removed
-# in another commit/pr
-resource "aws_alb_target_group" "playground" {
-  # ALB is taking care of SSL termination so we listen to port 80 here
+resource "aws_alb_listener_rule" "marlowe-web" {
+  listener_arn = aws_alb_listener.playground.arn
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.marlowe_web.id
+  }
+
+  condition {
+    host_header {
+      values = [local.marlowe_web_domain_name]
+    }
+  }
+}
+
+resource "aws_alb_target_group" "marlowe_web" {
   port     = "80"
   protocol = "HTTP"
   vpc_id   = aws_vpc.plutus.id
+}
 
-  health_check {
-    path = "/api/health"
+resource "aws_alb_target_group_attachment" "marlowe_web" {
+  target_group_arn = aws_alb_target_group.marlowe_web.arn
+  target_id        = aws_instance.playgrounds_a.id
+  port             = local.marlowe_web_port
+}
 
-    # The playground health check is currently a bit slow since it compiles some contracts
-    timeout = 20
-  }
+resource "aws_route53_record" "marlowe_web_alb" {
+  zone_id = var.marlowe_web_public_zone
+  name    = local.marlowe_web_domain_name
+  type    = "A"
 
-  stickiness {
-    type = "lb_cookie"
+  alias {
+    name                   = aws_alb.plutus.dns_name
+    zone_id                = aws_alb.plutus.zone_id
+    evaluate_target_health = true
   }
 }
+
 ## ALB rule for web-ghc
 resource "aws_alb_target_group" "webghc" {
   # ALB is taking care of SSL termination so we listen to port 80 here
@@ -163,10 +178,10 @@ resource "aws_alb_target_group" "webghc" {
   }
 }
 
-resource "aws_alb_listener_rule" "webghc" {
+resource "aws_alb_listener_rule" "runghc" {
   depends_on   = [aws_alb_target_group.webghc]
   listener_arn = aws_alb_listener.playground.arn
-  priority     = 113
+  priority     = 100
 
   action {
     type             = "forward"
@@ -186,21 +201,15 @@ resource "aws_alb_target_group_attachment" "webghc_a" {
   port             = "80"
 }
 
-resource "aws_alb_target_group_attachment" "webghc_b" {
-  target_group_arn = aws_alb_target_group.webghc.arn
-  target_id        = aws_instance.webghc_b.id
-  port             = "80"
-}
-
-# Monitoring
-resource "aws_alb_target_group" "monitoring" {
+## ALB rule for marlowe-dashboard
+resource "aws_alb_target_group" "marlowe_dash" {
   # ALB is taking care of SSL termination so we listen to port 80 here
   port     = "80"
   protocol = "HTTP"
   vpc_id   = aws_vpc.plutus.id
 
   health_check {
-    path = "/metrics"
+    path = "/"
   }
 
   stickiness {
@@ -208,32 +217,32 @@ resource "aws_alb_target_group" "monitoring" {
   }
 }
 
-resource "aws_alb_listener_rule" "monitoring" {
-  depends_on   = [aws_alb_target_group.monitoring]
+resource "aws_alb_listener_rule" "marlowe_dash" {
+  depends_on   = [aws_alb_target_group.marlowe_dash]
   listener_arn = aws_alb_listener.playground.arn
-  priority     = 103
+  priority     = 114
 
   action {
     type             = "forward"
-    target_group_arn = aws_alb_target_group.monitoring.id
+    target_group_arn = aws_alb_target_group.marlowe_dash.id
   }
 
   condition {
     host_header {
-      values = [local.monitoring_domain_name]
+      values = [local.marlowe_dash_domain_name]
     }
   }
 }
 
-resource "aws_alb_target_group_attachment" "monitoring_a" {
-  target_group_arn = aws_alb_target_group.monitoring.arn
-  target_id        = aws_instance.nixops.id
-  port             = local.nixops_nginx_port
+resource "aws_alb_target_group_attachment" "marlowe_dash_a" {
+  target_group_arn = aws_alb_target_group.marlowe_dash.arn
+  target_id        = aws_instance.marlowe_dash_a.id
+  port             = local.pab_port
 }
 
-resource "aws_route53_record" "monitoring_alb" {
-  zone_id = var.monitoring_public_zone
-  name    = local.monitoring_domain_name
+resource "aws_route53_record" "marlowe_dash_alb" {
+  zone_id = var.marlowe_dash_public_zone
+  name    = local.marlowe_dash_domain_name
   type    = "A"
 
   alias {
@@ -242,3 +251,157 @@ resource "aws_route53_record" "monitoring_alb" {
     evaluate_target_health = true
   }
 }
+
+## ALB rule for marlowe-playground
+resource "aws_alb_target_group" "marlowe_playground" {
+  # ALB is taking care of SSL termination so we listen to port 80 here
+  port     = "80"
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.plutus.id
+
+  health_check {
+    path = "/version"
+  }
+
+  stickiness {
+    type = "lb_cookie"
+  }
+}
+
+resource "aws_alb_listener_rule" "marlowe_playground" {
+  depends_on   = [aws_alb_target_group.marlowe_playground]
+  listener_arn = aws_alb_listener.playground.arn
+  priority     = 115
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.marlowe_playground.id
+  }
+
+  condition {
+    host_header {
+      values = [local.marlowe_domain_name]
+    }
+  }
+}
+
+resource "aws_alb_target_group_attachment" "marlowe_playground_a" {
+  target_group_arn = aws_alb_target_group.marlowe_playground.arn
+  target_id        = aws_instance.playgrounds_a.id
+  port             = local.marlowe_playground_port
+}
+
+resource "aws_route53_record" "marlowe_playground_alb" {
+  zone_id = var.marlowe_public_zone
+  name    = local.marlowe_domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_alb.plutus.dns_name
+    zone_id                = aws_alb.plutus.zone_id
+    evaluate_target_health = true
+  }
+}
+
+## ALB rule for plutus-playground
+resource "aws_alb_target_group" "plutus_playground" {
+  # ALB is taking care of SSL termination so we listen to port 80 here
+  port     = "80"
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.plutus.id
+
+  health_check {
+    path = "/version"
+  }
+
+  stickiness {
+    type = "lb_cookie"
+  }
+}
+
+resource "aws_alb_listener_rule" "plutus_playground" {
+  depends_on   = [aws_alb_target_group.plutus_playground]
+  listener_arn = aws_alb_listener.playground.arn
+  priority     = 116
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.plutus_playground.id
+  }
+
+  condition {
+    host_header {
+      values = [local.plutus_domain_name]
+    }
+  }
+}
+
+resource "aws_alb_target_group_attachment" "plutus_playground_a" {
+  target_group_arn = aws_alb_target_group.plutus_playground.arn
+  target_id        = aws_instance.playgrounds_a.id
+  port             = local.plutus_playground_port
+}
+
+resource "aws_route53_record" "plutus_playground_alb" {
+  zone_id = var.plutus_public_zone
+  name    = local.plutus_domain_name
+  type    = "A"
+
+  alias {
+    name                   = aws_alb.plutus.dns_name
+    zone_id                = aws_alb.plutus.zone_id
+    evaluate_target_health = true
+  }
+}
+
+
+#
+# Production: marlowe-finance.io forwarding
+#
+
+resource "aws_alb_listener_rule" "marlowe-finance-marlowe-web" {
+  listener_arn = aws_alb_listener.playground.arn
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.marlowe_web.id
+  }
+
+  condition {
+    host_header {
+      values = ["marlowe-finance.io"]
+    }
+  }
+}
+
+resource "aws_alb_listener_rule" "marlowe-finance-marlowe-dash" {
+  depends_on   = [aws_alb_target_group.marlowe_dash]
+  listener_arn = aws_alb_listener.playground.arn
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.marlowe_dash.id
+  }
+
+  condition {
+    host_header {
+      values = ["run.marlowe-finance.io"]
+    }
+  }
+}
+
+resource "aws_alb_listener_rule" "marlowe-finance-marlowe-playground" {
+  depends_on   = [aws_alb_target_group.marlowe_playground]
+  listener_arn = aws_alb_listener.playground.arn
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.marlowe_playground.id
+  }
+
+  condition {
+    host_header {
+      values = ["play.marlowe-finance.io"]
+    }
+  }
+}
+

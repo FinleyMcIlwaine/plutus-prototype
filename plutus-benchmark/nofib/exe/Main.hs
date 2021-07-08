@@ -3,45 +3,43 @@
 
 module Main where
 
-import           Prelude                                           ((<>))
-import qualified Prelude                                           as P
+import           Prelude                                  ((<>))
+import qualified Prelude                                  as Haskell
 
 import           Control.Exception
-import           Control.Monad                                     ()
+import           Control.Monad                            ()
 import           Control.Monad.Trans.Except
-import qualified Data.ByteString.Lazy                              as BSL
-import           Data.Char                                         (isSpace)
-import           Options.Applicative                               as Opt hiding (action)
-import           System.Exit                                       (exitFailure)
+import qualified Data.ByteString.Lazy                     as BSL
+import           Data.Char                                (isSpace)
+import           Options.Applicative                      as Opt hiding (action)
+import           System.Exit                              (exitFailure)
 import           System.IO
-import           Text.PrettyPrint.ANSI.Leijen                      (Doc, indent, line, string, text, vsep)
+import           Text.PrettyPrint.ANSI.Leijen             (Doc, indent, line, string, text, vsep)
 
-import           Language.PlutusCore                               (Name (..))
-import qualified Language.PlutusCore                               as PLC
-import           Language.PlutusCore.Builtins
-import           Language.PlutusCore.CBOR                          ()
-import           Language.PlutusCore.Evaluation.Machine.Cek        ()
-import qualified Language.PlutusCore.Pretty                        as PLC
-import           Language.PlutusCore.Universe
-import           Language.PlutusTx.Prelude                         as TxPrelude hiding (fmap, mappend, (<$), (<$>),
-                                                                                 (<*>), (<>))
-import qualified Language.UntypedPlutusCore                        as UPLC
-import           Language.UntypedPlutusCore.Evaluation.Machine.Cek
-import qualified Plutus.Benchmark.Clausify                         as Clausify
-import qualified Plutus.Benchmark.Knights                          as Knights
-import qualified Plutus.Benchmark.LastPiece                        as LastPiece
-import qualified Plutus.Benchmark.Prime                            as Prime
-import qualified Plutus.Benchmark.Queens                           as Queens
+import qualified Plutus.Benchmark.Clausify                as Clausify
+import qualified Plutus.Benchmark.Knights                 as Knights
+import qualified Plutus.Benchmark.LastPiece               as LastPiece
+import qualified Plutus.Benchmark.Prime                   as Prime
+import qualified Plutus.Benchmark.Queens                  as Queens
 
-failWithMsg :: String -> IO a
+import           PlutusCore                               (Name (..))
+import qualified PlutusCore                               as PLC
+import           PlutusCore.CBOR                          ()
+import           PlutusCore.Default
+import qualified PlutusCore.Pretty                        as PLC
+import           PlutusTx.Prelude                         as Plutus hiding (fmap, mappend, (<$), (<$>), (<*>), (<>))
+import qualified UntypedPlutusCore                        as UPLC
+import           UntypedPlutusCore.Evaluation.Machine.Cek
+
+failWithMsg :: Haskell.String -> IO a
 failWithMsg s = hPutStrLn stderr s >> exitFailure
 
 
 -- | A program together with its arguments
 data ProgAndArgs =
     Clausify  Clausify.StaticFormula
-  | Queens    P.Integer Queens.Algorithm
-  | Knights   P.Integer P.Integer
+  | Queens    Haskell.Integer Queens.Algorithm
+  | Knights   Haskell.Integer Haskell.Integer
   | LastPiece
   | Prime     Prime.PrimeID
   | Primetest Integer
@@ -57,10 +55,10 @@ data Options
 
 -- Clausify options --
 
-knownFormulae :: String
+knownFormulae :: Haskell.String
 knownFormulae = "one of F1, F2, F3, F4, F5, F6, F7"
 
-clausifyFormulaReader :: String -> Either String Clausify.StaticFormula
+clausifyFormulaReader :: Haskell.String -> Either Haskell.String Clausify.StaticFormula
 clausifyFormulaReader "F1" = Right Clausify.F1
 clausifyFormulaReader "F2" = Right Clausify.F2
 clausifyFormulaReader "F3" = Right Clausify.F3
@@ -90,15 +88,15 @@ knightsOptions =
 -- Lastpiece options --
 
 lastpieceOptions :: Parser ProgAndArgs
-lastpieceOptions = P.pure LastPiece
+lastpieceOptions = Haskell.pure LastPiece
 
 
 -- Primes options --
 
-knownPrimes :: String
+knownPrimes :: Haskell.String
 knownPrimes = "P05, P08, P10, P20, P30, P40, P50, P60, P100, P150, or P200 (a prime with the indicated number of digits)"
 
-primeIdReader :: String -> Either String Prime.PrimeID
+primeIdReader :: Haskell.String -> Either Haskell.String Prime.PrimeID
 primeIdReader "P05"  = Right Prime.P5
 primeIdReader "P08"  = Right Prime.P8
 primeIdReader "P10"  = Right Prime.P10
@@ -129,10 +127,10 @@ primetestOptions =
 
 -- Queens options --
 
-knownAlgorithms :: String
+knownAlgorithms :: Haskell.String
 knownAlgorithms = "bt, bm, bjbt1, bjbt2, fc"
 
-queensAlgorithmReader :: String -> Either String Queens.Algorithm
+queensAlgorithmReader :: Haskell.String -> Either Haskell.String Queens.Algorithm
 queensAlgorithmReader "bt"    = Right Queens.Bt
 queensAlgorithmReader "bm"    = Right Queens.Bm
 queensAlgorithmReader "bjbt1" = Right Queens.Bjbt1
@@ -189,7 +187,7 @@ options = hsubparser
 ---------------- Evaluation ----------------
 
 evaluateWithCek :: UPLC.Term Name DefaultUni DefaultFun () -> EvaluationResult (UPLC.Term Name DefaultUni DefaultFun ())
-evaluateWithCek = unsafeEvaluateCek defBuiltinsRuntime
+evaluateWithCek = unsafeEvaluateCekNoEmit PLC.defaultCekParameters
 
 toDeBruijn :: UPLC.Program Name DefaultUni DefaultFun a -> IO (UPLC.Program UPLC.DeBruijn DefaultUni DefaultFun a)
 toDeBruijn prog = do
@@ -198,17 +196,14 @@ toDeBruijn prog = do
     Left e  -> throw e
     Right p -> return $ UPLC.programMapNames (\(UPLC.NamedDeBruijn _ ix) -> UPLC.DeBruijn ix) p
 
-data CborMode = Named | DeBruijn
+writeCBORnamed :: UPLC.Program Name DefaultUni DefaultFun () -> IO ()
+writeCBORnamed prog = BSL.putStr $ UPLC.serialiseOmittingUnits prog
 
-writeCBOR :: CborMode -> UPLC.Program UPLC.NamedDeBruijn DefaultUni DefaultFun () -> IO ()
-writeCBOR cborMode prog =
-    case cborMode of
-      Named    -> case runExcept @UPLC.FreeVariableError $ PLC.runQuoteT $ UPLC.unDeBruijnProgram prog of
-          Left e  -> throw e
-          Right p -> BSL.putStr $ UPLC.serialiseOmittingUnits p
-      DeBruijn -> BSL.putStr $ UPLC.serialiseOmittingUnits $ UPLC.programMapNames (\(UPLC.NamedDeBruijn _ ix) -> UPLC.DeBruijn ix) $ prog
+writeCBORdeBruijn ::UPLC.Program UPLC.NamedDeBruijn DefaultUni DefaultFun () -> IO ()
+writeCBORdeBruijn  prog = BSL.putStr . UPLC.serialiseOmittingUnits $
+                      UPLC.programMapNames (\(UPLC.NamedDeBruijn _ ix) -> UPLC.DeBruijn ix) $ prog
 
-description :: String
+description :: Haskell.String
 description = "This program provides operations on a number of Plutus programs "
               ++ "ported from the nofib Haskell test suite.  "
               ++ "The programs are written in Haskell and can be run directly "
@@ -239,14 +234,7 @@ footerInfo = text "Every command takes the name of a program and a (possbily emp
 main :: IO ()
 main = do
   execParser (info (helper <*> options) (fullDesc <> progDesc description <> footerDoc (Just footerInfo))) >>= \case
-    RunPLC pa -> do
-        let
-            program :: UPLC.Term UPLC.NamedDeBruijn PLC.DefaultUni PLC.DefaultFun ()
-            program = getProgram pa
-            result = case runExcept @UPLC.FreeVariableError $ PLC.runQuoteT $ UPLC.unDeBruijnTerm program of
-                Left e  -> throw e
-                Right p -> unsafeEvaluateCek defBuiltinsRuntime p
-        print . PLC.prettyPlcClassicDebug $ result
+    RunPLC pa ->  print . PLC.prettyPlcClassicDebug <$> evaluateWithCek . getUnDBrTerm $ pa
     RunHaskell pa ->
         case pa of
           Clausify formula        -> print $ Clausify.runClausify formula
@@ -254,20 +242,29 @@ main = do
           LastPiece               -> print $ LastPiece.runLastPiece
           Queens boardSize alg    -> print $ Queens.runQueens boardSize alg
           Prime input             -> print $ Prime.runFixedPrimalityTest input
-          Primetest n             -> if n<0 then P.error "Positive number expected"
+          Primetest n             -> if n<0 then Haskell.error "Positive number expected"
                                      else print $ Prime.runPrimalityTest n
-    DumpPLC pa -> mapM_ putStrLn $ unindent . PLC.prettyPlcClassicDebug $ getWrappedProgram pa
-               where unindent d = map (dropWhile isSpace) $ (lines . show $ d)
-    DumpCBORnamed pa   -> writeCBOR Named $ getWrappedProgram pa
-    DumpCBORdeBruijn pa-> writeCBOR DeBruijn $ getWrappedProgram pa
+    DumpPLC pa -> Haskell.mapM_ putStrLn $ unindent . PLC.prettyPlcClassicDebug . mkProg . getUnDBrTerm $ pa
+        where unindent d = map (dropWhile isSpace) $ (Haskell.lines . Haskell.show $ d)
+    DumpCBORnamed pa   -> writeCBORnamed . mkProg . getUnDBrTerm $ pa
+    DumpCBORdeBruijn pa-> writeCBORdeBruijn . mkProg . getDBrTerm $ pa
     -- Write the output to stdout and let the user deal with redirecting it.
-    where getProgram =
+    where getDBrTerm :: ProgAndArgs -> UPLC.Term UPLC.NamedDeBruijn DefaultUni DefaultFun ()
+          getDBrTerm =
               \case
                Clausify formula        -> Clausify.mkClausifyTerm formula
                Queens boardSize alg    -> Queens.mkQueensTerm boardSize alg
                Knights depth boardSize -> Knights.mkKnightsTerm depth boardSize
                LastPiece               -> LastPiece.mkLastPieceTerm
                Prime input             -> Prime.mkPrimalityBenchTerm input
-               Primetest n             -> if n<0 then P.error "Positive number expected"
+               Primetest n             -> if n<0 then Haskell.error "Positive number expected"
                                           else Prime.mkPrimalityTestTerm n
-          getWrappedProgram = UPLC.Program () (UPLC.Version () 1 0 0) . getProgram
+
+          getUnDBrTerm :: ProgAndArgs -> UPLC.Term Name DefaultUni DefaultFun ()
+          getUnDBrTerm pa =
+              case runExcept @UPLC.FreeVariableError . PLC.runQuoteT . UPLC.unDeBruijnTerm . getDBrTerm $ pa of
+                Left e  -> throw e
+                Right t -> t
+
+          mkProg :: UPLC.Term name uni fun () -> UPLC.Program name uni fun ()
+          mkProg = UPLC.Program () (UPLC.Version () 1 0 0)

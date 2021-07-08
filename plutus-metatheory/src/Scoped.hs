@@ -1,6 +1,6 @@
 module Scoped where
 
-import           Language.PlutusCore
+import           PlutusCore
 
 data ScKind = ScKiStar
             | ScKiFun ScKind ScKind
@@ -11,5 +11,5 @@ data ScType = ScTyVar Integer
            | ScTyPi ScKind ScType
            | ScTyLambda ScKind ScType
            | ScTyApp ScType ScType
-           | ScTyCon (Some (TypeIn DefaultUni))
+           | ScTyCon (SomeTypeIn DefaultUni)
            deriving Show

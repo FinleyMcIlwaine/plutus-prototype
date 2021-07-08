@@ -4,10 +4,11 @@ module Marlowe.Gists
   , playgroundFiles
   , filenames
   , fileExists
+  , PlaygroundFiles
   ) where
 
 import Prelude
-import Blockly (XML)
+import Blockly.Internal (XML)
 import Data.Array (catMaybes)
 import Data.Lens (has, view)
 import Data.Lens.Index (ix)
@@ -37,10 +38,11 @@ type PlaygroundFiles
     , blockly :: Maybe String
     , javascript :: Maybe String
     , actus :: Maybe XML
+    , metadata :: Maybe String
     }
 
 toArray :: PlaygroundFiles -> Array NewGistFile
-toArray { playground, marlowe, haskell, blockly, javascript, actus } =
+toArray { playground, marlowe, haskell, blockly, javascript, actus, metadata } =
   [ mkNewGistFile filenames.playground playground
   ]
     <> catMaybes
@@ -49,6 +51,7 @@ toArray { playground, marlowe, haskell, blockly, javascript, actus } =
         , mkNewGistFile filenames.blockly <$> blockly
         , mkNewGistFile filenames.javascript <$> javascript
         , mkNewGistFile filenames.actus <<< unwrap <$> actus
+        , mkNewGistFile filenames.metadata <$> metadata
         ]
 
 filenames ::
@@ -58,6 +61,7 @@ filenames ::
   , blockly :: String
   , javascript :: String
   , actus :: String
+  , metadata :: String
   }
 filenames =
   { playground: "playground.marlowe.json"
@@ -66,6 +70,7 @@ filenames =
   , blockly: "blockly.xml"
   , javascript: "playground.js"
   , actus: "actus.xml"
+  , metadata: "metadata.json"
   }
 
 isPlaygroundGist :: Gist -> Boolean
@@ -79,6 +84,7 @@ playgroundFiles gist =
   , blockly: getFile filenames.blockly
   , javascript: getFile filenames.javascript
   , actus: wrap <$> getFile filenames.actus
+  , metadata: getFile filenames.metadata
   }
   where
   getFile name = view (gistFiles <<< ix name <<< gistFileContent) gist

@@ -7,25 +7,26 @@
 {-# LANGUAGE TypeApplications    #-}
 {-# OPTIONS_GHC -fno-strictness  #-}
 {-# OPTIONS_GHC -fno-ignore-interface-pragmas #-}
-{-# OPTIONS -fplugin-opt Language.PlutusTx.Plugin:debug-context #-}
+{-# OPTIONS_GHC -fplugin-opt PlutusTx.Plugin:debug-context #-}
 module Spec.MultiSigStateMachine(tests, lockProposeSignPay) where
 
-import           Data.Foldable                                                 (traverse_)
-import           Test.Tasty                                                    (TestTree, testGroup)
-import qualified Test.Tasty.HUnit                                              as HUnit
-
-import           Spec.Lib                                                      as Lib
+import           Data.Default                          (Default (def))
+import           Data.Foldable                         (traverse_)
 
 import qualified Ledger
-import qualified Ledger.Ada                                                    as Ada
-import qualified Ledger.Typed.Scripts                                          as Scripts
-import qualified Wallet.Emulator                                               as EM
+import qualified Ledger.Ada                            as Ada
+import qualified Ledger.TimeSlot                       as TimeSlot
+import qualified Ledger.Typed.Scripts                  as Scripts
+import qualified Wallet.Emulator                       as EM
 
-import           Language.Plutus.Contract.Test
-import qualified Language.PlutusTx                                             as PlutusTx
-import qualified Language.PlutusTx.Coordination.Contracts.MultiSigStateMachine as MS
-import           Plutus.Trace.Emulator                                         (EmulatorTrace)
-import qualified Plutus.Trace.Emulator                                         as Trace
+import           Plutus.Contract.Test
+import qualified Plutus.Contracts.MultiSigStateMachine as MS
+import           Plutus.Trace.Emulator                 (EmulatorTrace)
+import qualified Plutus.Trace.Emulator                 as Trace
+import qualified PlutusTx
+
+import           Test.Tasty                            (TestTree, testGroup)
+import qualified Test.Tasty.HUnit                      as HUnit
 
 tests :: TestTree
 tests =
@@ -54,8 +55,8 @@ tests =
         .&&. walletFundsChange w2 (Ada.lovelaceValueOf 10))
         (lockProposeSignPay 3 3)
 
-    , Lib.goldenPir "test/Spec/multisigStateMachine.pir" $$(PlutusTx.compile [|| MS.mkValidator ||])
-    , HUnit.testCase "script size is reasonable" (Lib.reasonable (Scripts.validatorScript $ MS.scriptInstance params) 51000)
+    , goldenPir "test/Spec/multisigStateMachine.pir" $$(PlutusTx.compile [|| MS.mkValidator ||])
+    , HUnit.testCaseSteps "script size is reasonable" $ \step -> reasonable' step (Scripts.validatorScript $ MS.typedValidator params) 51000
     ]
 
 w1, w2, w3 :: EM.Wallet
@@ -74,7 +75,7 @@ payment =
     MS.Payment
         { MS.paymentAmount    = Ada.lovelaceValueOf 5
         , MS.paymentRecipient = Ledger.pubKeyHash $ EM.walletPubKey w2
-        , MS.paymentDeadline  = 20
+        , MS.paymentDeadline  = TimeSlot.slotToEndPOSIXTime def 20
         }
 
 -- | Lock some funds in the contract, then propose the payment

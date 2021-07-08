@@ -12,7 +12,7 @@ module Type.CK where
 ```
 open import Type
 open import Type.RenamingSubstitution
-open import Type.Reduction hiding (step)
+open import Type.ReductionC hiding (step)
 
 open import Data.Product
 ```
@@ -35,41 +35,6 @@ Our CK machine is intrinsically kinded. The step function, which
 performs one step of computation, preserves the kind of the overall
 type and the intermediate data structures are indexed by kinds to
 enable this.
-
-## Frames
-
-A frame corresponds to a type with a hole in it for a missing sub
-type. It is indexed by two kinds. The first index is the kind of the
-outer type that the frame corresponds to, the second index refers to
-the kind of the missing subterm. The frame datatypes has constructors
-for all the different places in a type that we might need to make a
-hole.
-
-```
-data Frame : Kind → Kind → Set where
-  -·_     : ∅ ⊢⋆ K → Frame J (K ⇒ J)
-  _·-     : {A : ∅ ⊢⋆ K ⇒ J} → Value⋆ A → Frame J K
-  -⇒_     : ∅ ⊢⋆ * → Frame * *
-  _⇒-     : {A : ∅ ⊢⋆ *} → Value⋆ A → Frame * *
-  μ-_     : (B : ∅ ⊢⋆ K) → Frame * ((K ⇒ *) ⇒ K ⇒ *)
-  μ_-     : {A : ∅ ⊢⋆ (K ⇒ *) ⇒ K ⇒ *} → Value⋆ A → Frame * K
-```
-
-Given a frame and type to plug in to it we can close the frame and
-recover a type with no hole. By indexing frames by kinds we can
-specify exactly what kind the plug needs to have and ensure we don't
-plug in something of the wrong kind. We can also ensure what kind the
-returned type will have.
-
-```
-closeFrame : Frame K J → ∅ ⊢⋆ J → ∅ ⊢⋆ K
-closeFrame (-· B)  A = A · B
-closeFrame (_·- A) B = discharge A · B
-closeFrame (-⇒ B)  A = A ⇒ B
-closeFrame (_⇒- A) B = discharge A ⇒ B
-closeFrame (μ_- A) B = μ (discharge A) B
-closeFrame (μ- B)  A = μ A B
-```
 
 ## Stack
 
@@ -110,7 +75,6 @@ data State (K : Kind) : Kind → Set where
   _▻_ : Stack K J → ∅ ⊢⋆ J → State K J
   _◅_ : Stack K J → {A : ∅ ⊢⋆ J} → Value⋆ A → State K J
   □   : {A : ∅ ⊢⋆ K} →  Value⋆ A → State K K
-  -- ◆ : ∀ (J : Kind) →  State K J -- impossible in the type language
 ```
 
 Analogously to `Frame` and `Stack` we can also close a `State`:
@@ -121,7 +85,6 @@ closeState (s ▻ A)   = closeStack s A
 closeState (_◅_ s A) = closeStack s (discharge A)
 closeState (□ A)     = discharge A
 ```
-
 
 ## The machine
 
@@ -138,12 +101,141 @@ step (s ▻ ƛ A)                      = -, s ◅ V-ƛ A
 step (s ▻ (A · B))                  = -, (s , -· B) ▻ A
 step (s ▻ μ A B)                    = -, (s , μ- B) ▻ A
 step (s ▻ con c)                    = -, s ◅ V-con c
-step (ε ◅ V)                        = -, □ V
+step (ε ◅ V)                        = -, (ε ◅ V)
 step ((s , (-· B)) ◅ V)             = -, (s , V ·-) ▻ B
-step (_◅_ (s , (V-ƛ A ·-)) B)       = -, s ▻ (A [ discharge B ])
+step ((s , (V-ƛ A ·-)) ◅ B)       = -, s ▻ (A [ discharge B ])
 step ((s , (-⇒ B)) ◅ V)             = -, (s , V ⇒-) ▻ B
 step ((s , (V ⇒-)) ◅ W)             = -, s ◅ (V V-⇒ W)
 step ((s , μ- B) ◅ A)               = -, (s , μ A -) ▻ B
 step ((s , μ A -) ◅ B)              = -, s ◅ V-μ A B
 step (□ V)                          = -, □ V
 ```
+
+reflexive transitive closure of step:
+
+```
+open import Relation.Binary.PropositionalEquality
+
+data _-→ck_ : State K J → State K I → Set where
+  base  : {s : State K J}
+        → s -→ck s
+  step* : {s : State K J}{s' : State K I}{s'' : State K I'}
+        → step s ≡ (I , s')
+        → s' -→ck s''
+        → s -→ck s''
+
+step** : {s : State K J}{s' : State K I}{s'' : State K I'}
+        → s -→ck s'
+        → s' -→ck s''
+        → s -→ck s''
+step** base q = q
+step** (step* x p) q = step* x (step** p q)
+```
+
+```
+change-dir : (s : Stack I J)(A : ∅ ⊢⋆ J) (V : Value⋆ A) → (s ▻ A) -→ck (s ◅ V)
+change-dir s .(Π N) (V-Π N) = step* refl base
+change-dir s .(_ ⇒ _) (V V-⇒ V₁) = step* refl (step** (change-dir _ _ V) (step* refl (step** (change-dir _ _ V₁) (step* refl base))))
+change-dir s .(ƛ N) (V-ƛ N) = step* refl base
+change-dir s .(con tcn) (V-con tcn) = step* refl base
+change-dir s .(μ _ _) (V-μ V V₁) = step* refl (step** (change-dir _ _ V) (step* refl (step** (change-dir _ _ V₁) (step* refl base))))
+
+subst-step* : {s : State K J}{s' : State K J'}{s'' : State K I}
+        → _≡_ {A = Σ Kind (State K)} (J , s) (J' , s')
+        → s' -→ck s''
+        → s -→ck s''
+subst-step* refl q = q
+```
+
+Converting from evaluation contexts to stacks of frames:
+
+```
+open import Data.Sum
+open import Type.ReductionC
+import Type.CC as CC
+
+
+{-# TERMINATING #-}
+helper : ∀{E} → ((Σ (K ≡ J) λ p → subst (λ K → EvalCtx K J) p E ≡ []) ⊎ (Σ Kind λ I → EvalCtx K I × Frame I J)) → Stack K J
+
+EvalCtx2Stack : ∀ {I J} → EvalCtx I J → Stack I J
+EvalCtx2Stack E = helper (dissect' E)
+
+helper (inj₁ (refl , refl)) = ε
+helper (inj₂ (I , E , F)) = EvalCtx2Stack E , F
+
+lemmaH : (E : EvalCtx K J)(F : Frame J I)
+  → (helper (dissect' E) , F) ≡ helper (dissect' (extendEvalCtx E F))
+lemmaH E F rewrite CC.lemma' E F = refl
+
+Stack2EvalCtx : ∀ {I J} → Stack I J → EvalCtx I J
+Stack2EvalCtx ε       = []
+Stack2EvalCtx (s , F) = extendEvalCtx (Stack2EvalCtx s) F
+
+cc2ck : ∀ {I J} → CC.State I J → State I J
+cc2ck (x CC.▻ x₁) = EvalCtx2Stack x ▻ x₁
+cc2ck (x CC.◅ x₁) = EvalCtx2Stack x ◅ x₁
+cc2ck (CC.□ x) = □ x
+
+ck2cc : ∀ {I J} → State I J → CC.State I J
+ck2cc (x ▻ x₁) = Stack2EvalCtx x CC.▻ x₁
+ck2cc (x ◅ x₁) = Stack2EvalCtx x CC.◅ x₁
+ck2cc (□ x) = CC.□ x
+
+thm64 : (s : CC.State K J)(s' : CC.State K J')
+  → s CC.-→s s' → cc2ck s -→ck cc2ck s'
+thm64 s .s CC.base = base
+thm64 (x CC.▻ Π x₁) s' (CC.step* refl p) = step* refl (thm64 _ s' p)
+thm64 (x CC.▻ (x₁ ⇒ x₂)) s' (CC.step* refl p) =
+  step* refl (subst-step* (cong (λ s → * , s ▻ x₁) (lemmaH x (-⇒ x₂))) (thm64 _ s' p))
+thm64 (x CC.▻ ƛ x₁) s' (CC.step* refl p) = step* refl (thm64 _ s' p)
+thm64 (x CC.▻ (x₁ · x₂)) s' (CC.step* refl p) =
+  step* refl (subst-step* (cong (λ s → _ , s ▻ x₁) (lemmaH x (-· x₂))) (thm64 _ s' p))
+thm64 (x CC.▻ μ x₁ x₂) s' (CC.step* refl p) =
+  step* refl (subst-step* (cong (λ s → _ , s ▻ x₁) (lemmaH x (μ- x₂))) (thm64 _ s' p))
+thm64 (x CC.▻ con x₁) s' (CC.step* refl p) =
+  step* refl (thm64 _ s' p)
+thm64 (x CC.◅ x₁) s' (CC.step* refl p) with dissect' x | inspect dissect' x
+... | inj₁ (refl , refl) | [ eq ] = step* refl (thm64 _ s' p)
+... | inj₂ (I , E , (-· x₂)) | [ eq ] rewrite dissect'-lemma x E (-· x₂) eq | CC.lemma E (-· x₂) = step* refl (subst-step* (cong (λ E  → _ , E ▻ x₂) (lemmaH E (x₁ ·-))) (thm64 _ s' p))
+... | inj₂ (I , E , (V-ƛ x₂ ·-)) | [ eq ] rewrite dissect'-lemma x E (V-ƛ x₂ ·-) eq | CC.lemma E (V-ƛ x₂ ·-) = step* refl (thm64 _ s' p)
+... | inj₂ (.* , E , (-⇒ x₂)) | [ eq ] rewrite dissect'-lemma x E (-⇒ x₂) eq | CC.lemma E (-⇒ x₂)
+  = step* refl (subst-step* (cong (λ E → _ , E ▻ x₂) (lemmaH E (x₁ ⇒-))) (thm64 _ s' p))
+... | inj₂ (.* , E , (x₂ ⇒-)) | [ eq ] rewrite dissect'-lemma x E (x₂ ⇒-) eq | CC.lemma E (x₂ ⇒-) = step* refl (thm64 _ s' p)
+... | inj₂ (.* , E , (μ- B)) | [ eq ] rewrite dissect'-lemma x E (μ- B) eq | CC.lemma E (μ- B)
+  = step* refl (subst-step* (cong (λ E → _ , E ▻ B) (lemmaH E (μ x₁ -))) (thm64 _ s' p))
+... | inj₂ (.* , E , μ x₂ -) | [ eq ]  rewrite dissect'-lemma x E (μ x₂ -) eq | CC.lemma E (μ x₂ -) = step* refl (thm64 _ s' p)
+thm64 (CC.□ x) s' (CC.step* refl p) = step* refl (thm64 _ s' p)
+
+thm64b : (s : State K J)(s' : State K J')
+  → s -→ck s' → ck2cc s CC.-→s ck2cc s'
+thm64b s .s base = CC.base
+thm64b (s ▻ Π A) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b (s ▻ (A ⇒ B)) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b (s ▻ ƛ A) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b (s ▻ (A · B)) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b (s ▻ μ A B) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b (s ▻ con c) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b (ε ◅ V) s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+thm64b ((s , (-· B)) ◅ V) s' (step* refl q) =
+  CC.step* (cong (CC.stepV V) (CC.lemma (Stack2EvalCtx s) (-· B)))
+           (thm64b _ _ q)
+thm64b ((s , (V-ƛ A ·-)) ◅ V) s' (step* refl q) = CC.step*
+  (cong (CC.stepV V) (CC.lemma (Stack2EvalCtx s) (_ ·-)))
+  (thm64b _ _ q)
+thm64b ((s , (-⇒ B)) ◅ V) s' (step* refl q) = CC.step*
+  (cong (CC.stepV V) (CC.lemma (Stack2EvalCtx s) _))
+  (thm64b _ _ q)
+thm64b ((s , (VA ⇒-)) ◅ V) s' (step* refl q) = CC.step*
+  (cong (CC.stepV V) (CC.lemma (Stack2EvalCtx s) _))
+  (thm64b _ _ q)
+
+thm64b ((s , (μ- B)) ◅ V) s' (step* refl q) = CC.step*
+  (cong (CC.stepV V) (CC.lemma (Stack2EvalCtx s) _))
+  (thm64b _ _ q)
+thm64b ((s , μ VA -) ◅ V) s' (step* refl q) = CC.step*
+  (cong (CC.stepV V) (CC.lemma (Stack2EvalCtx s) _))
+  (thm64b _ _ q)
+thm64b (□ V)   s' (step* refl q) = CC.step* refl (thm64b _ _ q)
+```
+

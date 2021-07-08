@@ -8,6 +8,7 @@
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StrictData            #-}
@@ -15,278 +16,200 @@
 {-# LANGUAGE TypeOperators         #-}
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
-module Plutus.PAB.App where
+module Plutus.PAB.App(
+    App,
+    runApp,
+    AppEnv(..),
+    StorageBackend(..),
+    -- * App actions
+    migrate,
+    dbConnect,
+    ) where
 
-import qualified Cardano.BM.Configuration.Model     as CM
-import           Cardano.BM.Trace                   (Trace)
-import           Cardano.ChainIndex.Client          (handleChainIndexClient)
-import qualified Cardano.ChainIndex.Types           as ChainIndex
-import           Cardano.Metadata.Client            (handleMetadataClient)
-import           Cardano.Metadata.Types             (MetadataEffect)
-import qualified Cardano.Metadata.Types             as Metadata
-import           Cardano.Node.Client                (handleNodeClientClient, handleNodeFollowerClient,
-                                                     handleRandomTxClient)
-import           Cardano.Node.Follower              (NodeFollowerEffect)
-import           Cardano.Node.RandomTx              (GenRandomTx)
-import qualified Cardano.Node.Server                as NodeServer
-import qualified Cardano.SigningProcess.Client      as SigningProcessClient
-import qualified Cardano.SigningProcess.Server      as SigningProcess
-import qualified Cardano.Wallet.Client              as WalletClient
-import qualified Cardano.Wallet.Server              as WalletServer
-import           Control.Monad.Catch                (MonadCatch)
+import           Cardano.BM.Trace                               (Trace, logDebug)
+import           Cardano.ChainIndex.Client                      (handleChainIndexClient)
+import qualified Cardano.ChainIndex.Types                       as ChainIndex
+import           Cardano.Node.Client                            (handleNodeClientClient)
+import           Cardano.Node.Types                             (MockServerConfig (..))
+import qualified Cardano.Protocol.Socket.Client                 as Client
+import qualified Cardano.Wallet.Client                          as WalletClient
+import qualified Cardano.Wallet.Types                           as Wallet
+import qualified Control.Concurrent.STM                         as STM
 import           Control.Monad.Freer
-import           Control.Monad.Freer.Error          (Error, handleError, runError, throwError)
-import           Control.Monad.Freer.Extra.Log      (LogMsg, handleWriterLog, logDebug, logInfo)
-import           Control.Monad.Freer.Log            (LogMessage, LogObserve)
-import qualified Control.Monad.Freer.Log            as Log
-import           Control.Monad.Freer.Reader         (Reader, asks, runReader)
-import           Control.Monad.Freer.WebSocket      (WebSocketEffect, handleWebSocket)
-import           Control.Monad.Freer.Writer         (Writer)
-import           Control.Monad.IO.Class             (MonadIO, liftIO)
-import           Control.Monad.IO.Unlift            (MonadUnliftIO)
-import           Control.Monad.Logger               (MonadLogger)
-import           Control.Tracer                     (natTracer)
-import           Data.Aeson                         (FromJSON, eitherDecode)
-import qualified Data.Aeson.Encode.Pretty           as JSON
-import           Data.Bifunctor                     (Bifunctor (..))
-import qualified Data.ByteString.Lazy.Char8         as BSL8
-import           Data.Functor.Contravariant         (Contravariant (..))
-import qualified Data.Text                          as Text
-import           Database.Persist.Sqlite            (runSqlPool)
-import           Eventful.Store.Sqlite              (initializeSqliteEventStore)
-import           Network.HTTP.Client                (managerModifyRequest, newManager, setRequestIgnoreStatus)
-import           Network.HTTP.Client.TLS            (tlsManagerSettings)
-import           Plutus.PAB.Core                    (Connection (Connection),
-                                                     ContractCommand (InitContract, UpdateContract), CoreMsg, dbConnect)
-import           Plutus.PAB.Core.ContractInstance   (ContractInstanceMsg)
-import           Plutus.PAB.Effects.Contract        (ContractEffect (..))
-import           Plutus.PAB.Effects.ContractRuntime (ContractRuntimeMsg, handleContractRuntime)
-import           Plutus.PAB.Effects.EventLog        (EventLogEffect (..), handleEventLogSql)
-import           Plutus.PAB.Effects.UUID            (UUIDEffect, handleUUIDEffect)
-import           Plutus.PAB.Events                  (ChainEvent)
-import           Plutus.PAB.MonadLoggerBridge       (TraceLoggerT (..))
-import           Plutus.PAB.Monitoring              (handleLogMsgTraceMap, handleObserveTrace)
-import           Plutus.PAB.PABLogMsg               (ContractExeLogMsg (..), PABLogMsg (..))
-import           Plutus.PAB.ParseStringifiedJSON    (UnStringifyJSONLog)
-import           Plutus.PAB.Types                   (Config (Config), ContractExe (..), PABError (..), chainIndexConfig,
-                                                     dbConfig, metadataServerConfig, nodeServerConfig,
-                                                     signingProcessConfig, walletServerConfig)
-import           Plutus.PAB.Webserver.Types         (WebSocketLogMsg)
-import           Servant.Client                     (BaseUrl, ClientEnv, ClientError, mkClientEnv)
-import           System.Exit                        (ExitCode (ExitFailure, ExitSuccess))
-import           System.Process                     (readProcessWithExitCode)
-import           Wallet.API                         (WalletAPIError)
-import           Wallet.Effects                     (ChainIndexEffect, ContractRuntimeEffect, NodeClientEffect,
-                                                     SigningProcessEffect, WalletEffect)
-import qualified Wallet.Emulator.Wallet
-
+import           Control.Monad.Freer.Error                      (handleError, throwError)
+import           Control.Monad.Freer.Extras.Log                 (mapLog)
+import           Control.Monad.IO.Class                         (MonadIO (..))
+import           Data.Coerce                                    (coerce)
+import           Data.Text                                      (Text, pack, unpack)
+import           Database.Beam.Migrate.Simple
+import qualified Database.Beam.Sqlite                           as Sqlite
+import qualified Database.Beam.Sqlite.Migrate                   as Sqlite
+import           Database.SQLite.Simple                         (open)
+import qualified Database.SQLite.Simple                         as Sqlite
+import           Network.HTTP.Client                            (managerModifyRequest, newManager,
+                                                                 setRequestIgnoreStatus)
+import           Network.HTTP.Client.TLS                        (tlsManagerSettings)
+import           Plutus.PAB.Core                                (EffectHandlers (..), PABAction)
+import qualified Plutus.PAB.Core                                as Core
+import qualified Plutus.PAB.Core.ContractInstance.BlockchainEnv as BlockchainEnv
+import           Plutus.PAB.Core.ContractInstance.STM           as Instances
+import qualified Plutus.PAB.Db.Beam.ContractDefinitionStore     as BeamEff
+import qualified Plutus.PAB.Db.Beam.ContractStore               as BeamEff
+import           Plutus.PAB.Db.Memory.ContractStore             (InMemInstances, initialInMemInstances)
+-- TODO: Use this or delete it
+import qualified Plutus.PAB.Db.Memory.ContractStore             as InMem
+import           Plutus.PAB.Effects.Contract.ContractExe        (ContractExe (..), handleContractEffectContractExe)
+import           Plutus.PAB.Effects.DbStore                     (checkedSqliteDb, handleDbStore)
+import           Plutus.PAB.Monitoring.Monitoring               (handleLogMsgTrace)
+import           Plutus.PAB.Monitoring.PABLogMsg                (PABLogMsg (..), PABMultiAgentMsg (UserLog))
+import           Plutus.PAB.Timeout                             (Timeout (..))
+import           Plutus.PAB.Types                               (Config (Config), DbConfig (..), PABError (..),
+                                                                 chainIndexConfig, dbConfig, endpointTimeout,
+                                                                 nodeServerConfig, walletServerConfig)
+import           Servant.Client                                 (ClientEnv, mkClientEnv)
 
 ------------------------------------------------------------
-data Env =
-    Env
-        { dbConnection      :: Connection
-        , walletClientEnv   :: ClientEnv
-        , nodeClientEnv     :: ClientEnv
-        , metadataClientEnv :: ClientEnv
-        , signingProcessEnv :: ClientEnv
-        , chainIndexEnv     :: ClientEnv
+
+data AppEnv =
+    AppEnv
+        { dbConnection          :: Sqlite.Connection
+        , walletClientEnv       :: ClientEnv
+        , nodeClientEnv         :: ClientEnv
+        , chainIndexEnv         :: ClientEnv
+        , txSendHandle          :: Client.TxSendHandle
+        , chainSyncHandle       :: Client.ChainSyncHandle
+        , appConfig             :: Config
+        , appTrace              :: Trace IO (PABLogMsg ContractExe)
+        , appInMemContractStore :: InMemInstances ContractExe
         }
 
-type AppBackend m =
-        '[ GenRandomTx
-         , ContractRuntimeEffect
-         , NodeFollowerEffect
-         , Error ClientError
-         , WalletEffect
-         , Error WalletAPIError
-         , Error ClientError
-         , NodeClientEffect
-         , Error ClientError
-         , MetadataEffect
-         , Error Metadata.MetadataError
-         , SigningProcessEffect
-         , Error ClientError
-         , UUIDEffect
-         , ContractEffect ContractExe
-         , ChainIndexEffect
-         , Error ClientError
-         , EventLogEffect (ChainEvent ContractExe)
-         , WebSocketEffect
-         , Error PABError
-         , Writer [Wallet.Emulator.Wallet.WalletEvent]
-         , LogMsg Wallet.Emulator.Wallet.WalletEvent
-         , LogMsg ContractExeLogMsg
-         , LogMsg ContractRuntimeMsg
-         , LogMsg (ContractInstanceMsg ContractExe)
-         , LogMsg WebSocketLogMsg
-         , LogMsg UnStringifyJSONLog
-         , LogMsg (CoreMsg ContractExe)
-         , LogObserve (LogMessage Text.Text)
-         , Reader Connection
-         , Reader Config
-         , Reader Env
-         , m
-         ]
+appEffectHandlers :: StorageBackend -> Config -> Trace IO (PABLogMsg ContractExe) -> EffectHandlers ContractExe AppEnv
+appEffectHandlers storageBackend config trace =
+    EffectHandlers
+        { initialiseEnvironment = do
+            env <- liftIO $ mkEnv trace config
+            let Config{nodeServerConfig=MockServerConfig{mscSocketPath, mscSlotConfig}} = config
+            instancesState <- liftIO $ STM.atomically $ Instances.emptyInstancesState
+            blockchainEnv <- liftIO $ BlockchainEnv.startNodeClient mscSocketPath mscSlotConfig
+            pure (instancesState, blockchainEnv, env)
 
-runAppBackend ::
-    forall m a.
-    ( MonadIO m
-    , MonadUnliftIO m
-    , MonadLogger m
-    , MonadCatch m
-    )
-    => Trace m PABLogMsg -- ^ Top-level tracer
-    -> CM.Configuration -- ^ Logging / monitoring configuration
+        , handleLogMessages =
+            interpret (handleLogMsgTrace trace)
+            . reinterpret (mapLog SMultiAgent)
+
+        , handleContractEffect =
+            interpret (handleLogMsgTrace trace)
+            . reinterpret (mapLog @_ @(PABLogMsg ContractExe) SContractExeLogMsg)
+            . reinterpret (handleContractEffectContractExe @IO)
+
+        , handleContractStoreEffect =
+          case storageBackend of
+            InMemoryBackend ->
+              interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+              . interpret (Core.handleMappedReader @AppEnv appInMemContractStore)
+              . reinterpret2 InMem.handleContractStore
+
+            BeamSqliteBackend ->
+              interpret (handleLogMsgTrace trace)
+              . reinterpret (mapLog @_ @(PABLogMsg ContractExe) SMultiAgent)
+              . interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+              . interpret (Core.handleMappedReader @AppEnv dbConnection)
+              . interpret (handleDbStore trace)
+              . reinterpretN @'[_, _, _, _] BeamEff.handleContractStore
+
+        , handleContractDefinitionStoreEffect =
+            interpret (handleLogMsgTrace trace)
+            . reinterpret (mapLog @_ @(PABLogMsg ContractExe) SMultiAgent)
+           .  interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+            . interpret (Core.handleMappedReader @AppEnv dbConnection)
+            . interpret (handleDbStore trace)
+            . reinterpretN @'[_, _, _, _] BeamEff.handleContractDefinitionStore
+
+        , handleServicesEffects = \wallet ->
+            -- handle 'NodeClientEffect'
+            flip handleError (throwError . NodeClientError)
+            . interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+            . reinterpret (Core.handleMappedReader @AppEnv @Client.ChainSyncHandle chainSyncHandle)
+            . interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+            . reinterpret (Core.handleMappedReader @AppEnv @Client.TxSendHandle txSendHandle)
+            . interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+            . reinterpret (Core.handleMappedReader @AppEnv @ClientEnv nodeClientEnv)
+            . reinterpretN @'[_, _, _, _] (handleNodeClientClient @IO)
+
+            -- handle 'ChainIndexEffect'
+            . flip handleError (throwError . ChainIndexError)
+            . interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+            . reinterpret (Core.handleMappedReader @AppEnv @ClientEnv chainIndexEnv)
+            . reinterpret2 (handleChainIndexClient @IO)
+
+            -- handle 'WalletEffect'
+            . flip handleError (throwError . WalletClientError)
+            . flip handleError (throwError . WalletError)
+            . interpret (Core.handleUserEnvReader @ContractExe @AppEnv)
+            . reinterpret (Core.handleMappedReader @AppEnv @ClientEnv walletClientEnv)
+            . reinterpretN @'[_, _, _] (WalletClient.handleWalletClient @IO wallet)
+
+        , onStartup = pure ()
+
+        , onShutdown = pure ()
+        }
+
+runApp ::
+    forall a.
+    StorageBackend
+    -> Trace IO (PABLogMsg ContractExe) -- ^ Top-level tracer
     -> Config -- ^ Client configuration
-    -> Eff (AppBackend m) a -- ^ Action
-    -> m (Either PABError a)
-runAppBackend trace loggingConfig config action = do
-    env@Env { dbConnection
-            , nodeClientEnv
-            , metadataClientEnv
-            , walletClientEnv
-            , signingProcessEnv
-            , chainIndexEnv
-            } <- mkEnv config
-    let
-        handleChainIndex :: Eff (ChainIndexEffect ': Error ClientError ': _) a -> Eff _ a
-        handleChainIndex =
-            flip handleError (throwError . ChainIndexError) .
-            handleChainIndexClient chainIndexEnv
-        handleSigningProcess ::
-               Eff (SigningProcessEffect ': Error ClientError ': _) a -> Eff _ a
-        handleSigningProcess =
-            flip handleError (throwError . SigningProcessError) .
-            SigningProcessClient.handleSigningProcessClient signingProcessEnv
-        handleNodeClient ::
-               Eff (NodeClientEffect ': Error ClientError ': _) a -> Eff _ a
-        handleNodeClient =
-            flip handleError (throwError . NodeClientError) .
-            handleNodeClientClient nodeClientEnv
-        handleNodeFollower ::
-               Eff (NodeFollowerEffect ': Error ClientError ': _) a -> Eff _ a
-        handleNodeFollower =
-            flip handleError (throwError . NodeClientError) .
-            handleNodeFollowerClient nodeClientEnv
-        handleMetadata ::
-               Eff (MetadataEffect ': Error Metadata.MetadataError ': _) a -> Eff _ a
-        handleMetadata =
-            flip handleError (throwError . MetadataError) .
-            handleMetadataClient metadataClientEnv
-        handleWallet ::
-               Eff (WalletEffect ': Error WalletAPIError ': Error ClientError ': _) a
-            -> Eff _ a
-        handleWallet =
-            flip handleError (throwError . WalletClientError) .
-            flip handleError (throwError . WalletError) .
-            WalletClient.handleWalletClient walletClientEnv
+    -> App a -- ^ Action
+    -> IO (Either PABError a)
+runApp storageBackend trace config@Config{endpointTimeout} = Core.runPAB (Timeout endpointTimeout) (appEffectHandlers storageBackend config trace)
 
+type App a = PABAction ContractExe AppEnv a
 
-    runM
-        . runReader env
-        . runReader config
-        . runReader dbConnection
-        . handleObserveTrace loggingConfig trace
-        . handleLogMsgTraceMap SCoreMsg trace
-        . handleLogMsgTraceMap SUnstringifyJSON trace
-        . handleLogMsgTraceMap SWebsocketMsg trace
-        . handleLogMsgTraceMap SContractInstanceMsg trace
-        . handleLogMsgTraceMap SContractRuntimeMsg trace
-        . handleLogMsgTraceMap SContractExeLogMsg trace
-        . handleLogMsgTraceMap SWalletEvent trace
-        . handleWriterLog (\_ -> Log.Info)
-        . runError
-        . handleWebSocket
-        . handleEventLogSql
-        . handleChainIndex
-        . handleContractEffectApp
-        . handleUUIDEffect
-        . handleSigningProcess
-        . handleMetadata
-        . handleNodeClient
-        . handleWallet
-        . handleNodeFollower
-        . interpret (handleContractRuntime @ContractExe)
-        $ handleRandomTxClient nodeClientEnv action
+data StorageBackend = BeamSqliteBackend | InMemoryBackend
+  deriving (Eq, Ord, Show)
 
-type App a = Eff (AppBackend (TraceLoggerT IO)) a
-
-mkEnv :: forall m. (MonadUnliftIO m, MonadLogger m) => Config -> m Env
-mkEnv Config { dbConfig
-             , nodeServerConfig
-             , metadataServerConfig
+mkEnv :: Trace IO (PABLogMsg ContractExe) -> Config -> IO AppEnv
+mkEnv appTrace appConfig@Config { dbConfig
+             , nodeServerConfig =  MockServerConfig{mscBaseUrl, mscSocketPath, mscSlotConfig}
              , walletServerConfig
-             , signingProcessConfig
              , chainIndexConfig
              } = do
-    walletClientEnv <- clientEnv (WalletServer.baseUrl walletServerConfig)
-    nodeClientEnv <- clientEnv (NodeServer.mscBaseUrl nodeServerConfig)
-    metadataClientEnv <- clientEnv (Metadata.mdBaseUrl metadataServerConfig)
-    signingProcessEnv <-
-        clientEnv (SigningProcess.spBaseUrl signingProcessConfig)
+    walletClientEnv <- clientEnv (Wallet.baseUrl walletServerConfig)
+    nodeClientEnv <- clientEnv mscBaseUrl
     chainIndexEnv <- clientEnv (ChainIndex.ciBaseUrl chainIndexConfig)
-    dbConnection <- dbConnect dbConfig
-    pure Env {..}
+    dbConnection <- dbConnect appTrace dbConfig
+    txSendHandle <- liftIO $ Client.runTxSender mscSocketPath
+    -- This is for access to the slot number in the interpreter
+    chainSyncHandle <- liftIO $ Client.runChainSync' mscSocketPath mscSlotConfig
+    appInMemContractStore <- liftIO initialInMemInstances
+    pure AppEnv {..}
   where
-    clientEnv :: BaseUrl -> m ClientEnv
-    clientEnv baseUrl = mkClientEnv <$> liftIO mkManager <*> pure baseUrl
+    clientEnv baseUrl = mkClientEnv <$> liftIO mkManager <*> pure (coerce baseUrl)
 
     mkManager =
         newManager $
         tlsManagerSettings {managerModifyRequest = pure . setRequestIgnoreStatus}
 
-runApp :: Trace IO PABLogMsg -> CM.Configuration -> Config -> App a -> IO (Either PABError a)
-runApp theTrace logConfig config action =
-    runTraceLoggerT
+logDebugString :: Trace IO (PABLogMsg t) -> Text -> IO ()
+logDebugString trace = logDebug trace . SMultiAgent . UserLog
 
-    -- see note [Use of iohk-monitoring in PAB]
-    (runAppBackend @(TraceLoggerT IO) (monadLoggerTracer theTrace) logConfig config action)
-    (contramap (second (fmap SLoggerBridge)) theTrace)
+-- | Initialize/update the database to hold our effects.
+migrate :: Trace IO (PABLogMsg ContractExe) -> DbConfig -> IO ()
+migrate trace config = do
+    connection <- dbConnect trace config
+    logDebugString trace "Running beam migration"
+    runBeamMigration trace connection
 
-handleContractEffectApp ::
-       (Member (LogMsg ContractExeLogMsg) effs, Member (Error PABError) effs, LastMember m effs, MonadIO m)
-    => Eff (ContractEffect ContractExe ': effs) ~> Eff effs
-handleContractEffectApp =
-    interpret $ \case
-        InvokeContract contractCommand -> do
-            logDebug InvokeContractMsg
-            case contractCommand of
-                InitContract (ContractExe contractPath) -> do
-                    logDebug $ InitContractMsg contractPath
-                    liftProcess $ readProcessWithExitCode contractPath ["init"] ""
-                UpdateContract (ContractExe contractPath) payload -> do
-                    let pl = BSL8.unpack (JSON.encodePretty payload)
-                    logDebug $ UpdateContractMsg contractPath payload
-                    liftProcess $ readProcessWithExitCode contractPath ["update"] pl
-        ExportSchema (ContractExe contractPath) -> do
-            logDebug $ ExportSignatureMsg contractPath
-            liftProcess $
-                readProcessWithExitCode contractPath ["export-signature"] ""
+runBeamMigration
+  ::
+  Trace IO (PABLogMsg ContractExe)
+  -> Sqlite.Connection
+  -> IO ()
+runBeamMigration trace conn = Sqlite.runBeamSqliteDebug (logDebugString trace . pack) conn $ do
+  autoMigrate Sqlite.migrationBackend checkedSqliteDb
 
-liftProcess ::
-       (LastMember m effs, MonadIO m, FromJSON b, Member (LogMsg ContractExeLogMsg) effs, Member (Error PABError) effs)
-    => IO (ExitCode, String, String)
-    -> Eff effs b
-liftProcess process = do
-    (exitCode, stdout, stderr) <- sendM $ liftIO process
-    case exitCode of
-        ExitFailure code -> do
-            logDebug $ ProcessExitFailure stderr
-            throwError $ ContractCommandError code (Text.pack stderr)
-        ExitSuccess -> do
-            logDebug $ ContractResponse stdout
-            case eitherDecode (BSL8.pack stdout) of
-                Right value -> pure value
-                Left err    -> throwError $ ContractCommandError 0 (Text.pack err)
-
--- | Initialize/update the database to hold events.
-migrate :: App ()
-migrate = do
-    logInfo Migrating
-    Connection (sqlConfig, connectionPool) <- asks dbConnection
-    liftIO
-        $ flip runSqlPool connectionPool
-        $ initializeSqliteEventStore sqlConfig connectionPool
-
-monadLoggerTracer :: Trace IO a -> Trace (TraceLoggerT IO) a
-monadLoggerTracer = natTracer (\x -> TraceLoggerT $ \_ -> x)
+-- | Connect to the database.
+dbConnect :: Trace IO (PABLogMsg ContractExe) -> DbConfig -> IO Sqlite.Connection
+dbConnect trace DbConfig {dbConfigFile} = do
+  logDebugString trace $ "Connecting to DB: " <> dbConfigFile
+  open (unpack dbConfigFile)

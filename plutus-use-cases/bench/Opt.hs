@@ -6,11 +6,11 @@
 {-# OPTIONS_GHC -fno-strictness #-}
 module Opt where
 
-import           Prelude                   hiding (tail)
+import           Prelude          hiding (tail)
 
-import qualified Language.PlutusTx.Prelude as P
+import qualified PlutusTx.Prelude as P
 
-{-# ANN module "HLint: ignore" #-}
+{- HLINT ignore -}
 
 fibOpt :: Integer -> Integer
 fibOpt n =

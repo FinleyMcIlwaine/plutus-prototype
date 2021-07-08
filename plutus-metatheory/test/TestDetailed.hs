@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 module TestDetailed where
 import           Control.Exception
 import qualified Data.Text                  as T
@@ -31,19 +32,34 @@ catchOutput act = do
   removeFile tmpFP
   return str
 
+-- compare the output of plc vs plc-agda in its default (typed) mode
 compareResult :: (C.ByteString -> C.ByteString -> Bool) -> String -> String -> IO Progress
 compareResult eq mode test = do
-  example <- readProcess "plc" ["example","-s",test] []
+  example <- readProcess "plc" ["example", "-s",test] []
   writeFile "tmp" example
   putStrLn $ "test: " ++ test
-  plcOutput <- readProcess "plc" [mode,"--input","tmp"] []
+  plcOutput <- readProcess "plc" [mode, "--input","tmp"] []
   plcAgdaOutput <- catchOutput $ catch
     (withArgs [mode,"--file","tmp"]  M.main)
-    (\ e -> case e of
+    (\case
+        ExitFailure _ -> exitFailure
+        ExitSuccess   -> return ()) -- does this ever happen?
+  return $ Finished $ if eq (C.pack plcOutput) (C.pack plcAgdaOutput) then Pass else Fail $ "plc: '" ++ plcOutput ++ "' " ++ "plc-agda: '" ++ plcAgdaOutput ++ "'"
+
+-- compare the output of uplc vs plc-agda in untyped mode
+compareResultU :: (C.ByteString -> C.ByteString -> Bool) -> String -> IO Progress
+compareResultU eq test = do
+  example <- readProcess "uplc" ["example","-s",test] []
+  writeFile "tmp" example
+  putStrLn $ "test: " ++ test
+  plcOutput <- readProcess "uplc" ["evaluate", "--input","tmp"] []
+  plcAgdaOutput <- catchOutput $ catch
+    (withArgs ["evaluate","-mU","--file","tmp"]  M.main)
+    (\case
         ExitFailure _ -> exitFailure
         ExitSuccess   -> return ())
   return $ Finished $ if eq (C.pack plcOutput) (C.pack plcAgdaOutput) then Pass else Fail $ "plc: '" ++ plcOutput ++ "' " ++ "plc-agda: '" ++ plcAgdaOutput ++ "'"
-
+-- compare the results of two different (typed) plc-agda modes
 compareResultMode :: String -> String -> (C.ByteString -> C.ByteString -> Bool) -> String -> IO Progress
 compareResultMode mode1 mode2 eq test = do
   example <- readProcess "plc" ["example","-s",test] []
@@ -51,12 +67,12 @@ compareResultMode mode1 mode2 eq test = do
   putStrLn $ "test: " ++ test
   plcAgdaOutput1 <- catchOutput $ catch
     (withArgs ["evaluate","--file","tmp","--mode",mode1]  M.main)
-    (\ e -> case e of
+    (\case
         ExitFailure _ -> exitFailure
         ExitSuccess   -> return ())
   plcAgdaOutput2 <- catchOutput $ catch
     (withArgs ["evaluate","--file","tmp","--mode",mode2]  M.main)
-    (\ e -> case e of
+    (\case
         ExitFailure _ -> exitFailure
         ExitSuccess   -> return ())
   return $ Finished $ if eq (C.pack plcAgdaOutput1) (C.pack plcAgdaOutput2) then Pass else Fail $ mode1 ++ ": '" ++ plcAgdaOutput1 ++ "' " ++ mode2 ++ ": '" ++ plcAgdaOutput2 ++ "'" ++ " === "++ T.unpack (M.blah (C.pack plcAgdaOutput1) (C.pack plcAgdaOutput2))
@@ -71,7 +87,7 @@ testNames = ["succInteger"
             ,"factorial"
             ,"fibonacci"
             ,"NatRoundTrip"
-            ,"ListSum"
+            ,"ScottListSum"
             ,"IfIntegers"
             ,"ApplyAdd1"
             ,"ApplyAdd2"
@@ -86,30 +102,47 @@ mkTest eq mode test = TestInstance
         , setOption = \_ _ -> Right (mkTest eq mode test)
         }
 
--- test different plc-agda modes against each other
+-- test uplc against plc-agda untyped mode
+mkTestU :: (C.ByteString -> C.ByteString -> Bool) -> String -> TestInstance
+mkTestU eq test = TestInstance
+        { run = compareResultU eq test
+        , name = "evaluate" ++ " " ++ test
+        , tags = []
+        , options = []
+        , setOption = \_ _ -> Right (mkTestU eq test)
+        }
+
+-- test different (typed) plc-agda modes against each other
 mkTestMode :: String -> String -> (C.ByteString -> C.ByteString -> Bool) -> String -> TestInstance
 mkTestMode mode1 mode2 eq test = TestInstance
         { run = compareResultMode mode1 mode2 eq test
-        , name = test
+        , name = mode1 ++ " " ++  mode2 ++ " " ++ test
         , tags = []
         , options = []
         , setOption = \_ _ -> Right (mkTestMode mode1 mode2 eq test)
         }
 
 tests :: IO [Test]
-tests = do --return [ Test succeeds ] -- , Test fails ]
+tests = do
   return $ map Test $
     map (mkTest M.alphaTm "evaluate") testNames
      ++
-    map (mkTestMode "L" "TL" M.alphaTm) testNames
+
+{- -- tests against extrinisically typed interpreter disabled
+map (mkTestMode "L" "TL" M.alphaTm) testNames
      ++
     map (mkTestMode "L" "CK" M.alphaTm) testNames
      ++
     map (mkTestMode "CK" "TCK" M.alphaTm) testNames
      ++
-    map (mkTestMode "TCK" "TCEK" M.alphaTm) testNames
+-}
+    map (mkTestMode "TL" "TCK" M.alphaTm) testNames
      ++
+    map (mkTestMode "TCK" "TCEK" M.alphaTm) testNames
+    ++
     map (mkTest M.alphaTy "typecheck") testNames
+     ++
+    map (mkTestU M.alphaU) testNames
   where
     fails = TestInstance
         { run = return $ Finished $ Fail "Always fails!"

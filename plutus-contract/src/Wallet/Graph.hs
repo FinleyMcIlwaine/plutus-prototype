@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# OPTIONS_GHC -fno-warn-incomplete-uni-patterns #-}
@@ -15,7 +16,6 @@ module Wallet.Graph
   , UtxoLocation
   ) where
 
-import           Control.Lens      (view)
 import           Data.Aeson.Types  (ToJSON, toJSON)
 import           Data.List         (nub)
 import qualified Data.Map          as Map
@@ -27,6 +27,7 @@ import           GHC.Generics      (Generic)
 import qualified Ledger.Ada        as Ada
 import           Ledger.Address
 import           Ledger.Blockchain
+import           Ledger.Credential (Credential (..))
 import           Ledger.Crypto
 import           Ledger.Tx
 import           Ledger.TxId
@@ -43,13 +44,12 @@ data UtxOwner
 
 -- | Given a set of known public keys, compute the owner of a given transaction output.
 owner :: Set.Set PubKey -> TxOut -> UtxOwner
-owner keys TxOut {..} =
+owner keys TxOut {txOutAddress=Address{addressCredential}} =
   let hashMap = foldMap (\pk -> Map.singleton (pubKeyHash pk) pk) keys
-  in case (txOutType, txOutAddress) of
-    (PayToScript _, ScriptAddress _) -> ScriptOwner
-    (PayToPubKey, PubKeyAddress pkh)
-      | Just pk <- Map.lookup pkh hashMap -> PubKeyOwner pk
-    _ -> OtherOwner
+  in case addressCredential of
+    ScriptCredential{}                                       -> ScriptOwner
+    PubKeyCredential pkh | Just pk <- Map.lookup pkh hashMap -> PubKeyOwner pk
+    _                                                        -> OtherOwner
 
 -- | A wrapper around the first 8 digits of a 'TxId'.
 newtype TxRef =
@@ -107,10 +107,10 @@ txnFlows keys bc = catMaybes (utxoLinks ++ foldMap extract bc')
     utxos = fmap fst $ Map.toList $ unspentOutputs bc
     utxoLinks = uncurry (flow Nothing) <$> zip (utxoTargets <$> utxos) utxos
 
-    extract :: (UtxoLocation, Tx) -> [Maybe FlowLink]
+    extract :: (UtxoLocation, OnChainTx) -> [Maybe FlowLink]
     extract (loc, tx) =
-      let targetRef = mkRef $ txId tx in
-      fmap (flow (Just loc) targetRef . txInRef) (Set.toList $ view inputs tx)
+      let targetRef = mkRef $ eitherTx txId txId tx in
+      fmap (flow (Just loc) targetRef . txInRef) (Set.toList $ consumableInputs tx)
     -- make a flow for a TxOutRef
 
     flow :: Maybe UtxoLocation -> TxRef -> TxOutRef -> Maybe FlowLink
@@ -130,8 +130,9 @@ txnFlows keys bc = catMaybes (utxoLinks ++ foldMap extract bc')
     zipWithIndex = zip [1..]
 
 -- | Annotate the 'TxOutRef's produced by a transaction with the location of the transaction.
-outRefsWithLoc :: UtxoLocation -> Tx -> [(TxOutRef, UtxoLocation)]
-outRefsWithLoc loc tx = (\txo -> (snd txo, loc)) <$> txOutRefs tx
+outRefsWithLoc :: UtxoLocation -> OnChainTx -> [(TxOutRef, UtxoLocation)]
+outRefsWithLoc loc (Valid tx) = (\txo -> (snd txo, loc)) <$> txOutRefs tx
+outRefsWithLoc _ (Invalid _)  = []
 
 -- | Create a 'TxRef' from a 'TxOutRef'.
 utxoTargets :: TxOutRef -> TxRef

@@ -24,14 +24,10 @@ common lang
                         DeriveGeneric StandaloneDeriving DeriveLift
                         GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
                         DeriveTraversable
-    other-extensions: DeriveAnyClass FlexibleContexts FlexibleInstances
-                      MultiParamTypeClasses TypeFamilies OverloadedStrings
-                      MonadComprehensions ConstrainedClassMethods TupleSections GADTs
-                      RankNTypes TemplateHaskell QuasiQuotes TypeApplications
-                      ExistentialQuantification
     ghc-options: -Wall -Wnoncanonical-monad-instances
                  -Wincomplete-uni-patterns -Wincomplete-record-updates
                  -Wredundant-constraints -Widentities
+                 -Wunused-packages
                  -- See Plutus Tx readme
                  -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
 
@@ -39,41 +35,44 @@ library
     import: lang
     hs-source-dirs: src
     exposed-modules:
-        Language.PlutusTx
-        Language.PlutusTx.TH
-        Language.PlutusTx.Prelude
-        Language.PlutusTx.Evaluation
-        Language.PlutusTx.Applicative
-        Language.PlutusTx.Bool
-        Language.PlutusTx.IsData
-        Language.PlutusTx.IsData.Class
-        Language.PlutusTx.Eq
-        Language.PlutusTx.Either
-        Language.PlutusTx.Functor
-        Language.PlutusTx.Lattice
-        Language.PlutusTx.List
-        Language.PlutusTx.Ord
-        Language.PlutusTx.Maybe
-        Language.PlutusTx.Numeric
-        Language.PlutusTx.Ratio
-        Language.PlutusTx.Semigroup
-        Language.PlutusTx.Monoid
-        Language.PlutusTx.AssocMap
-        Language.PlutusTx.These
-        Language.PlutusTx.Code
-        Language.PlutusTx.Data
-        Language.PlutusTx.Lift
-        Language.PlutusTx.Lift.Class
-        Language.PlutusTx.Builtins
-        Language.PlutusTx.Plugin.Utils
-        Language.PlutusTx.Utils
-        Language.PlutusTx.String
+        PlutusTx
+        PlutusTx.TH
+        PlutusTx.Prelude
+        PlutusTx.Evaluation
+        PlutusTx.Applicative
+        PlutusTx.Bool
+        PlutusTx.IsData
+        PlutusTx.IsData.Class
+        PlutusTx.Eq
+        PlutusTx.Enum
+        PlutusTx.Either
+        PlutusTx.Foldable
+        PlutusTx.Functor
+        PlutusTx.Lattice
+        PlutusTx.List
+        PlutusTx.Ord
+        PlutusTx.Maybe
+        PlutusTx.Monoid
+        PlutusTx.Numeric
+        PlutusTx.Ratio
+        PlutusTx.Semigroup
+        PlutusTx.Sqrt
+        PlutusTx.Traversable
+        PlutusTx.AssocMap
+        PlutusTx.These
+        PlutusTx.Code
+        PlutusTx.Lift
+        PlutusTx.Lift.Class
+        PlutusTx.Builtins
+        PlutusTx.Builtins.Class
+        PlutusTx.Builtins.Internal
+        PlutusTx.Plugin.Utils
+        PlutusTx.Utils
     other-modules:
-        Language.PlutusTx.IsData.Instances
-        Language.PlutusTx.IsData.TH
-        Language.PlutusTx.Lift.THUtils
-        Language.PlutusTx.Lift.Instances
-    build-tool-depends: doctest:doctest
+        PlutusTx.IsData.Instances
+        PlutusTx.IsData.TH
+        PlutusTx.Lift.THUtils
+        PlutusTx.Lift.Instances
     build-depends:
         base >=4.9 && <5,
         bytestring -any,
@@ -84,9 +83,7 @@ library
         text -any,
         mtl -any,
         containers -any,
-        cborg -any,
         flat -any,
-        serialise -any,
         plutus-core -any,
         lens -any,
         ghc-prim -any,
@@ -97,14 +94,13 @@ test-suite plutus-tx-test
     type: exitcode-stdio-1.0
     main-is: Spec.hs
     hs-source-dirs: test
+    build-tool-depends: doctest:doctest
     build-depends:
         base >=4.9 && <5,
+        plutus-core -any,
         plutus-tx -any,
-        bytestring -any,
         hedgehog -any,
         tasty -any,
-        tasty-hunit -any,
         tasty-hedgehog -any,
         serialise -any,
         cborg -any
-
